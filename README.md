@@ -340,6 +340,14 @@ If the folder exists it will play the contents with full animation.
 
 ---
 
+## Future Ideas
+
+Here are some ideas that I have for features in upcoming releases:
+- **Extended mqtt functionality**  for example an announcement mode
+- **Install script / easier software updates**
+- **Web UI** for easier configuration
+- **Local TTS and STT fallback**
+
 ## Support the Project
 
 Billy B-Assistant is an free and open-source project built and maintained for fun and experimentation. 
