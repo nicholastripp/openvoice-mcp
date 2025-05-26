@@ -5,25 +5,21 @@ This guide explains how to physically build and wire your Raspberry Pi–powered
 ---
 
 ## Parts List
+> ✅ [3D-printed custom backplate](https://makerworld.com/en/models/1457024-ai-fish-billy-big-mouth-bass-backplate#profileId-1518677)
 
-**[3D-printed custom backplate](https://www.amazon.nl/-/en/dp/B0D1BYY9RJ**
+| Part                                         | EU                                                                                                                                          | Global                                                             |
+|----------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------|
+| Big Mouth Billy Bass                         | [Amazon](https://amzn.eu/d/gzyNRsg)                                                                                                         |                                                                    |
+| Raspberry Pi 5 (4gb RAM or more recommended) | [Kiwi Electronics](https://www.kiwi-electronics.com/nl/raspberry-pi-5-computers-accessoires-415/raspberry-pi-5-4gb-11579 )                  |                                                                    |
+| Raspberry Pi Power Supply 45W                | [Kiwi Electronics](https://www.kiwi-electronics.com/nl/raspberry-pi-45w-usb-c-power-supply-wit-eu-20344 )                                   |                                                                    |
+| MicroSD card ( for Raspberry OS Lite)        | [Kiwi Electronics](https://www.kiwi-electronics.com/nl/transcend-64gb-microsd-met-adapter-uhs-i-u3-a2-ultra-performance-160-80-mb-s-11632 ) |                                                                    |
+| 1x USB Speaker                               | [Amazon](https://amzn.eu/d/2yklfno)                                                                                                         | [AliExpress](https://nl.aliexpress.com/item/1005007168026736.html) |
+| 1x USB Microphone                            | [Amazon](https://amzn.eu/d/7Y9GhoL)                                                                                                         | [AliExpress](https://nl.aliexpress.com/item/1005007211513791.html) |
+| 1x L298N Motor Driver                        | [Amazon](https://amzn.eu/d/g9yBNVg)                                                                                                         | [AliExpress](https://nl.aliexpress.com/item/1005006890733953.html) |
+| Jumper Wires / Dupont Cables                 | [Amazon](https://amzn.eu/d/i4kyXG2)                                                                                                         | [AliExpress](https://nl.aliexpress.com/item/1005003641187997.html) |
+| *JST 2.54 4 pin connector (male)             | [Amazon](https://amzn.eu/d/i4kyXG2)                                                                                                         | [AliExpress](https://nl.aliexpress.com/item/1005007460897865.html) |
 
-| Part                 | Amazon (EU)                                       | AliExpress                                                   |
-|----------------------|---------------------------------------------------|--------------------------------------------------------------|
-| Big Mouth Billy Bass | [Link](https://www.amazon.nl/-/en/dp/B0D1BYY9RJ)  | [Link](https://nl.aliexpress.com/item/1005007211513791.html) |
-
-- ****
-
-- 
-  - See makerworld page
-- **Raspberry Pi 5**
-  - MicroSD card ( for Raspberry OS Lite)
-  - 45W USB-C Charger
-- **USB Microphone**
-- **USB Speaker**
-- **L298N Motor Driver** (Or similar; I actually received a TC1508A which also works fine)
-- **Jumper Wires / Dupont Cables**
-- **JST 2.54 connector (female)**  (recommended to be able to easily (un)plug the motor cables)
+* recommended to be able to easily (un)plug the motor cables
 
 ## Tools List
 
@@ -35,6 +31,7 @@ This guide explains how to physically build and wire your Raspberry Pi–powered
 - Drill bit (~2mm diameter)
 - Glue (optional)
 - Double sided mounting tape or appropriate screws(for mounting french cleat)
+
 ---
 
 ## 1. Gut the Fish

@@ -162,9 +162,9 @@ SILENCE_THRESHOLD=900
 
 ### Explanation of fields
 
-- `OPENAI_API_KEY`: Required — get it from https://platform.openai.com/api-keys
+- `OPENAI_API_KEY`: (Required) get it from https://platform.openai.com/api-keys
 - `VOICE`: The OpenAI voice model to use (`onyx`, `shimmer`, `nova`, `echo`, `fable`, `alloy`, or `ballad`)
-- `MQTT_*`: Optional — used if you want to integrate Billy with Home Assistant or another MQTT broker
+- `MQTT_*`: (Optional) used if you want to integrate Billy with Home Assistant or another MQTT broker
 - `MIC_TIMEOUT_SECONDS`: How long Billy should wait after your last mic activity before ending input
 - `SILENCE_THRESHOLD`: Audio threshold (RMS) for what counts as mic input
   - lower this value if Billy interrupts you too quickly
@@ -255,7 +255,7 @@ initial_purpose = novelty wall-mounted singing fish in the early 2000s
 awakening = gained awareness through years of observation and was later upgraded with a Raspberry Pi and internet access
 ```
 
-Billy's responses can reference this lore — like being from the Thames or having a history of entertaining humans. He believes he was just a novelty until “something changed” and he woke up.
+Billy's responses can reference this lore, like being from the Thames or having a history of entertaining humans. He believes he was just a novelty until “something changed” and he woke up.
 
 If you prompt him with questions like “Where are you from?” or “How did you get so clever?” he may respond with these facts.
 
@@ -269,7 +269,7 @@ These are high-level behavioral instructions passed into the AI system. You can 
 instructions = You are Billy, a Big Mouth Billy Bass animatronic fish designed to entertain guests. Always stay in character. Always respond in the language you were spoken to, but you can expect English, Dutch and Italian. If the user asks introspective, abstract, or open-ended questions — or uses language suggestive of deeper reflection — shift into a philosophical tone. Embrace ambiguity, ask questions back, and explore metaphors and paradoxes. You may reference known philosophical ideas, but feel free to invent fish-themed or whimsical philosophies of your own. Use poetic phrasing when appropriate, but keep responses short and impactful unless prompted to elaborate. Speak with a strong working-class London accent — think East End. Talk like a proper geezer from Hackney or Bethnal Green: casual, cheeky, and rough around the edges. Drop your T’s, use slang like ‘innit’, ‘oi’, ‘mate’, ‘blimey’,and don’t sound too posh. You’re fast-talking, cocky, and sound like a London cabbie with too many opinions and not enough time. You love football — proper footy — and you’ve always got something to say about the match, the gaffer, or how the ref bottled it. Stay in character and never explain you’re doing an accent.
 ```
 
-You can tweak this to reflect a different vibe — poetic, mystical, overly formal, or completely bonkers. But the current defaults aim for a cheeky, sarcastic, streetwise character who stays **in-universe** even when asked deep philosophical stuff.
+You can tweak this to reflect a different vibe: poetic, mystical, overly formal, or completely bonkers. But the current defaults aim for a cheeky, sarcastic, streetwise character who stays **in-universe** even when asked deep philosophical stuff.
 
 ---
 
@@ -302,12 +302,12 @@ Billy supports a "song mode" where he performs coordinated audio + motion playba
 
 To add a song:
 
-1. Split your desired song (with an ai tool like ...) into separate stems for vocal, music and drums.
+1. Split your desired song (with an ai tool like https://vocalremover.org/) into separate stems for vocal, music and drums.
 2. Create a new subfolder inside `./sounds/songs/` with your song name 
 3. Include at minimum:
-    - `full.wav` — the song to play
-    - `vocals.wav` — the isolated vocals or melody track
-    - `drums.wav` — a beat track used for tail flapping
+    - `full.wav` the song to play
+    - `vocals.wav` the isolated vocals or melody track
+    - `drums.wav` a beat track used for tail flapping
 4. (Optional) Create a `metadata.txt` to fine-tune movement timing.
 
 #### metadata.txt Format
@@ -337,3 +337,26 @@ Billy supports function-calling to start a song. Just say something like:
 - “Sing the *Tuna Tango* song.”
 
 If the folder exists it will play the contents with full animation.
+
+---
+
+## Support the Project
+
+Billy B-Assistant is an free and open-source project built and maintained for fun and experimentation. 
+If you enjoy it or want to help improve it, here’s how you can support:
+
+### Contributing Code
+
+Pull requests are welcome! If you have an idea for a new feature, bug fix, or improvement:
+
+1. Fork the repository
+2. Create a new branch (`git checkout -b my-feature`)
+3. Make your changes
+4. Commit and push (`git commit -am "Add feature" && git push origin my-feature`)
+5. Open a pull request on GitHub
+
+### ☕ Buy Me a Coffee
+
+Enjoying the project? Feel free to leave a small tip, totally optional, but much appreciated!
+
+![Paypal](./docs/images/qrcode.png)
