@@ -20,7 +20,7 @@ This guide explains how to physically build and wire your Raspberry Pi–powered
 | Jumper Wires / Dupont Cables                 | [Amazon](https://amzn.eu/d/i4kyXG2)                                                                                                         | [AliExpress](https://nl.aliexpress.com/item/1005003641187997.html) |
 | *JST 2.54 4 pin connector (male)             | [Amazon](https://amzn.eu/d/i4kyXG2)                                                                                                         | [AliExpress](https://nl.aliexpress.com/item/1005007460897865.html) |
 
-* recommended to be able to easily (un)plug the motor cables
+*recommended to be able to easily (un)plug the motor cables
 
 ## Tools List
 
