@@ -1,0 +1,10 @@
+sounddevice
+websockets
+numpy
+scipy
+gpiozero
+python-dotenv
+pydub
+paho-mqtt
+requests
+openai
