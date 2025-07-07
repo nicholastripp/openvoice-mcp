@@ -99,10 +99,12 @@ mkdir -p logs
 
 # Test basic functionality
 echo -e "${YELLOW}Testing installation...${NC}"
-if ./venv/bin/python src/main.py --help &> /dev/null; then
+echo -e "${YELLOW}Running test: ./venv/bin/python src/main.py --help${NC}"
+if ./venv/bin/python src/main.py --help; then
     echo -e "${GREEN}✓ Installation test passed${NC}"
 else
     echo -e "${RED}✗ Installation test failed${NC}"
+    echo -e "${RED}Error details shown above${NC}"
     exit 1
 fi
 
