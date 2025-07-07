@@ -9,8 +9,8 @@ from typing import Optional, Callable, Any
 from queue import Queue, Empty
 import threading
 
-from ..config import AudioConfig
-from ..utils.logger import get_logger
+from config import AudioConfig
+from utils.logger import get_logger
 
 
 class AudioCapture:

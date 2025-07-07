@@ -8,8 +8,8 @@ from typing import Callable, Optional, Any
 from queue import Queue, Empty
 import time
 
-from ..config import WakeWordConfig
-from ..utils.logger import get_logger
+from config import WakeWordConfig
+from utils.logger import get_logger
 
 try:
     import openwakeword

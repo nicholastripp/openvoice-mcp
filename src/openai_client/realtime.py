@@ -9,8 +9,8 @@ from typing import Dict, Any, Optional, Callable, List
 from dataclasses import dataclass
 from enum import Enum
 
-from ..config import OpenAIConfig
-from ..utils.logger import get_logger
+from config import OpenAIConfig
+from utils.logger import get_logger
 
 
 class ConnectionState(Enum):

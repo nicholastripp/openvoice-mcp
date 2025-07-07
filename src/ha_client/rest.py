@@ -6,8 +6,8 @@ import asyncio
 from typing import Dict, Any, Optional, List
 from urllib.parse import urljoin
 
-from ..config import HomeAssistantConfig
-from ..utils.logger import get_logger
+from config import HomeAssistantConfig
+from utils.logger import get_logger
 
 
 class HomeAssistantRestClient:

@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .rest import HomeAssistantRestClient
-from ..config import HomeAssistantConfig
-from ..utils.logger import get_logger
+from config import HomeAssistantConfig
+from utils.logger import get_logger
 
 
 class ResponseType(Enum):
