@@ -37,7 +37,7 @@ except Exception as e:
 
 async def test_connection(config_path):
     """Test basic connection to Home Assistant"""
-    logger = get_logger("HATest")
+    logger = get_logger("ha_voice_assistant.HATest")
     
     # Step 1: Load configuration
     try:
@@ -181,7 +181,7 @@ async def test_connection(config_path):
 
 async def test_entities(config_path):
     """Test entity discovery and states"""
-    logger = get_logger("HAEntities")
+    logger = get_logger("ha_voice_assistant.HAEntities")
     
     try:
         config = load_config(config_path)
@@ -239,7 +239,8 @@ def main():
     # Setup logging
     try:
         setup_logging("INFO", console=True)
-        logger = get_logger("HATest")
+        # Ensure all loggers inherit from root logger
+        logger = get_logger()  # Use default root logger
         print("DEBUG: Logging setup successful", flush=True)
     except Exception as e:
         print(f"DEBUG: Logging setup failed: {e}", flush=True)

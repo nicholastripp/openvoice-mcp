@@ -143,8 +143,17 @@ async def test_audio_format(config_path):
         audio_pcm16 = (audio_signal * 32767).astype(np.int16)
         audio_bytes = audio_pcm16.tobytes()
         
-        logger.info(f"Sending {len(audio_bytes)} bytes of test audio...")
-        await client.send_audio(audio_bytes)
+        logger.info(f"Sending {len(audio_bytes)} bytes of test audio in chunks...")
+        
+        # Send audio in chunks to simulate streaming (50ms chunks)
+        chunk_size = int(sample_rate * 0.05 * 2)  # 50ms of 16-bit audio
+        for i in range(0, len(audio_bytes), chunk_size):
+            chunk = audio_bytes[i:i+chunk_size]
+            await client.send_audio(chunk)
+            await asyncio.sleep(0.05)  # Wait 50ms between chunks
+        
+        # Small delay before committing to ensure buffer has minimum required audio
+        await asyncio.sleep(0.1)
         await client.commit_audio()
         
         # Wait for response

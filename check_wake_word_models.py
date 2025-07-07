@@ -1,10 +1,32 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Check available wake word models and help with setup
 """
 import sys
 import os
 from pathlib import Path
+
+# Set UTF-8 encoding for output
+import locale
+try:
+    # Try to set UTF-8 locale
+    locale.setlocale(locale.LC_ALL, 'C.UTF-8')
+except locale.Error:
+    try:
+        locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+    except locale.Error:
+        pass  # Use system default
+
+# Force UTF-8 output for stdout/stderr
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+else:
+    # For older Python versions
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, errors='replace')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, errors='replace')
 
 # Simple Unicode test without surrogates
 def test_unicode_support():
@@ -15,7 +37,7 @@ def test_unicode_support():
         print(test_char, end='', file=sys.stderr)
         print('\r', end='', file=sys.stderr)  # Clear test
         return True
-    except (UnicodeEncodeError, UnicodeDecodeError):
+    except (UnicodeEncodeError, UnicodeDecodeError, OSError):
         return False
 
 USE_UNICODE = test_unicode_support()

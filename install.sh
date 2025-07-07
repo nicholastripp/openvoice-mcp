@@ -147,22 +147,90 @@ try:
             else:
                 print('Config file not found, will update during setup')
         else:
-            print('No wake word models available, wake word detection will be disabled')
+            print('No wake word models available, attempting to download...')
             
-            # Update config to disable wake word
-            config_file = Path('config/config.yaml')
-            if config_file.exists():
-                with open(config_file, 'r') as f:
-                    config = yaml.safe_load(f)
+            # Try to download common models
+            try:
+                import urllib.request
+                import os
                 
-                if 'wake_word' not in config:
-                    config['wake_word'] = {}
-                config['wake_word']['enabled'] = False
+                models_to_download = [
+                    ('alexa', 'https://github.com/dscripka/openWakeWord/raw/main/openwakeword/resources/models/alexa_v0.1.tflite'),
+                    ('hey_mycroft', 'https://github.com/dscripka/openWakeWord/raw/main/openwakeword/resources/models/hey_mycroft_v0.1.tflite')
+                ]
                 
-                with open(config_file, 'w') as f:
-                    yaml.dump(config, f, default_flow_style=False)
+                models_dir = Path(openwakeword.__file__).parent / 'resources' / 'models'
+                models_dir.mkdir(parents=True, exist_ok=True)
                 
-                print('Disabled wake word detection in config')
+                downloaded_models = []
+                for model_name, url in models_to_download:
+                    model_file = models_dir / f'{model_name}_v0.1.tflite'
+                    if not model_file.exists():
+                        try:
+                            print(f'Downloading {model_name} model...')
+                            urllib.request.urlretrieve(url, model_file)
+                            downloaded_models.append(model_name)
+                            print(f'Downloaded {model_name} model successfully')
+                        except Exception as e:
+                            print(f'Failed to download {model_name}: {e}')
+                
+                if downloaded_models:
+                    print(f'Downloaded models: {downloaded_models}')
+                    # Re-check available models
+                    model = WakeWordModel()
+                    available_models = list(model.models.keys())
+                    if available_models:
+                        selected_model = downloaded_models[0]  # Use first downloaded model
+                        
+                        config_file = Path('config/config.yaml')
+                        if config_file.exists():
+                            with open(config_file, 'r') as f:
+                                config = yaml.safe_load(f)
+                            
+                            if 'wake_word' not in config:
+                                config['wake_word'] = {}
+                            config['wake_word']['model'] = selected_model
+                            
+                            with open(config_file, 'w') as f:
+                                yaml.dump(config, f, default_flow_style=False)
+                            
+                            print(f'Updated config to use downloaded model: {selected_model}')
+                else:
+                    print('No models could be downloaded, disabling wake word detection')
+                    
+                    # Update config to disable wake word
+                    config_file = Path('config/config.yaml')
+                    if config_file.exists():
+                        with open(config_file, 'r') as f:
+                            config = yaml.safe_load(f)
+                        
+                        if 'wake_word' not in config:
+                            config['wake_word'] = {}
+                        config['wake_word']['enabled'] = False
+                        
+                        with open(config_file, 'w') as f:
+                            yaml.dump(config, f, default_flow_style=False)
+                        
+                        print('Disabled wake word detection in config')
+                        
+            except Exception as e:
+                print(f'Model download failed: {e}')
+                print('Disabling wake word detection')
+                
+                # Update config to disable wake word
+                config_file = Path('config/config.yaml')
+                if config_file.exists():
+                    with open(config_file, 'r') as f:
+                        config = yaml.safe_load(f)
+                    
+                    if 'wake_word' not in config:
+                        config['wake_word'] = {}
+                    config['wake_word']['enabled'] = False
+                    
+                    with open(config_file, 'w') as f:
+                        yaml.dump(config, f, default_flow_style=False)
+                    
+                    print('Disabled wake word detection in config')
     except Exception as e:
         print(f'Could not configure wake word models: {e}')
         print('Wake word setup can be done manually later')
