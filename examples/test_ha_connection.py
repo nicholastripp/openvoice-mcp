@@ -8,17 +8,31 @@ Usage:
 Note: Must be run from the project root using the virtual environment.
 Requires config/config.yaml to be configured with your HA settings.
 """
+print("DEBUG: Script starting...")
+
 import sys
 import asyncio
 import argparse
 from pathlib import Path
 
+print("DEBUG: Basic imports successful")
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+print("DEBUG: Path added to sys.path")
 
-from config import load_config
-from ha_client.conversation import HomeAssistantConversationClient
-from utils.logger import setup_logging, get_logger
+try:
+    from config import load_config
+    print("DEBUG: config import successful")
+    from ha_client.conversation import HomeAssistantConversationClient
+    print("DEBUG: ha_client import successful") 
+    from utils.logger import setup_logging, get_logger
+    print("DEBUG: logger import successful")
+except Exception as e:
+    print(f"DEBUG: Import failed: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
 
 
 async def test_connection(config_path):
@@ -213,16 +227,25 @@ async def test_entities(config_path):
 
 
 def main():
+    print("DEBUG: main() function started")
     parser = argparse.ArgumentParser(description="Test Home Assistant connection")
     parser.add_argument("--config", default="config/config.yaml", help="Configuration file path")
     parser.add_argument("--entities", action="store_true", help="Test entity discovery")
     parser.add_argument("--conversation", action="store_true", help="Test conversation API only")
     
     args = parser.parse_args()
+    print("DEBUG: Arguments parsed")
     
     # Setup logging
-    setup_logging("INFO", console=True)
-    logger = get_logger("HATest")
+    try:
+        setup_logging("INFO", console=True)
+        logger = get_logger("HATest")
+        print("DEBUG: Logging setup successful")
+    except Exception as e:
+        print(f"DEBUG: Logging setup failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     
     # Check if config file exists
     config_path = Path(args.config)
@@ -249,8 +272,17 @@ def main():
             logger.debug("Full traceback:", exc_info=True)
     
     # Run tests
-    asyncio.run(run_tests())
+    try:
+        print("DEBUG: About to run asyncio.run(run_tests())")
+        asyncio.run(run_tests())
+        print("DEBUG: asyncio.run completed")
+    except Exception as e:
+        print(f"DEBUG: asyncio.run failed: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
+    print("DEBUG: __name__ == '__main__' - calling main()")
     main()
+    print("DEBUG: main() completed")

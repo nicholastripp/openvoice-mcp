@@ -9,6 +9,13 @@ from typing import Dict, Any, Optional, Callable, List
 from dataclasses import dataclass
 from enum import Enum
 
+# Try to import legacy websockets client for compatibility
+try:
+    import websockets.legacy.client
+    LEGACY_WEBSOCKETS_AVAILABLE = True
+except ImportError:
+    LEGACY_WEBSOCKETS_AVAILABLE = False
+
 from config import OpenAIConfig
 from utils.logger import get_logger
 
@@ -107,17 +114,25 @@ class OpenAIRealtimeClient:
                     max_size=None,  # Allow large audio frames
                     ping_interval=30
                 )
-            except TypeError:
+            except TypeError as e:
+                self.logger.warning(f"extra_headers not supported, trying legacy format: {e}")
                 # Fall back to legacy approach for older websockets versions
-                self.logger.warning("Using legacy websockets header format")
-                # For older versions, we need to pass headers differently
-                import websockets.legacy.client
-                self.websocket = await websockets.legacy.client.connect(
-                    url,
-                    additional_headers=headers,
-                    max_size=None,
-                    ping_interval=30
-                )
+                if LEGACY_WEBSOCKETS_AVAILABLE:
+                    try:
+                        self.websocket = await websockets.legacy.client.connect(
+                            url,
+                            additional_headers=headers,
+                            max_size=None,
+                            ping_interval=30
+                        )
+                        self.logger.info("Connected using legacy websockets format")
+                    except Exception as legacy_error:
+                        self.logger.error(f"Legacy websockets also failed: {legacy_error}")
+                        raise
+                else:
+                    self.logger.error("Legacy websockets not available and extra_headers not supported")
+                    self.logger.error("Please upgrade websockets: pip install --upgrade websockets")
+                    raise
             
             self.state = ConnectionState.CONNECTED
             self.reconnect_attempts = 0

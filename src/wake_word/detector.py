@@ -170,11 +170,14 @@ class WakeWordDetector:
             if "Could not open" in str(e) and ".tflite" in str(e):
                 self.logger.error("Wake word model file not found.")
                 self.logger.error("This typically happens on first run.")
-                self.logger.error("OpenWakeWord models need to be downloaded manually.")
-                self.logger.error("Available options:")
-                self.logger.error("1. Use a different model that's already available")
-                self.logger.error("2. Download the model manually")
-                self.logger.error("3. Use the default models included with OpenWakeWord")
+                self.logger.error("")
+                self.logger.error("🔧 Quick Fix Options:")
+                self.logger.error("1. Run: ./venv/bin/python check_wake_word_models.py")
+                self.logger.error("2. Use a pre-installed model (if available)")
+                self.logger.error("3. Change your config to use 'alexa' or 'hey_mycroft'")
+                self.logger.error("")
+                self.logger.error("📋 To check available models:")
+                self.logger.error("   ./venv/bin/python check_wake_word_models.py")
                 
                 # Try to list available models
                 try:
