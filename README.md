@@ -56,8 +56,8 @@ cd ha-realtime-voice-assistant
 cp config/config.yaml.example config/config.yaml
 nano config/config.yaml
 
-# Start the assistant
-python3 src/main.py
+# Start the assistant (use virtual environment)
+./venv/bin/python src/main.py
 ```
 
 ## Configuration
@@ -99,18 +99,44 @@ home_assistant:
 - `ok_nabu` - Nabu Casa compatible
 
 ### Testing & Validation
+
+**Important**: All test scripts must be run using the virtual environment:
+
 ```bash
 # Test wake word detection
-python3 examples/test_wake_word.py --interactive
+./venv/bin/python examples/test_wake_word.py --interactive
 
 # Test audio devices
-python3 examples/test_audio_devices.py
+./venv/bin/python examples/test_audio_devices.py
 
 # Test Home Assistant connection
-python3 examples/test_ha_connection.py
+./venv/bin/python examples/test_ha_connection.py
+
+# Test OpenAI connection
+./venv/bin/python examples/test_openai_connection.py
 
 # Run the full assistant
-python3 src/main.py --log-level DEBUG
+./venv/bin/python src/main.py --log-level DEBUG
+```
+
+**Alternative**: Activate the virtual environment first:
+```bash
+source venv/bin/activate
+python3 examples/test_audio_devices.py
+python3 src/main.py
+```
+
+**Convenient Test Runner**: Use the provided script to run tests easily:
+```bash
+# Run all tests
+./run_tests.sh
+
+# Run specific tests
+./run_tests.sh audio
+./run_tests.sh ha
+./run_tests.sh openai
+./run_tests.sh wake     # Interactive wake word test
+./run_tests.sh help     # Show all options
 ```
 
 ## Documentation

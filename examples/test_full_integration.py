@@ -2,6 +2,12 @@
 """
 Full integration test script
 Tests the complete voice assistant pipeline without actual audio I/O
+
+Usage:
+    ./venv/bin/python examples/test_full_integration.py
+    
+Note: Must be run from the project root using the virtual environment.
+Requires all configuration files to be set up properly.
 """
 import sys
 import asyncio

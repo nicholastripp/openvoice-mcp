@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
 Test script to list and test audio devices
+
+Usage:
+    ./venv/bin/python examples/test_audio_devices.py
+    
+Note: Must be run from the project root using the virtual environment.
 """
 import sys
 import argparse

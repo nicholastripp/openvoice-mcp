@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
 Test script for OpenAI Realtime API connection
+
+Usage:
+    ./venv/bin/python examples/test_openai_connection.py
+    
+Note: Must be run from the project root using the virtual environment.
+Requires OpenAI API key configured in .env file.
 """
 import sys
 import asyncio

@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
 Test script for wake word detection
+
+Usage:
+    ./venv/bin/python examples/test_wake_word.py --interactive
+    
+Note: Must be run from the project root using the virtual environment.
+Requires audio input device (microphone) for interactive testing.
 """
 import sys
 import asyncio

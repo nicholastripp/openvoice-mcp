@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
 Test script for Home Assistant connection and Conversation API
+
+Usage:
+    ./venv/bin/python examples/test_ha_connection.py
+    
+Note: Must be run from the project root using the virtual environment.
+Requires config/config.yaml to be configured with your HA settings.
 """
 import sys
 import asyncio
