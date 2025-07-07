@@ -6,26 +6,27 @@ import sys
 import os
 from pathlib import Path
 
-# Set UTF-8 encoding for stdout
-try:
-    if sys.stdout.encoding != 'utf-8':
-        sys.stdout.reconfigure(encoding='utf-8')
-    # Test if Unicode works
-    test_unicode = "\u2705"
-    print(test_unicode, end='', flush=True)
-    print('\r', end='', flush=True)  # Clear test
-    USE_UNICODE = True
-except (UnicodeEncodeError, AttributeError):
-    # Fallback to ASCII
-    USE_UNICODE = False
+# Simple Unicode test without surrogates
+def test_unicode_support():
+    """Test if Unicode is supported safely"""
+    try:
+        # Test with simple Unicode characters (no surrogates)
+        test_char = "✅"  # Direct Unicode instead of escape
+        print(test_char, end='', file=sys.stderr)
+        print('\r', end='', file=sys.stderr)  # Clear test
+        return True
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return False
 
-# Define symbols based on Unicode support
+USE_UNICODE = test_unicode_support()
+
+# Define symbols based on Unicode support (using safe characters)
 if USE_UNICODE:
-    OK = "\u2705"
-    ERROR = "\u274c"
-    TIP = "\ud83d\udca1"
-    CONFIG = "\ud83d\udd27"
-    INFO = "\ud83d\udd0d"
+    OK = "✅"
+    ERROR = "❌"
+    TIP = "💡"
+    CONFIG = "🔧"
+    INFO = "🔍"
 else:
     OK = "[OK]"
     ERROR = "[ERROR]"

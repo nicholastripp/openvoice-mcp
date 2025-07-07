@@ -259,17 +259,25 @@ def main():
     async def run_tests():
         try:
             if args.entities:
+                print("DEBUG: Running entities test", flush=True)
                 await test_entities(args.config)
             elif args.conversation:
+                print("DEBUG: Running conversation test", flush=True)
                 await test_connection(args.config)
             else:
                 # Run both tests
+                print("DEBUG: Running connection test", flush=True)
                 success1 = await test_connection(args.config)
+                print(f"DEBUG: Connection test result: {success1}", flush=True)
                 if success1:
+                    print("DEBUG: Running entities test", flush=True)
                     await test_entities(args.config)
         except Exception as e:
+            print(f"DEBUG: Exception in run_tests: {e}", flush=True)
             logger.error(f"❌ Test failed with unexpected error: {e}")
             logger.debug("Full traceback:", exc_info=True)
+            import traceback
+            traceback.print_exc()
     
     # Run tests
     try:

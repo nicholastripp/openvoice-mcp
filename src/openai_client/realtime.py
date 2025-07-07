@@ -98,8 +98,8 @@ class OpenAIRealtimeClient:
         self.logger.info("Connecting to OpenAI Realtime API...")
         
         try:
-            # WebSocket URL and headers
-            url = "wss://api.openai.com/v1/realtime"
+            # WebSocket URL with model parameter (required by OpenAI)
+            url = f"wss://api.openai.com/v1/realtime?model={self.config.model}"
             headers = {
                 "Authorization": f"Bearer {self.config.api_key}",
                 "OpenAI-Beta": "realtime=v1"
@@ -163,13 +163,29 @@ class OpenAIRealtimeClient:
     
     async def disconnect(self) -> None:
         """Disconnect from OpenAI Realtime API"""
-        if self.websocket and not self.websocket.closed:
+        if self.websocket and not self._is_websocket_closed():
             await self.websocket.close()
         
         self.state = ConnectionState.DISCONNECTED
         self.websocket = None
         self.session_id = None
         self.logger.info("Disconnected from OpenAI Realtime API")
+    
+    def _is_websocket_closed(self) -> bool:
+        """Check if websocket is closed, handling different websocket versions"""
+        if not self.websocket:
+            return True
+        
+        try:
+            # Try the standard approach first
+            return self.websocket.closed
+        except AttributeError:
+            # For older websocket versions, check state differently
+            try:
+                return self.websocket.state != 1  # OPEN state is 1
+            except AttributeError:
+                # Last resort: assume it's open if we can't check
+                return False
     
     async def send_audio(self, audio_data: bytes) -> None:
         """
@@ -421,7 +437,7 @@ class OpenAIRealtimeClient:
     
     async def _send_event(self, event: Dict[str, Any]) -> None:
         """Send event to OpenAI"""
-        if not self.websocket or self.websocket.closed:
+        if not self.websocket or self._is_websocket_closed():
             raise ConnectionError("WebSocket not connected")
             
         await self.websocket.send(json.dumps(event))
