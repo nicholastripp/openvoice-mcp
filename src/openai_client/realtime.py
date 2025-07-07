@@ -272,20 +272,11 @@ class OpenAIRealtimeClient:
             
             await self._send_event(event)
             
-            # Only create response if not in text-only mode
-            # In text-only mode, responses are handled automatically
-            if not self.text_only:
-                await self._send_event({
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["text"]
-                    }
-                })
-            else:
-                # In text-only mode, create a simple response
-                await self._send_event({
-                    "type": "response.create"
-                })
+            # Do NOT send response.create when VAD is enabled
+            # The server will automatically generate responses when it detects
+            # the end of user input (either speech or text)
+            # Manually sending response.create tries to commit the audio buffer
+            # which fails when no audio has been sent
             
         except Exception as e:
             self.logger.error(f"Error sending text: {e}")
