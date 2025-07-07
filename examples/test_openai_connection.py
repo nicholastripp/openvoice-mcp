@@ -174,6 +174,16 @@ def main():
     
     # Setup logging
     setup_logging("INFO", console=True)
+    logger = get_logger("OpenAITest")
+    
+    # Check if config file exists
+    config_path = Path(args.config)
+    if not config_path.exists():
+        logger.error(f"❌ Configuration file not found: {args.config}")
+        logger.error("Please create the configuration file:")
+        logger.error(f"  cp {args.config}.example {args.config}")
+        logger.error("Then edit it with your OpenAI API key.")
+        return
     
     async def run_tests():
         if args.connection:

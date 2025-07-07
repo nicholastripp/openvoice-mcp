@@ -139,17 +139,31 @@ def main():
     
     # Setup logging
     setup_logging("INFO", console=True)
+    logger = get_logger("HATest")
+    
+    # Check if config file exists
+    config_path = Path(args.config)
+    if not config_path.exists():
+        logger.error(f"❌ Configuration file not found: {args.config}")
+        logger.error("Please create the configuration file:")
+        logger.error(f"  cp {args.config}.example {args.config}")
+        logger.error("Then edit it with your Home Assistant settings.")
+        return
     
     async def run_tests():
-        if args.entities:
-            await test_entities(args.config)
-        elif args.conversation:
-            await test_connection(args.config)
-        else:
-            # Run both tests
-            success1 = await test_connection(args.config)
-            if success1:
+        try:
+            if args.entities:
                 await test_entities(args.config)
+            elif args.conversation:
+                await test_connection(args.config)
+            else:
+                # Run both tests
+                success1 = await test_connection(args.config)
+                if success1:
+                    await test_entities(args.config)
+        except Exception as e:
+            logger.error(f"❌ Test failed with unexpected error: {e}")
+            logger.debug("Full traceback:", exc_info=True)
     
     # Run tests
     asyncio.run(run_tests())

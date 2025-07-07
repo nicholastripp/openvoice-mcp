@@ -99,12 +99,25 @@ class OpenAIRealtimeClient:
             }
             
             # Connect to WebSocket
-            self.websocket = await websockets.connect(
-                url,
-                extra_headers=headers,
-                max_size=None,  # Allow large audio frames
-                ping_interval=30
-            )
+            try:
+                # Try with extra_headers (websockets 10.0+)
+                self.websocket = await websockets.connect(
+                    url,
+                    extra_headers=headers,
+                    max_size=None,  # Allow large audio frames
+                    ping_interval=30
+                )
+            except TypeError:
+                # Fall back to legacy approach for older websockets versions
+                self.logger.warning("Using legacy websockets header format")
+                # For older versions, we need to pass headers differently
+                import websockets.legacy.client
+                self.websocket = await websockets.legacy.client.connect(
+                    url,
+                    additional_headers=headers,
+                    max_size=None,
+                    ping_interval=30
+                )
             
             self.state = ConnectionState.CONNECTED
             self.reconnect_attempts = 0

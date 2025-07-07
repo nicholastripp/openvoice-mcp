@@ -52,8 +52,11 @@ cd ha-realtime-voice-assistant
 # Install dependencies
 ./install.sh
 
-# Configure your settings
-cp config/config.yaml.example config/config.yaml
+# Setup configuration files
+./setup_config.sh
+
+# Edit your settings (API keys and configuration)
+nano .env
 nano config/config.yaml
 
 # Start the assistant (use virtual environment)

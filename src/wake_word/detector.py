@@ -165,6 +165,23 @@ class WakeWordDetector:
             
         except Exception as e:
             self.logger.error(f"Failed to load wake word model '{self.model_name}': {e}")
+            
+            # Check if this is a missing model file error
+            if "Could not open" in str(e) and ".tflite" in str(e):
+                self.logger.error("Wake word model file not found.")
+                self.logger.error("This typically happens on first run.")
+                self.logger.error("OpenWakeWord models need to be downloaded manually.")
+                self.logger.error("Available options:")
+                self.logger.error("1. Use a different model that's already available")
+                self.logger.error("2. Download the model manually")
+                self.logger.error("3. Use the default models included with OpenWakeWord")
+                
+                # Try to list available models
+                try:
+                    self._suggest_available_models()
+                except:
+                    pass
+            
             # Try to suggest available models
             try:
                 dummy_model = WakeWordModel()
@@ -173,6 +190,21 @@ class WakeWordDetector:
             except:
                 pass
             raise
+    
+    def _suggest_available_models(self) -> None:
+        """Try to suggest available wake word models"""
+        try:
+            # Try to create a model with no specific models to see what's available
+            dummy_model = WakeWordModel()
+            available = list(dummy_model.models.keys())
+            if available:
+                self.logger.info(f"Available pre-installed models: {available}")
+                self.logger.info("You can use one of these models instead.")
+            else:
+                self.logger.info("No pre-installed models found.")
+                self.logger.info("You may need to download wake word models manually.")
+        except Exception as e:
+            self.logger.debug(f"Could not determine available models: {e}")
     
     def _detection_loop(self) -> None:
         """Background thread for wake word detection"""
