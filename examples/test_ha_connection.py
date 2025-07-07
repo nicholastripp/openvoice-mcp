@@ -8,28 +8,28 @@ Usage:
 Note: Must be run from the project root using the virtual environment.
 Requires config/config.yaml to be configured with your HA settings.
 """
-print("DEBUG: Script starting...")
+print("DEBUG: Script starting...", flush=True)
 
 import sys
 import asyncio
 import argparse
 from pathlib import Path
 
-print("DEBUG: Basic imports successful")
+print("DEBUG: Basic imports successful", flush=True)
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-print("DEBUG: Path added to sys.path")
+print("DEBUG: Path added to sys.path", flush=True)
 
 try:
     from config import load_config
-    print("DEBUG: config import successful")
+    print("DEBUG: config import successful", flush=True)
     from ha_client.conversation import HomeAssistantConversationClient
-    print("DEBUG: ha_client import successful") 
+    print("DEBUG: ha_client import successful", flush=True) 
     from utils.logger import setup_logging, get_logger
-    print("DEBUG: logger import successful")
+    print("DEBUG: logger import successful", flush=True)
 except Exception as e:
-    print(f"DEBUG: Import failed: {e}")
+    print(f"DEBUG: Import failed: {e}", flush=True)
     import traceback
     traceback.print_exc()
     sys.exit(1)
@@ -227,22 +227,22 @@ async def test_entities(config_path):
 
 
 def main():
-    print("DEBUG: main() function started")
+    print("DEBUG: main() function started", flush=True)
     parser = argparse.ArgumentParser(description="Test Home Assistant connection")
     parser.add_argument("--config", default="config/config.yaml", help="Configuration file path")
     parser.add_argument("--entities", action="store_true", help="Test entity discovery")
     parser.add_argument("--conversation", action="store_true", help="Test conversation API only")
     
     args = parser.parse_args()
-    print("DEBUG: Arguments parsed")
+    print("DEBUG: Arguments parsed", flush=True)
     
     # Setup logging
     try:
         setup_logging("INFO", console=True)
         logger = get_logger("HATest")
-        print("DEBUG: Logging setup successful")
+        print("DEBUG: Logging setup successful", flush=True)
     except Exception as e:
-        print(f"DEBUG: Logging setup failed: {e}")
+        print(f"DEBUG: Logging setup failed: {e}", flush=True)
         import traceback
         traceback.print_exc()
         return
@@ -273,16 +273,16 @@ def main():
     
     # Run tests
     try:
-        print("DEBUG: About to run asyncio.run(run_tests())")
+        print("DEBUG: About to run asyncio.run(run_tests())", flush=True)
         asyncio.run(run_tests())
-        print("DEBUG: asyncio.run completed")
+        print("DEBUG: asyncio.run completed", flush=True)
     except Exception as e:
-        print(f"DEBUG: asyncio.run failed: {e}")
+        print(f"DEBUG: asyncio.run failed: {e}", flush=True)
         import traceback
         traceback.print_exc()
 
 
 if __name__ == "__main__":
-    print("DEBUG: __name__ == '__main__' - calling main()")
+    print("DEBUG: __name__ == '__main__' - calling main()", flush=True)
     main()
-    print("DEBUG: main() completed")
+    print("DEBUG: main() completed", flush=True)

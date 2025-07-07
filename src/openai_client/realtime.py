@@ -115,24 +115,34 @@ class OpenAIRealtimeClient:
                     ping_interval=30
                 )
             except TypeError as e:
-                self.logger.warning(f"extra_headers not supported, trying legacy format: {e}")
-                # Fall back to legacy approach for older websockets versions
-                if LEGACY_WEBSOCKETS_AVAILABLE:
+                self.logger.warning(f"extra_headers not supported, trying other formats: {e}")
+                # Try different parameter names for different websockets versions
+                connection_attempts = [
+                    # websockets 8.x-9.x
+                    {"additional_headers": headers, "max_size": None, "ping_interval": 30},
+                    # websockets 5.x-7.x
+                    {"extra_headers": headers.items(), "max_size": None, "ping_interval": 30},
+                    # websockets 3.x-4.x (very old)
+                    {"origin": None, "extensions": None, "subprotocols": None, "extra_headers": headers}
+                ]
+                
+                connected = False
+                for attempt_params in connection_attempts:
                     try:
-                        self.websocket = await websockets.legacy.client.connect(
-                            url,
-                            additional_headers=headers,
-                            max_size=None,
-                            ping_interval=30
-                        )
-                        self.logger.info("Connected using legacy websockets format")
-                    except Exception as legacy_error:
-                        self.logger.error(f"Legacy websockets also failed: {legacy_error}")
-                        raise
-                else:
-                    self.logger.error("Legacy websockets not available and extra_headers not supported")
-                    self.logger.error("Please upgrade websockets: pip install --upgrade websockets")
-                    raise
+                        self.logger.debug(f"Trying with params: {list(attempt_params.keys())}")
+                        self.websocket = await websockets.connect(url, **attempt_params)
+                        self.logger.info(f"Connected using parameters: {list(attempt_params.keys())}")
+                        connected = True
+                        break
+                    except (TypeError, AttributeError) as attempt_error:
+                        self.logger.debug(f"Attempt failed: {attempt_error}")
+                        continue
+                
+                if not connected:
+                    # Last resort: try without any headers
+                    self.logger.warning("All header attempts failed, trying without authentication headers")
+                    self.logger.error("This will likely fail authentication with OpenAI")
+                    self.websocket = await websockets.connect(url, max_size=None)
             
             self.state = ConnectionState.CONNECTED
             self.reconnect_attempts = 0
