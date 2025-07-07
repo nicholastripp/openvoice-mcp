@@ -1,0 +1,36 @@
+[Unit]
+Description=Home Assistant Realtime Voice Assistant
+Documentation=https://github.com/yourusername/ha-realtime-voice-assistant
+After=network-online.target sound.target
+Wants=network-online.target
+Requires=sound.target
+
+[Service]
+Type=simple
+User=pi
+Group=audio
+WorkingDirectory=/home/pi/ha-realtime-voice-assistant
+Environment=PATH=/home/pi/ha-realtime-voice-assistant/venv/bin
+ExecStart=/home/pi/ha-realtime-voice-assistant/venv/bin/python3 /home/pi/ha-realtime-voice-assistant/src/main.py --daemon
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ha-voice-assistant
+
+# Security settings
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/home/pi/ha-realtime-voice-assistant/logs
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+
+# Audio permissions
+SupplementaryGroups=audio
+
+[Install]
+WantedBy=multi-user.target

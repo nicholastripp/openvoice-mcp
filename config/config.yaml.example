@@ -1,0 +1,57 @@
+# Home Assistant Realtime Voice Assistant Configuration
+
+# OpenAI Configuration
+openai:
+  api_key: ${OPENAI_API_KEY}        # From environment variable
+  voice: "nova"                     # alloy, echo, shimmer, fable, onyx, nova
+  model: "gpt-4o-realtime-preview"  # OpenAI Realtime model
+  temperature: 0.8                  # Response creativity (0.0-1.0)
+  language: "en"                    # Language code (en, es, fr, de, etc.)
+  
+# Home Assistant Configuration  
+home_assistant:
+  url: "http://homeassistant.local:8123"  # Your HA instance URL
+  token: ${HA_TOKEN}                      # Long-lived access token
+  language: "en"                          # Must match OpenAI language
+  timeout: 10                             # API timeout in seconds
+  
+# Audio Configuration
+audio:
+  input_device: "default"           # Microphone device (name or index)
+  output_device: "default"          # Speaker device (name or index)
+  sample_rate: 48000               # Device sample rate (48000, 44100, etc.)
+  channels: 1                      # Audio channels (1=mono, 2=stereo)
+  chunk_size: 1200                 # Audio chunk size (50ms at 24kHz)
+  input_volume: 1.0                # Input volume multiplier
+  output_volume: 1.0               # Output volume multiplier
+  
+# Wake Word Configuration
+wake_word:
+  enabled: true                   # Enable wake word detection
+  model: "hey_jarvis"             # Wake word model (hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu)
+  sensitivity: 0.5                # Detection sensitivity (0.0-1.0)
+  timeout: 5.0                    # Session timeout after wake word (seconds)
+  vad_enabled: true               # Enable voice activity detection for better accuracy
+  cooldown: 2.0                   # Seconds between wake word detections
+  
+# Session Configuration
+session:
+  timeout: 30                     # Session timeout in seconds
+  auto_end_silence: 3.0          # End session after silence (seconds)
+  max_duration: 300              # Maximum session duration (seconds)
+  interrupt_threshold: 0.5       # Voice activity to interrupt AI
+  
+# System Configuration
+system:
+  log_level: "INFO"              # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  log_file: "logs/assistant.log" # Log file path
+  led_gpio: null                 # GPIO pin for status LED (optional)
+  daemon: false                  # Run as daemon process
+  
+# Advanced Configuration
+advanced:
+  reconnect_delay: 5.0          # WebSocket reconnection delay
+  max_reconnect_attempts: 10    # Maximum reconnection attempts
+  audio_buffer_size: 8192       # Audio buffer size in bytes
+  cost_tracking: true           # Track API usage costs
+  debug_audio: false            # Save debug audio files
