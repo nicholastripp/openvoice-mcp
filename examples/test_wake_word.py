@@ -114,7 +114,7 @@ async def test_model_switching():
     """Test switching between different wake word models"""
     logger = get_logger("WakeWordTest")
     
-    models_to_test = ["hey_jarvis", "alexa", "hey_mycroft"]
+    models_to_test = ["alexa", "hey_mycroft", "ok_nabu"]
     
     for model_name in models_to_test:
         logger.info(f"Testing model: {model_name}")

@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 class OpenAIConfig:
     """OpenAI API configuration"""
     api_key: str
-    voice: str = "nova"
+    voice: str = "alloy"
     model: str = "gpt-4o-realtime-preview"
     temperature: float = 0.8
     language: str = "en"
@@ -44,7 +44,7 @@ class AudioConfig:
 class WakeWordConfig:
     """Wake word configuration"""
     enabled: bool = True
-    model: str = "hey_jarvis"
+    model: str = "alexa"
     sensitivity: float = 0.5
     timeout: float = 5.0
     vad_enabled: bool = True
