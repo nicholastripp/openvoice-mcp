@@ -66,6 +66,10 @@ pip install --upgrade pip
 echo -e "${YELLOW}Installing Python dependencies...${NC}"
 pip install -r requirements.txt
 
+# Ensure websockets is properly installed for Raspberry Pi
+echo -e "${YELLOW}Verifying websockets installation...${NC}"
+pip install --upgrade websockets>=12.0
+
 echo -e "${GREEN}✓ Dependencies installed${NC}"
 
 # Create configuration files
@@ -153,26 +157,50 @@ try:
             try:
                 import urllib.request
                 import os
+                import ssl
+                
+                # Create SSL context that allows downloading
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
                 
                 models_to_download = [
                     ('alexa', 'https://github.com/dscripka/openWakeWord/raw/main/openwakeword/resources/models/alexa_v0.1.tflite'),
                     ('hey_mycroft', 'https://github.com/dscripka/openWakeWord/raw/main/openwakeword/resources/models/hey_mycroft_v0.1.tflite')
                 ]
                 
+                # Ensure models directory exists
                 models_dir = Path(openwakeword.__file__).parent / 'resources' / 'models'
+                print(f'Creating models directory: {models_dir}')
                 models_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Verify directory was created
+                if not models_dir.exists():
+                    print(f'Failed to create models directory: {models_dir}')
+                    raise Exception(f'Could not create models directory: {models_dir}')
                 
                 downloaded_models = []
                 for model_name, url in models_to_download:
                     model_file = models_dir / f'{model_name}_v0.1.tflite'
                     if not model_file.exists():
                         try:
-                            print(f'Downloading {model_name} model...')
-                            urllib.request.urlretrieve(url, model_file)
-                            downloaded_models.append(model_name)
-                            print(f'Downloaded {model_name} model successfully')
+                            print(f'Downloading {model_name} model from {url}...')
+                            # Use urllib with SSL context
+                            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                            with urllib.request.urlopen(req, context=ssl_context) as response:
+                                with open(model_file, 'wb') as f:
+                                    f.write(response.read())
+                            
+                            # Verify download
+                            if model_file.exists() and model_file.stat().st_size > 0:
+                                downloaded_models.append(model_name)
+                                print(f'Downloaded {model_name} model successfully ({model_file.stat().st_size} bytes)')
+                            else:
+                                print(f'Download failed: {model_name} file is empty or missing')
                         except Exception as e:
                             print(f'Failed to download {model_name}: {e}')
+                            print(f'  URL: {url}')
+                            print(f'  Target: {model_file}')
                 
                 if downloaded_models:
                     print(f'Downloaded models: {downloaded_models}')

@@ -147,13 +147,29 @@ async def test_audio_format(config_path):
         
         # Send audio in chunks to simulate streaming (50ms chunks)
         chunk_size = int(sample_rate * 0.05 * 2)  # 50ms of 16-bit audio
+        total_duration_ms = 0
+        
         for i in range(0, len(audio_bytes), chunk_size):
             chunk = audio_bytes[i:i+chunk_size]
             await client.send_audio(chunk)
             await asyncio.sleep(0.05)  # Wait 50ms between chunks
+            total_duration_ms += 50
+            
+            # Log progress
+            if i % (chunk_size * 4) == 0:  # Every 200ms
+                logger.debug(f"Sent {total_duration_ms}ms of audio")
         
-        # Small delay before committing to ensure buffer has minimum required audio
+        logger.info(f"Sent total of {total_duration_ms}ms of audio")
+        
+        # Ensure we have at least 150ms of audio before committing (OpenAI requires 100ms minimum)
+        if total_duration_ms < 150:
+            additional_wait = (150 - total_duration_ms) / 1000.0
+            logger.info(f"Waiting additional {additional_wait:.1f}s to ensure sufficient buffer")
+            await asyncio.sleep(additional_wait)
+        
+        # Small additional delay before committing
         await asyncio.sleep(0.1)
+        logger.info("Committing audio buffer...")
         await client.commit_audio()
         
         # Wait for response

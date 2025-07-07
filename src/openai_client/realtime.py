@@ -9,12 +9,19 @@ from typing import Dict, Any, Optional, Callable, List
 from dataclasses import dataclass
 from enum import Enum
 
-# Try to import legacy websockets client for compatibility
+# Check websockets version and capabilities
+WEBSOCKETS_VERSION = None
+LEGACY_WEBSOCKETS_AVAILABLE = False
 try:
-    import websockets.legacy.client
-    LEGACY_WEBSOCKETS_AVAILABLE = True
+    import websockets
+    WEBSOCKETS_VERSION = websockets.__version__
+    try:
+        import websockets.legacy.client
+        LEGACY_WEBSOCKETS_AVAILABLE = True
+    except ImportError:
+        pass
 except ImportError:
-    LEGACY_WEBSOCKETS_AVAILABLE = False
+    pass
 
 from config import OpenAIConfig
 from utils.logger import get_logger
@@ -97,6 +104,12 @@ class OpenAIRealtimeClient:
         self.state = ConnectionState.CONNECTING
         self.logger.info("Connecting to OpenAI Realtime API...")
         
+        # Log websockets version for debugging
+        if WEBSOCKETS_VERSION:
+            self.logger.debug(f"Using websockets version: {WEBSOCKETS_VERSION}")
+        else:
+            self.logger.warning("Websockets library not properly detected")
+        
         try:
             # WebSocket URL with model parameter (required by OpenAI)
             url = f"wss://api.openai.com/v1/realtime?model={self.config.model}"
@@ -105,44 +118,39 @@ class OpenAIRealtimeClient:
                 "OpenAI-Beta": "realtime=v1"
             }
             
-            # Connect to WebSocket
-            try:
-                # Try with extra_headers (websockets 10.0+)
-                self.websocket = await websockets.connect(
-                    url,
-                    extra_headers=headers,
-                    max_size=None,  # Allow large audio frames
-                    ping_interval=30
-                )
-            except TypeError as e:
-                self.logger.warning(f"extra_headers not supported, trying other formats: {e}")
-                # Try different parameter names for different websockets versions
-                connection_attempts = [
-                    # websockets 8.x-9.x
-                    {"additional_headers": headers, "max_size": None, "ping_interval": 30},
-                    # websockets 5.x-7.x
-                    {"extra_headers": headers.items(), "max_size": None, "ping_interval": 30},
-                    # websockets 3.x-4.x (very old)
-                    {"origin": None, "extensions": None, "subprotocols": None, "extra_headers": headers}
-                ]
-                
-                connected = False
-                for attempt_params in connection_attempts:
-                    try:
-                        self.logger.debug(f"Trying with params: {list(attempt_params.keys())}")
-                        self.websocket = await websockets.connect(url, **attempt_params)
-                        self.logger.info(f"Connected using parameters: {list(attempt_params.keys())}")
-                        connected = True
-                        break
-                    except (TypeError, AttributeError) as attempt_error:
-                        self.logger.debug(f"Attempt failed: {attempt_error}")
-                        continue
-                
-                if not connected:
-                    # Last resort: try without any headers
-                    self.logger.warning("All header attempts failed, trying without authentication headers")
-                    self.logger.error("This will likely fail authentication with OpenAI")
-                    self.websocket = await websockets.connect(url, max_size=None)
+            # Connect to WebSocket with version-appropriate method
+            connected = False
+            connection_attempts = [
+                # Modern websockets (10.0+)
+                {"extra_headers": headers, "max_size": None, "ping_interval": 30},
+                # Older websockets with different parameter names
+                {"additional_headers": headers, "max_size": None, "ping_interval": 30},
+                # Very old websockets - headers as list of tuples
+                {"extra_headers": list(headers.items()), "max_size": None, "ping_interval": 30},
+                # Legacy format
+                {"origin": None, "extensions": None, "subprotocols": None, "extra_headers": headers},
+                # Basic connection without ping interval
+                {"extra_headers": headers, "max_size": None},
+                # Last resort - minimal parameters
+                {"max_size": None}
+            ]
+            
+            for i, attempt_params in enumerate(connection_attempts):
+                try:
+                    self.logger.debug(f"Connection attempt {i+1}: {list(attempt_params.keys())}")
+                    self.websocket = await websockets.connect(url, **attempt_params)
+                    self.logger.info(f"Connected using method {i+1}: {list(attempt_params.keys())}")
+                    connected = True
+                    break
+                except (TypeError, AttributeError, ValueError) as attempt_error:
+                    self.logger.debug(f"Attempt {i+1} failed: {attempt_error}")
+                    continue
+                except Exception as attempt_error:
+                    self.logger.debug(f"Attempt {i+1} failed with unexpected error: {attempt_error}")
+                    continue
+            
+            if not connected:
+                raise ConnectionError("All WebSocket connection methods failed")
             
             self.state = ConnectionState.CONNECTED
             self.reconnect_attempts = 0
