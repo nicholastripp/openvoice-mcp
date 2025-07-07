@@ -136,9 +136,58 @@ class WakeWordDetector:
         except Exception as e:
             self.logger.error(f"Error processing audio: {e}")
     
+    def _check_model_availability(self) -> bool:
+        """Check if the requested model is available"""
+        try:
+            import openwakeword
+            from pathlib import Path
+            
+            # Map common model names to actual file names
+            model_mapping = {
+                'hey_jarvis': 'hey_jarvis_v0.1.tflite',
+                'alexa': 'alexa_v0.1.tflite', 
+                'hey_mycroft': 'hey_mycroft_v0.1.tflite',
+                'hey_rhasspy': 'hey_rhasspy_v0.1.tflite',
+                'ok_nabu': 'ok_nabu_v0.1.tflite'
+            }
+            
+            model_filename = model_mapping.get(self.model_name, f"{self.model_name}.tflite")
+            models_dir = Path(openwakeword.__file__).parent / "resources" / "models"
+            model_path = models_dir / model_filename
+            
+            self.logger.debug(f"Checking for model file: {model_path}")
+            
+            if model_path.exists():
+                self.logger.debug(f"Model file found: {model_path}")
+                return True
+            else:
+                self.logger.warning(f"Model file not found: {model_path}")
+                
+                # List available models
+                if models_dir.exists():
+                    available_files = list(models_dir.glob("*.tflite"))
+                    if available_files:
+                        self.logger.info("Available model files:")
+                        for file in available_files:
+                            self.logger.info(f"  - {file.name}")
+                    else:
+                        self.logger.warning("No model files found in models directory")
+                else:
+                    self.logger.warning(f"Models directory does not exist: {models_dir}")
+                
+                return False
+                
+        except Exception as e:
+            self.logger.warning(f"Error checking model availability: {e}")
+            return False
+
     def _load_model(self) -> None:
         """Load OpenWakeWord model"""
         try:
+            # Check if model is available first
+            if not self._check_model_availability():
+                raise FileNotFoundError(f"Model '{self.model_name}' is not available")
+            
             # Map common model names to OpenWakeWord models
             model_mapping = {
                 'hey_jarvis': 'hey_jarvis_v0.1',

@@ -56,7 +56,7 @@ async def test_integration(config_path, persona_path):
         personality_prompt = personality.generate_prompt()
         logger.info(f"Generated personality prompt: {personality_prompt[:200]}...")
         
-        openai_client = OpenAIRealtimeClient(config.openai, personality_prompt)
+        openai_client = OpenAIRealtimeClient(config.openai, personality_prompt, text_only=True)
         
         # Register functions
         for func_def in function_bridge.get_function_definitions():

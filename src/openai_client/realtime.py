@@ -49,9 +49,10 @@ class OpenAIRealtimeClient:
     WebSocket client for OpenAI Realtime API
     """
     
-    def __init__(self, config: OpenAIConfig, personality_prompt: str = ""):
+    def __init__(self, config: OpenAIConfig, personality_prompt: str = "", text_only: bool = False):
         self.config = config
         self.personality_prompt = personality_prompt
+        self.text_only = text_only
         self.logger = get_logger("OpenAIRealtimeClient")
         
         # Connection state
@@ -63,25 +64,32 @@ class OpenAIRealtimeClient:
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.function_handlers: Dict[str, Callable] = {}
         
-        # Session configuration
-        self.session_config = {
-            "modalities": ["audio", "text"],
+        # Session configuration - modalities depend on text_only mode
+        base_config = {
+            "modalities": ["text"] if text_only else ["audio", "text"],
             "voice": config.voice,
-            "input_audio_format": "pcm16",
-            "output_audio_format": "pcm16",
-            "turn_detection": {
-                "type": "server_vad",
-                "threshold": 0.5,
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": 200
-            },
-            "input_audio_transcription": {
-                "model": "whisper-1"
-            },
             "tools": [],
             "temperature": config.temperature,
             "instructions": personality_prompt
         }
+        
+        # Add audio-specific configuration only if not text-only
+        if not text_only:
+            base_config.update({
+                "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.5,
+                    "prefix_padding_ms": 300,
+                    "silence_duration_ms": 200
+                },
+                "input_audio_transcription": {
+                    "model": "whisper-1"
+                }
+            })
+        
+        self.session_config = base_config
         
         # Reconnection settings
         self.reconnect_delay = 5.0
@@ -264,14 +272,20 @@ class OpenAIRealtimeClient:
             
             await self._send_event(event)
             
-            # For text-only messages, we need to create a response without audio
-            # This uses the turn_detection mode to avoid buffer issues
-            await self._send_event({
-                "type": "response.create",
-                "response": {
-                    "modalities": ["text"]
-                }
-            })
+            # Only create response if not in text-only mode
+            # In text-only mode, responses are handled automatically
+            if not self.text_only:
+                await self._send_event({
+                    "type": "response.create",
+                    "response": {
+                        "modalities": ["text"]
+                    }
+                })
+            else:
+                # In text-only mode, create a simple response
+                await self._send_event({
+                    "type": "response.create"
+                })
             
         except Exception as e:
             self.logger.error(f"Error sending text: {e}")

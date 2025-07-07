@@ -29,8 +29,8 @@ async def test_connection(config_path):
         # Load configuration
         config = load_config(config_path)
         
-        # Create client
-        client = OpenAIRealtimeClient(config.openai, "You are a helpful test assistant.")
+        # Create client in text-only mode for testing
+        client = OpenAIRealtimeClient(config.openai, "You are a helpful test assistant.", text_only=True)
         
         # Test connection
         logger.info("Testing connection to OpenAI Realtime API...")
@@ -66,7 +66,7 @@ async def test_function_calling(config_path):
     
     try:
         config = load_config(config_path)
-        client = OpenAIRealtimeClient(config.openai, "You are a helpful assistant that can call functions.")
+        client = OpenAIRealtimeClient(config.openai, "You are a helpful assistant that can call functions.", text_only=True)
         
         # Register test function
         async def test_function(args):
@@ -122,7 +122,7 @@ async def test_audio_format(config_path):
         import numpy as np
         
         config = load_config(config_path)
-        client = OpenAIRealtimeClient(config.openai, "You are a helpful assistant.")
+        client = OpenAIRealtimeClient(config.openai, "You are a helpful assistant.", text_only=True)
         
         # Connect
         logger.info("Testing audio format requirements...")
