@@ -263,7 +263,15 @@ class OpenAIRealtimeClient:
             }
             
             await self._send_event(event)
-            await self._send_event({"type": "response.create"})
+            
+            # For text-only messages, we need to create a response without audio
+            # This uses the turn_detection mode to avoid buffer issues
+            await self._send_event({
+                "type": "response.create",
+                "response": {
+                    "modalities": ["text"]
+                }
+            })
             
         except Exception as e:
             self.logger.error(f"Error sending text: {e}")

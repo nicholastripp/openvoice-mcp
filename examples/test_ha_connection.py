@@ -216,7 +216,12 @@ async def test_entities(config_path):
                     entity_id = entity.get("entity_id", "")
                     state = entity.get("state", "")
                     friendly_name = entity.get("attributes", {}).get("friendly_name", entity_id)
-                    logger.info(f"  {entity_id}: {state} ({friendly_name})")
+                    # Sanitize Unicode characters for logging
+                    try:
+                        friendly_name_safe = friendly_name.encode('ascii', errors='replace').decode('ascii')
+                        logger.info(f"  {entity_id}: {state} ({friendly_name_safe})")
+                    except (UnicodeEncodeError, AttributeError):
+                        logger.info(f"  {entity_id}: {state} ({entity_id})")
         
         await ha_client.stop()
         return True

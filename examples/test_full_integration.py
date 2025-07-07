@@ -60,9 +60,15 @@ async def test_integration(config_path, persona_path):
         
         # Register functions
         for func_def in function_bridge.get_function_definitions():
+            # Create a wrapper function that calls the bridge with the correct arguments
+            def create_wrapper(func_name):
+                async def function_wrapper(arguments):
+                    return await function_bridge.handle_function_call(func_name, arguments)
+                return function_wrapper
+            
             openai_client.register_function(
                 name=func_def["name"],
-                handler=function_bridge.handle_function_call,
+                handler=create_wrapper(func_def["name"]),
                 description=func_def["description"],
                 parameters=func_def["parameters"]
             )

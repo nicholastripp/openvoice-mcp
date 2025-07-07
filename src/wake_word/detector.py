@@ -172,12 +172,12 @@ class WakeWordDetector:
                 self.logger.error("This typically happens on first run.")
                 self.logger.error("")
                 self.logger.error("🔧 Quick Fix Options:")
-                self.logger.error("1. Run: ./venv/bin/python check_wake_word_models.py")
+                self.logger.error("1. Run: python download_wake_word_models.py")
                 self.logger.error("2. Use a pre-installed model (if available)")
                 self.logger.error("3. Change your config to use 'alexa' or 'hey_mycroft'")
                 self.logger.error("")
-                self.logger.error("📋 To check available models:")
-                self.logger.error("   ./venv/bin/python check_wake_word_models.py")
+                self.logger.error("📋 To download models:")
+                self.logger.error("   python download_wake_word_models.py")
                 
                 # Try to list available models
                 try:
