@@ -4,8 +4,8 @@ Function calling bridge between OpenAI and Home Assistant
 import json
 from typing import Dict, Any, Optional
 
-from .ha_client.conversation import HomeAssistantConversationClient, ConversationResponse, ResponseType
-from .utils.logger import get_logger
+from ha_client.conversation import HomeAssistantConversationClient, ConversationResponse, ResponseType
+from utils.logger import get_logger
 
 
 class FunctionCallBridge:

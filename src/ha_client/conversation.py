@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-from .rest import HomeAssistantRestClient
+from ha_client.rest import HomeAssistantRestClient
 from config import HomeAssistantConfig
 from utils.logger import get_logger
 
