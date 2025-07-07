@@ -97,6 +97,82 @@ fi
 # Create logs directory
 mkdir -p logs
 
+# Auto-configure wake word models
+echo -e "${YELLOW}Configuring wake word models...${NC}"
+./venv/bin/python -c "
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path('src')))
+
+try:
+    import openwakeword
+    from openwakeword import Model as WakeWordModel
+    import yaml
+    
+    # Check available models
+    try:
+        model = WakeWordModel()
+        available_models = list(model.models.keys())
+        
+        if available_models:
+            # Prefer certain models in order
+            preferred_models = ['alexa', 'hey_mycroft', 'ok_nabu', 'hey_rhasspy']
+            selected_model = None
+            
+            for preferred in preferred_models:
+                if preferred in available_models:
+                    selected_model = preferred
+                    break
+            
+            if not selected_model:
+                selected_model = available_models[0]
+            
+            print(f'Available models: {available_models}')
+            print(f'Selected model: {selected_model}')
+            
+            # Update config file if it exists
+            config_file = Path('config/config.yaml')
+            if config_file.exists():
+                with open(config_file, 'r') as f:
+                    config = yaml.safe_load(f)
+                
+                if 'wake_word' not in config:
+                    config['wake_word'] = {}
+                config['wake_word']['model'] = selected_model
+                
+                with open(config_file, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False)
+                
+                print(f'Updated config to use wake word model: {selected_model}')
+            else:
+                print('Config file not found, will update during setup')
+        else:
+            print('No wake word models available, wake word detection will be disabled')
+            
+            # Update config to disable wake word
+            config_file = Path('config/config.yaml')
+            if config_file.exists():
+                with open(config_file, 'r') as f:
+                    config = yaml.safe_load(f)
+                
+                if 'wake_word' not in config:
+                    config['wake_word'] = {}
+                config['wake_word']['enabled'] = False
+                
+                with open(config_file, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False)
+                
+                print('Disabled wake word detection in config')
+    except Exception as e:
+        print(f'Could not configure wake word models: {e}')
+        print('Wake word setup can be done manually later')
+        
+except ImportError:
+    print('OpenWakeWord not available for configuration')
+" 2>/dev/null || echo -e "${YELLOW}  Wake word configuration will be done during setup${NC}"
+
+echo -e "${GREEN}✓ Wake word models configured${NC}"
+
 # Test basic functionality
 echo -e "${YELLOW}Testing installation...${NC}"
 echo -e "${YELLOW}Running test: ./venv/bin/python src/main.py --help${NC}"

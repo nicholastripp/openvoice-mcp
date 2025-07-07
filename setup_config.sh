@@ -51,6 +51,91 @@ else
 fi
 
 echo ""
+
+# Check and configure wake word models if virtual environment exists
+if [ -d "venv" ]; then
+    echo -e "${YELLOW}Checking wake word models...${NC}"
+    ./venv/bin/python -c "
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path('src')))
+
+try:
+    import openwakeword
+    from openwakeword import Model as WakeWordModel
+    import yaml
+    
+    # Check available models
+    try:
+        model = WakeWordModel()
+        available_models = list(model.models.keys())
+        
+        if available_models:
+            # Prefer certain models in order
+            preferred_models = ['alexa', 'hey_mycroft', 'ok_nabu', 'hey_rhasspy']
+            selected_model = None
+            
+            for preferred in preferred_models:
+                if preferred in available_models:
+                    selected_model = preferred
+                    break
+            
+            if not selected_model:
+                selected_model = available_models[0]
+            
+            print(f'Available wake word models: {available_models}')
+            print(f'Recommended model: {selected_model}')
+            
+            # Update config file if it exists
+            config_file = Path('config/config.yaml')
+            if config_file.exists():
+                with open(config_file, 'r') as f:
+                    config = yaml.safe_load(f)
+                
+                current_model = config.get('wake_word', {}).get('model', 'unknown')
+                if current_model not in available_models:
+                    if 'wake_word' not in config:
+                        config['wake_word'] = {}
+                    config['wake_word']['model'] = selected_model
+                    
+                    with open(config_file, 'w') as f:
+                        yaml.dump(config, f, default_flow_style=False)
+                    
+                    print(f'Updated config to use available model: {selected_model}')
+                else:
+                    print(f'Current model \"{current_model}\" is available, no change needed')
+        else:
+            print('No wake word models available')
+            print('Wake word detection will be disabled')
+            
+            # Update config to disable wake word
+            config_file = Path('config/config.yaml')
+            if config_file.exists():
+                with open(config_file, 'r') as f:
+                    config = yaml.safe_load(f)
+                
+                if 'wake_word' not in config:
+                    config['wake_word'] = {}
+                config['wake_word']['enabled'] = False
+                
+                with open(config_file, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False)
+                
+                print('Disabled wake word detection in config')
+    except Exception as e:
+        print(f'Could not check wake word models: {e}')
+        print('Wake word configuration should be checked manually')
+        
+except ImportError:
+    print('OpenWakeWord not available - wake word setup will need manual configuration')
+" 2>/dev/null || echo -e "${YELLOW}  Wake word models will be configured when dependencies are installed${NC}"
+    
+    echo -e "${GREEN}✓ Wake word models checked${NC}"
+else
+    echo -e "${YELLOW}Virtual environment not found - wake word models will be configured during installation${NC}"
+fi
+
+echo ""
 echo -e "${BLUE}Configuration files created successfully!${NC}"
 echo ""
 

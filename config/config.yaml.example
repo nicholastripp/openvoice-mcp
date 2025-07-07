@@ -28,7 +28,7 @@ audio:
 # Wake Word Configuration
 wake_word:
   enabled: true                   # Enable wake word detection
-  model: "hey_jarvis"             # Wake word model (hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu)
+  model: "alexa"                  # Wake word model (alexa, hey_mycroft, ok_nabu, hey_rhasspy, hey_jarvis)
   sensitivity: 0.5                # Detection sensitivity (0.0-1.0)
   timeout: 5.0                    # Session timeout after wake word (seconds)
   vad_enabled: true               # Enable voice activity detection for better accuracy
