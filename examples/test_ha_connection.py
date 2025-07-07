@@ -25,58 +25,141 @@ async def test_connection(config_path):
     """Test basic connection to Home Assistant"""
     logger = get_logger("HATest")
     
+    # Step 1: Load configuration
     try:
-        # Load configuration
+        logger.info("Step 1: Loading configuration...")
         config = load_config(config_path)
+        logger.info("✅ Configuration loaded successfully")
         
-        # Create client
+        # Log connection details (masked for security)
+        masked_url = config.home_assistant.url
+        masked_token = f"{config.home_assistant.token[:8]}...{config.home_assistant.token[-4:]}" if len(config.home_assistant.token) > 12 else "****"
+        logger.info(f"HA URL: {masked_url}")
+        logger.info(f"HA Token: {masked_token}")
+        logger.info(f"Timeout: {config.home_assistant.timeout}s")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to load configuration: {e}")
+        logger.error(f"   Check that {config_path} exists and is valid YAML")
+        return False
+    
+    # Step 2: Test basic connectivity
+    try:
+        logger.info("Step 2: Testing basic connectivity...")
+        import aiohttp
+        import asyncio
+        
+        # Parse URL for connectivity test
+        from urllib.parse import urlparse
+        parsed_url = urlparse(config.home_assistant.url)
+        test_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        
+        # Test basic HTTP connectivity (without auth)
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+            try:
+                async with session.get(test_url) as response:
+                    logger.info(f"✅ Basic connectivity OK (status: {response.status})")
+            except aiohttp.ClientConnectorError as e:
+                logger.error(f"❌ Connection failed: {e}")
+                logger.error("   Check that the Home Assistant URL is correct and accessible")
+                return False
+            except asyncio.TimeoutError:
+                logger.error("❌ Connection timeout")
+                logger.error("   Home Assistant may be unreachable or very slow")
+                return False
+                
+    except Exception as e:
+        logger.error(f"❌ Connectivity test failed: {e}")
+        return False
+    
+    # Step 3: Create and test HA client
+    ha_client = None
+    try:
+        logger.info("Step 3: Creating Home Assistant client...")
         ha_client = HomeAssistantConversationClient(config.home_assistant)
+        logger.info("✅ Client created successfully")
         
-        # Test connection
-        logger.info("Testing connection to Home Assistant...")
+    except Exception as e:
+        logger.error(f"❌ Failed to create HA client: {e}")
+        return False
+    
+    # Step 4: Test authentication and API access
+    try:
+        logger.info("Step 4: Testing authentication and API access...")
         await ha_client.start()
+        logger.info("✅ Successfully authenticated with Home Assistant")
         
-        logger.info("✅ Successfully connected to Home Assistant")
+    except aiohttp.ClientResponseError as e:
+        if e.status == 401:
+            logger.error("❌ Authentication failed (401 Unauthorized)")
+            logger.error("   Check that your HA token is valid and has proper permissions")
+        elif e.status == 403:
+            logger.error("❌ Permission denied (403 Forbidden)")
+            logger.error("   Your token may not have the required permissions")
+        elif e.status == 404:
+            logger.error("❌ API endpoint not found (404)")
+            logger.error("   Check that your Home Assistant URL is correct")
+        else:
+            logger.error(f"❌ HTTP error {e.status}: {e.message}")
+        return False
+    except asyncio.TimeoutError:
+        logger.error("❌ Authentication timeout")
+        logger.error("   Home Assistant may be overloaded or slow to respond")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Authentication failed: {e}")
+        logger.error(f"   Error type: {type(e).__name__}")
+        return False
+    
+    # Step 5: Test basic API calls
+    try:
+        logger.info("Step 5: Testing basic API calls...")
         
-        # Test basic API call
-        logger.info("Testing REST API...")
+        # Test API status
         api_status = await ha_client.rest_client.get_api_status()
-        logger.info(f"API Status: {api_status.get('message', 'OK')}")
+        logger.info(f"✅ API Status: {api_status.get('message', 'OK')}")
         
         # Test configuration
         ha_config = await ha_client.rest_client.get_config()
-        logger.info(f"HA Version: {ha_config.get('version', 'Unknown')}")
-        logger.info(f"Location: {ha_config.get('location_name', 'Unknown')}")
+        logger.info(f"✅ HA Version: {ha_config.get('version', 'Unknown')}")
+        logger.info(f"✅ Location: {ha_config.get('location_name', 'Unknown')}")
         
-        # Test conversation API with simple commands
+    except Exception as e:
+        logger.error(f"❌ API calls failed: {e}")
+        if ha_client:
+            await ha_client.stop()
+        return False
+    
+    # Step 6: Test conversation API
+    try:
+        logger.info("Step 6: Testing Conversation API...")
+        
         test_commands = [
             "what time is it",
-            "turn on the lights",
-            "what's the weather like",
-            "hello",
-            "invalid command xyz123"
+            "hello"
         ]
         
-        logger.info("Testing Conversation API...")
         for command in test_commands:
             logger.info(f"Testing command: '{command}'")
             try:
                 response = await ha_client.process_command(command)
-                logger.info(f"  Response type: {response.response_type.value}")
-                logger.info(f"  Speech: {response.speech_text[:100]}{'...' if len(response.speech_text) > 100 else ''}")
+                logger.info(f"  ✅ Response type: {response.response_type.value}")
+                logger.info(f"  ✅ Speech: {response.speech_text[:100]}{'...' if len(response.speech_text) > 100 else ''}")
                 if response.success_entities:
                     logger.info(f"  Success entities: {len(response.success_entities)}")
                 if response.failed_entities:
                     logger.info(f"  Failed entities: {len(response.failed_entities)}")
                 logger.info("")
             except Exception as e:
-                logger.error(f"  Error: {e}")
+                logger.error(f"  ❌ Command failed: {e}")
         
         await ha_client.stop()
         logger.info("✅ Home Assistant test completed successfully")
         
     except Exception as e:
-        logger.error(f"❌ Home Assistant test failed: {e}")
+        logger.error(f"❌ Conversation API test failed: {e}")
+        if ha_client:
+            await ha_client.stop()
         return False
     
     return True
