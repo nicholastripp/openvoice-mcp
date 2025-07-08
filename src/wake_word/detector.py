@@ -50,6 +50,11 @@ class WakeWordDetector:
         self.detection_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
         
+        # Model warm-up state
+        self.model_ready = False
+        self.warmup_chunks_required = 10  # Based on test results showing predictions start after 5-6 chunks
+        self.warmup_chunks_processed = 0
+        
         # Detection parameters
         self.model_name = config.model
         self.sensitivity = config.sensitivity
@@ -367,32 +372,26 @@ class WakeWordDetector:
             self.logger.info(f"Model expects: {self.sample_rate}Hz audio in {self.chunk_size} sample chunks (80ms)")
             self.logger.info(f"Model configuration: VAD={self.vad_enabled}, Speex={speex_enabled}, sensitivity={self.sensitivity}")
             
-            # REMOVED: Buffer initialization with silence chunks
-            # The 1.5s silence buffer initialization was causing the model to get stuck
-            # in a state where it only returns constant prediction values.
-            # 
-            # Original issue: Model was returning identical predictions (1.1165829e-06)
-            # for every audio chunk regardless of content.
-            #
-            # Solution: Let the model start with a clean state and process real audio immediately.
+            # NEW: Model warm-up phase
+            # Based on test results, OpenWakeWord needs 5-6 predictions before producing non-zero values
+            # We'll warm up with 10 varied audio chunks to ensure proper initialization
+            self.logger.info("[INFO] Starting model warm-up phase...")
+            self._warmup_model()
             
-            self.logger.info("[OK] Model loaded without buffer initialization")
-            self.logger.info("[INFO] Model will start processing audio immediately with clean state")
-            
-            # Test one minimal chunk to verify model is functional
+            # Test prediction after warm-up
             try:
-                test_chunk = np.zeros(self.chunk_size, dtype=np.float32)
+                test_chunk = np.random.normal(0, 0.05, self.chunk_size).astype(np.float32)
                 test_predictions = self.model.predict(test_chunk)
-                self.logger.info(f"[TEST] Initial test prediction: {test_predictions}")
+                max_conf = max(test_predictions.values()) if test_predictions else 0.0
+                self.logger.info(f"[TEST] Post-warmup test prediction: {test_predictions} (max: {max_conf:.8f})")
                 
-                # Verify we get a dictionary with model predictions
-                if not isinstance(test_predictions, dict) or not test_predictions:
-                    self.logger.warning("[WARNING] Model test prediction is empty or invalid")
+                if max_conf > 0.0:
+                    self.logger.info("[OK] Model warm-up successful - producing non-zero predictions")
                 else:
-                    self.logger.info("[OK] Model test prediction successful")
+                    self.logger.warning("[WARNING] Model still returning zero after warm-up")
                     
             except Exception as e:
-                self.logger.error(f"[ERROR] Initial model test failed: {e}")
+                self.logger.error(f"[ERROR] Post-warmup test failed: {e}")
                 raise
             
         except Exception as e:
@@ -425,6 +424,65 @@ class WakeWordDetector:
             except:
                 pass
             raise
+    
+    def _warmup_model(self) -> None:
+        """
+        Warm up the OpenWakeWord model with varied audio chunks
+        
+        Based on test results, OpenWakeWord needs several predictions before
+        producing non-zero values. This method feeds varied audio to the model
+        to ensure it's properly initialized.
+        """
+        if not self.model:
+            return
+            
+        self.logger.info(f"[WARMUP] Processing {self.warmup_chunks_required} warm-up chunks...")
+        
+        warmup_predictions = []
+        
+        for i in range(self.warmup_chunks_required):
+            # Generate varied audio for warm-up
+            if i < 3:
+                # Start with silence
+                audio_chunk = np.zeros(self.chunk_size, dtype=np.float32)
+                chunk_type = "silence"
+            elif i < 6:
+                # Low noise
+                audio_chunk = np.random.normal(0, 0.01, self.chunk_size).astype(np.float32)
+                chunk_type = "low noise"
+            elif i < 8:
+                # Medium noise
+                audio_chunk = np.random.normal(0, 0.05, self.chunk_size).astype(np.float32)
+                chunk_type = "medium noise"
+            else:
+                # High noise  
+                audio_chunk = np.random.normal(0, 0.1, self.chunk_size).astype(np.float32)
+                chunk_type = "high noise"
+            
+            try:
+                predictions = self.model.predict(audio_chunk)
+                max_conf = max(predictions.values()) if predictions else 0.0
+                warmup_predictions.append(max_conf)
+                
+                if i % 3 == 0 or max_conf > 0.0:
+                    self.logger.debug(f"[WARMUP] Chunk {i+1}/{self.warmup_chunks_required} ({chunk_type}): max={max_conf:.8f}")
+                
+                # Check if we're getting non-zero predictions
+                if max_conf > 0.0:
+                    self.logger.info(f"[WARMUP] Model started producing non-zero predictions at chunk {i+1}")
+                    
+            except Exception as e:
+                self.logger.warning(f"[WARMUP] Failed to process chunk {i+1}: {e}")
+        
+        # Check warm-up results
+        non_zero_count = sum(1 for p in warmup_predictions if p > 0.0)
+        max_prediction = max(warmup_predictions) if warmup_predictions else 0.0
+        
+        self.logger.info(f"[WARMUP] Complete: {non_zero_count}/{self.warmup_chunks_required} non-zero predictions, max={max_prediction:.8f}")
+        
+        # Mark model as ready
+        self.model_ready = True
+        self.warmup_chunks_processed = self.warmup_chunks_required
     
     def _suggest_available_models(self) -> None:
         """Try to suggest available wake word models"""
@@ -513,7 +571,12 @@ class WakeWordDetector:
                         self.logger.warning(f"OpenWakeWord predictions are empty at chunk {chunks_processed}")
                     continue
                 
-                # Check for wake word detection
+                # Check for wake word detection (only if model is ready)
+                if not self.model_ready:
+                    if chunks_processed % 50 == 0:
+                        print(f"   DETECTOR: Model still warming up, skipping detection check")
+                    continue
+                
                 for model_name, confidence in predictions.items():
                     # Log any confidence above threshold for debugging
                     if confidence > self.sensitivity * 0.3:  # Log at 30% of sensitivity
@@ -701,6 +764,15 @@ class WakeWordDetector:
         self.predictions_history = []
         self.chunks_since_reset = 0
         self.last_model_reset_time = time.time()
+        
+        # Reset warm-up state - model needs re-warming after reset
+        self.model_ready = False
+        self.warmup_chunks_processed = 0
+        
+        # Re-warm the model
+        if self.model:
+            self.logger.info("Re-warming model after reset...")
+            self._warmup_model()
         
         self.logger.debug("Model state reset completed")
     
