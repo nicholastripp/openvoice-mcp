@@ -374,6 +374,7 @@ class WakeWordDetector:
         """Background thread for wake word detection"""
         self.logger.debug("Wake word detection thread started")
         
+        chunks_processed = 0
         while not self.stop_event.is_set():
             try:
                 # Get audio data from queue
@@ -382,8 +383,19 @@ class WakeWordDetector:
                 except Empty:
                     continue
                 
+                chunks_processed += 1
+                
+                # Debug: Log queue processing periodically
+                if chunks_processed % 100 == 0:
+                    self.logger.debug(f"Detection loop processed {chunks_processed} chunks, queue size: {self.audio_queue.qsize()}")
+                
                 # Process with OpenWakeWord
                 predictions = self.model.predict(audio_chunk)
+                
+                # Debug: Log all predictions to understand what's happening
+                max_confidence = max(predictions.values()) if predictions else 0.0
+                if max_confidence > 0.1:  # Log any significant predictions
+                    self.logger.debug(f"OpenWakeWord predictions: {predictions}")
                 
                 # Check for wake word detection
                 for model_name, confidence in predictions.items():

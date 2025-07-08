@@ -132,7 +132,7 @@ async def test_model_switching():
             logger.error(f"  [ERROR] {model_name}: {e}")
 
 
-async def interactive_test(config_path, sensitivity=None):
+async def interactive_test(config_path, sensitivity=None, debug_predictions=False):
     """Interactive wake word testing"""
     logger = get_logger("WakeWordTest")
     
@@ -142,6 +142,10 @@ async def interactive_test(config_path, sensitivity=None):
     if sensitivity is not None:
         config.wake_word.sensitivity = sensitivity
         print(f"Overriding sensitivity to {sensitivity}")
+    
+    # Enable debug predictions if requested
+    if debug_predictions:
+        print("Debug predictions enabled - will show all OpenWakeWord predictions")
     
     detector = WakeWordDetector(config.wake_word)
     
@@ -252,6 +256,8 @@ async def interactive_test(config_path, sensitivity=None):
     print(f"Sample rate: {config.audio.sample_rate}Hz")
     print(f"Say '{config.wake_word.model}' to test detection")
     print("Press Ctrl+C to stop")
+    if config.wake_word.sensitivity > 0.4:
+        print(f"TIP: If no detections, try lower sensitivity: --sensitivity 0.3")
     print("\nListening...")
     
     try:
@@ -279,6 +285,7 @@ def main():
     parser.add_argument("--switch", action="store_true", help="Test model switching")
     parser.add_argument("--interactive", action="store_true", help="Interactive testing mode")
     parser.add_argument("--sensitivity", type=float, help="Override wake word sensitivity (0.0-1.0)")
+    parser.add_argument("--debug-predictions", action="store_true", help="Show all OpenWakeWord predictions")
     
     args = parser.parse_args()
     
@@ -295,7 +302,7 @@ def main():
         elif args.switch:
             await test_model_switching()
         elif args.interactive:
-            await interactive_test(args.config, args.sensitivity)
+            await interactive_test(args.config, args.sensitivity, args.debug_predictions)
         else:
             # Run basic tests
             logger = get_logger("WakeWordTest")
