@@ -64,35 +64,38 @@ class OpenAIRealtimeClient:
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.function_handlers: Dict[str, Callable] = {}
         
-        # Session configuration - always include audio format fields to prevent defaults
-        # This matches the Billy Bass pattern and prevents OpenAI from making assumptions
-        base_config = {
-            "modalities": ["text"] if text_only else ["audio", "text"],
-            "voice": config.voice,
-            "input_audio_format": "pcm16",
-            "output_audio_format": "pcm16",
-            "tools": [],
-            "temperature": config.temperature,
-            "instructions": personality_prompt
-        }
-        
-        # Configure turn detection based on mode
+        # Session configuration - only include relevant fields for each mode
         if text_only:
-            # Explicitly disable VAD in text-only mode to prevent audio buffer commits
-            base_config["turn_detection"] = None
+            # Text-only mode: minimal configuration with no audio-related fields
+            # This prevents OpenAI from attempting any audio buffer operations
+            self.session_config = {
+                "modalities": ["text"],
+                "voice": config.voice,
+                "tools": [],
+                "temperature": config.temperature,
+                "instructions": personality_prompt,
+                "turn_detection": None  # Explicitly disable VAD
+            }
         else:
-            # Full VAD configuration for audio mode
-            base_config["turn_detection"] = {
-                "type": "server_vad",
-                "threshold": 0.5,
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": 200
+            # Audio mode: full configuration with all audio-related fields
+            self.session_config = {
+                "modalities": ["audio", "text"],
+                "voice": config.voice,
+                "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
+                "tools": [],
+                "temperature": config.temperature,
+                "instructions": personality_prompt,
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.5,
+                    "prefix_padding_ms": 300,
+                    "silence_duration_ms": 200
+                },
+                "input_audio_transcription": {
+                    "model": "whisper-1"
+                }
             }
-            base_config["input_audio_transcription"] = {
-                "model": "whisper-1"
-            }
-        
-        self.session_config = base_config
         
         # Reconnection settings
         self.reconnect_delay = 5.0
