@@ -260,9 +260,10 @@ class VoiceAssistant:
     async def _on_audio_captured_for_wake_word(self, audio_data: bytes) -> None:
         """Handle captured audio for wake word detection"""
         if not self.session_active:
-            # Send audio to wake word detector
+            # Send audio to wake word detector with proper sample rate
             if self.wake_word_detector:
-                self.wake_word_detector.process_audio(audio_data)
+                # Audio from capture is at 24kHz (OpenAI target rate)
+                self.wake_word_detector.process_audio(audio_data, input_sample_rate=24000)
         else:
             # During active session, send audio to OpenAI
             await self._send_audio_to_openai(audio_data)

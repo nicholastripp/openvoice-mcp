@@ -113,12 +113,13 @@ class WakeWordDetector:
         if callback in self.detection_callbacks:
             self.detection_callbacks.remove(callback)
     
-    def process_audio(self, audio_data: bytes) -> None:
+    def process_audio(self, audio_data: bytes, input_sample_rate: int = 24000) -> None:
         """
         Process audio data for wake word detection
         
         Args:
-            audio_data: Audio data (will be resampled to 16kHz if needed)
+            audio_data: Audio data (PCM16 format)
+            input_sample_rate: Sample rate of input audio (default 24000 for OpenAI)
         """
         if not self.is_running:
             return
@@ -129,6 +130,15 @@ class WakeWordDetector:
             
             # Convert to float32 and normalize
             audio_float = audio_array.astype(np.float32) / 32767.0
+            
+            # Resample to 16kHz if needed (OpenWakeWord requirement)
+            if input_sample_rate != self.sample_rate:
+                from scipy import signal
+                # Calculate new length for resampling
+                new_length = int(len(audio_float) * self.sample_rate / input_sample_rate)
+                audio_float = signal.resample(audio_float, new_length)
+                
+                self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {len(audio_array)} -> {len(audio_float)} samples")
             
             # Queue for processing
             self.audio_queue.put(audio_float, block=False)
@@ -183,18 +193,54 @@ class WakeWordDetector:
     
     def _download_models(self) -> bool:
         """Download OpenWakeWord models if not available"""
+        # Check if auto-download is enabled
+        if not getattr(self.config, 'auto_download', True):
+            self.logger.info("Automatic model download is disabled")
+            return False
+            
         try:
             import openwakeword
             from openwakeword import utils
+            import signal
             
             self.logger.info("Downloading OpenWakeWord models...")
             self.logger.info("This may take a few minutes on first run...")
             
-            # Try to download all models
-            utils.download_models()
+            # Set up timeout for download
+            download_timeout = getattr(self.config, 'download_timeout', 300)
+            retry_attempts = getattr(self.config, 'retry_downloads', 3)
             
-            self.logger.info("✅ Model download completed successfully")
-            return True
+            def timeout_handler(signum, frame):
+                raise TimeoutError(f"Model download timed out after {download_timeout} seconds")
+            
+            # Try download with retries
+            for attempt in range(retry_attempts):
+                try:
+                    if attempt > 0:
+                        self.logger.info(f"Retry attempt {attempt + 1}/{retry_attempts}")
+                    
+                    # Set timeout
+                    signal.signal(signal.SIGALRM, timeout_handler)
+                    signal.alarm(download_timeout)
+                    
+                    # Download models
+                    utils.download_models()
+                    
+                    # Clear timeout
+                    signal.alarm(0)
+                    
+                    self.logger.info("✅ Model download completed successfully")
+                    return True
+                    
+                except (TimeoutError, Exception) as e:
+                    signal.alarm(0)  # Clear timeout
+                    if attempt < retry_attempts - 1:
+                        self.logger.warning(f"Download attempt {attempt + 1} failed: {e}")
+                        continue
+                    else:
+                        raise e
+            
+            return False
             
         except Exception as e:
             self.logger.error(f"❌ Model download failed: {e}")
@@ -205,6 +251,7 @@ class WakeWordDetector:
             self.logger.error("1. Check internet connectivity")
             self.logger.error("2. Try running: python -c \"import openwakeword; openwakeword.utils.download_models()\"")
             self.logger.error("3. Download manually from: https://github.com/dscripka/openWakeWord/releases")
+            self.logger.error("4. Set 'auto_download: false' in config to disable automatic downloads")
             self.logger.error("")
             
             return False

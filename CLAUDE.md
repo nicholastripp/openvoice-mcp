@@ -352,6 +352,16 @@ Key implementation details:
 - Session management prevents accidental re-triggering
 - Configurable cooldown period between detections
 
+**Model Installation and Management:**
+- Models are automatically downloaded on first run via `openwakeword.utils.download_models()`
+- Available models: `alexa`, `hey_jarvis`, `hey_mycroft`, `hey_rhasspy`, `ok_nabu`
+- Models are stored in `openwakeword/resources/models/` directory
+- Download behavior is configurable via `wake_word.auto_download` setting
+- Manual download: `python download_wake_word_models.py --download-all`
+- Model validation includes file existence checks and loading tests
+- Audio format handling: 24kHz input → 16kHz for OpenWakeWord processing
+- Timeout and retry logic for reliable model downloads
+
 ### Audio Processing Pipeline
 ```python
 # Microphone → OpenAI

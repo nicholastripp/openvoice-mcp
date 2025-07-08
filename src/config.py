@@ -49,6 +49,11 @@ class WakeWordConfig:
     timeout: float = 5.0
     vad_enabled: bool = True
     cooldown: float = 2.0
+    
+    # Model download settings
+    auto_download: bool = True
+    download_timeout: int = 300
+    retry_downloads: int = 3
 
 
 @dataclass

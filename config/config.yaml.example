@@ -29,11 +29,18 @@ audio:
 wake_word:
   enabled: true                   # Enable wake word detection
   model: "hey_jarvis"             # Wake word model (hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu)
-                                  # NOTE: Run 'python download_wake_word_models.py' to download models
   sensitivity: 0.5                # Detection sensitivity (0.0-1.0)
   timeout: 5.0                    # Session timeout after wake word (seconds)
   vad_enabled: true               # Enable voice activity detection for better accuracy
   cooldown: 2.0                   # Seconds between wake word detections
+  
+  # Model Download Settings
+  auto_download: true             # Automatically download models if missing
+  download_timeout: 300           # Download timeout in seconds
+  retry_downloads: 3              # Number of download retry attempts
+  
+  # Available models: hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu
+  # To download models manually: python download_wake_word_models.py --download-all
   
 # Session Configuration
 session:

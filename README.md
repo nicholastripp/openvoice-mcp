@@ -79,7 +79,39 @@ openai:
 home_assistant:
   url: "http://homeassistant.local:8123"
   token: ${HA_TOKEN}
+
+wake_word:
+  enabled: true
+  model: "hey_jarvis"
+  auto_download: true
+  sensitivity: 0.5
 ```
+
+### Wake Word Setup
+
+The assistant uses OpenWakeWord for local wake word detection. Models are automatically downloaded on first run.
+
+**Troubleshooting wake word issues:**
+
+1. **Manual model download:**
+   ```bash
+   python download_wake_word_models.py --download-all
+   ```
+
+2. **Test wake word detection:**
+   ```bash
+   ./venv/bin/python examples/test_wake_word.py --interactive
+   ```
+
+3. **Check available models:**
+   ```bash
+   python download_wake_word_models.py --list
+   ```
+
+4. **Test model loading:**
+   ```bash
+   python download_wake_word_models.py --test
+   ```
 
 ## Implementation Status
 
@@ -100,6 +132,11 @@ home_assistant:
 - `hey_mycroft` - Mycroft compatible
 - `hey_rhasspy` - Rhasspy compatible
 - `ok_nabu` - Nabu Casa compatible
+
+**Note**: Wake word models are automatically downloaded on first run. If you encounter issues, run:
+```bash
+python download_wake_word_models.py --download-all
+```
 
 ### Testing & Validation
 
