@@ -29,9 +29,9 @@ async def test_wake_word_installation():
     success = WakeWordDetector.test_installation()
     
     if success:
-        logger.info("✅ OpenWakeWord installation test passed")
+        logger.info("[OK] OpenWakeWord installation test passed")
     else:
-        logger.error("❌ OpenWakeWord installation test failed")
+        logger.error("[ERROR] OpenWakeWord installation test failed")
     
     return success
 
@@ -75,7 +75,7 @@ async def test_wake_word_detection(config_path, duration=30):
         
         def on_detection(model_name, confidence):
             detected_words.append((model_name, confidence))
-            logger.info(f"🎯 WAKE WORD DETECTED: {model_name} (confidence: {confidence:.3f})")
+            logger.info(f"[DETECTED] WAKE WORD: {model_name} (confidence: {confidence:.3f})")
         
         detector.add_detection_callback(on_detection)
         
@@ -97,11 +97,11 @@ async def test_wake_word_detection(config_path, duration=30):
         
         # Report results
         if detected_words:
-            logger.info(f"✅ Detected {len(detected_words)} wake word(s):")
+            logger.info(f"[OK] Detected {len(detected_words)} wake word(s):")
             for model_name, confidence in detected_words:
                 logger.info(f"  - {model_name}: {confidence:.3f}")
         else:
-            logger.warning("⚠️  No wake words detected during test period")
+            logger.warning("[WARNING] No wake words detected during test period")
         
         return len(detected_words) > 0
         
@@ -125,11 +125,11 @@ async def test_model_switching():
             
             await detector.start()
             model_info = detector.get_model_info()
-            logger.info(f"  ✅ {model_name}: {model_info}")
+            logger.info(f"  [OK] {model_name}: {model_info}")
             await detector.stop()
             
         except Exception as e:
-            logger.error(f"  ❌ {model_name}: {e}")
+            logger.error(f"  [ERROR] {model_name}: {e}")
 
 
 async def interactive_test(config_path):
@@ -163,7 +163,7 @@ async def interactive_test(config_path):
         detection_count += 1
         current_time = asyncio.get_event_loop().time()
         
-        print(f"\\n🎯 WAKE WORD DETECTED #{detection_count}: {model_name} (confidence: {confidence:.3f})")
+        print(f"\\n[DETECTED] WAKE WORD #{detection_count}: {model_name} (confidence: {confidence:.3f})")
         print(f"   Detection time: {current_time - last_detection_time:.1f}s since last")
         print("   Listening for next detection...")
         
@@ -183,7 +183,7 @@ async def interactive_test(config_path):
     
     await detector.start()
     
-    print(f"\\n🎤 Wake word detector started with audio input!")
+    print(f"\\n[MIC] Wake word detector started with audio input!")
     print(f"Model: {config.wake_word.model}")
     print(f"Sensitivity: {config.wake_word.sensitivity}")
     print(f"Audio device: {config.audio.input_device}")

@@ -26,7 +26,7 @@ def download_all_models():
         # Download all available models
         utils.download_models()
         
-        logger.info("✅ All models downloaded successfully!")
+        logger.info("[OK] All models downloaded successfully!")
         
         # List downloaded models
         list_models()
@@ -34,11 +34,11 @@ def download_all_models():
         return True
         
     except ImportError as e:
-        logger.error(f"❌ OpenWakeWord not installed: {e}")
+        logger.error(f"[ERROR] OpenWakeWord not installed: {e}")
         logger.error("Install with: pip install openwakeword>=0.6.0")
         return False
     except Exception as e:
-        logger.error(f"❌ Model download failed: {e}")
+        logger.error(f"[ERROR] Model download failed: {e}")
         logger.error("")
         logger.error("🔧 Troubleshooting steps:")
         logger.error("1. Check your internet connection")
@@ -61,7 +61,7 @@ def download_specific_models(model_names):
         # Download specific models
         utils.download_models(model_names=model_names)
         
-        logger.info("✅ Specific models downloaded successfully!")
+        logger.info("[OK] Specific models downloaded successfully!")
         
         # List downloaded models
         list_models()
@@ -69,11 +69,11 @@ def download_specific_models(model_names):
         return True
         
     except ImportError as e:
-        logger.error(f"❌ OpenWakeWord not installed: {e}")
+        logger.error(f"[ERROR] OpenWakeWord not installed: {e}")
         logger.error("Install with: pip install openwakeword>=0.6.0")
         return False
     except Exception as e:
-        logger.error(f"❌ Model download failed: {e}")
+        logger.error(f"[ERROR] Model download failed: {e}")
         logger.error("")
         logger.error("Available models: alexa, hey_jarvis, hey_mycroft, hey_rhasspy, ok_nabu")
         logger.error("")
@@ -95,7 +95,7 @@ def list_models():
         if models_dir.exists():
             model_files = list(models_dir.glob("*.tflite"))
             if model_files:
-                logger.info("📂 Available model files:")
+                logger.info("[FILES] Available model files:")
                 for file in sorted(model_files):
                     logger.info(f"  - {file.name}")
             else:
@@ -107,7 +107,7 @@ def list_models():
         try:
             test_model = WakeWordModel()
             if test_model.models:
-                logger.info("🎯 Loaded models:")
+                logger.info("[MODELS] Loaded models:")
                 for model_name in sorted(test_model.models.keys()):
                     logger.info(f"  - {model_name}")
             else:
@@ -118,10 +118,10 @@ def list_models():
         return True
         
     except ImportError as e:
-        logger.error(f"❌ OpenWakeWord not installed: {e}")
+        logger.error(f"[ERROR] OpenWakeWord not installed: {e}")
         return False
     except Exception as e:
-        logger.error(f"❌ Error listing models: {e}")
+        logger.error(f"[ERROR] Error listing models: {e}")
         return False
 
 
@@ -148,19 +148,19 @@ def test_models():
                 dummy_audio = np.zeros(1280, dtype=np.float32)
                 predictions = test_model.predict(dummy_audio)
                 
-                logger.info(f"✅ {model_name} loaded successfully")
+                logger.info(f"[OK] {model_name} loaded successfully")
                 logger.info(f"   Available models: {list(test_model.models.keys())}")
                 
             except Exception as e:
-                logger.warning(f"⚠️ {model_name} failed to load: {e}")
+                logger.warning(f"[WARNING] {model_name} failed to load: {e}")
         
         return True
         
     except ImportError as e:
-        logger.error(f"❌ OpenWakeWord not installed: {e}")
+        logger.error(f"[ERROR] OpenWakeWord not installed: {e}")
         return False
     except Exception as e:
-        logger.error(f"❌ Model testing failed: {e}")
+        logger.error(f"[ERROR] Model testing failed: {e}")
         return False
 
 
@@ -181,7 +181,7 @@ def cleanup_models():
                 for file in model_files:
                     file.unlink()
                     logger.info(f"Removed: {file.name}")
-                logger.info("✅ Model cleanup completed")
+                logger.info("[OK] Model cleanup completed")
             else:
                 logger.info("No model files found to clean up")
         else:
@@ -190,7 +190,7 @@ def cleanup_models():
         return True
         
     except Exception as e:
-        logger.error(f"❌ Model cleanup failed: {e}")
+        logger.error(f"[ERROR] Model cleanup failed: {e}")
         return False
 
 
@@ -253,10 +253,10 @@ Examples:
     
     # Exit with appropriate code
     if success:
-        logger.info("✅ All operations completed successfully")
+        logger.info("[OK] All operations completed successfully")
         sys.exit(0)
     else:
-        logger.error("❌ Some operations failed")
+        logger.error("[ERROR] Some operations failed")
         sys.exit(1)
 
 

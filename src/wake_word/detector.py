@@ -234,7 +234,7 @@ class WakeWordDetector:
                     # Clear timeout
                     signal.alarm(0)
                     
-                    self.logger.info("✅ Model download completed successfully")
+                    self.logger.info("[OK] Model download completed successfully")
                     return True
                     
                 except (TimeoutError, Exception) as e:
@@ -248,11 +248,11 @@ class WakeWordDetector:
             return False
             
         except Exception as e:
-            self.logger.error(f"❌ Model download failed: {e}")
+            self.logger.error(f"[ERROR] Model download failed: {e}")
             
             # Provide helpful troubleshooting information
             self.logger.error("")
-            self.logger.error("🔧 Manual download options:")
+            self.logger.error("[HELP] Manual download options:")
             self.logger.error("1. Check internet connectivity")
             self.logger.error("2. Try running: python -c \"import openwakeword; openwakeword.utils.download_models()\"")
             self.logger.error("3. Download manually from: https://github.com/dscripka/openWakeWord/releases")
@@ -298,29 +298,29 @@ class WakeWordDetector:
                     try:
                         import speexdsp_ns
                         model_kwargs['enable_speex_noise_suppression'] = True
-                        self.logger.info("✅ Speex noise suppression enabled")
+                        self.logger.info("[OK] Speex noise suppression enabled")
                     except ImportError:
-                        self.logger.info("ℹ️ speexdsp_ns not available, using basic VAD without noise suppression")
+                        self.logger.info("[INFO] speexdsp_ns not available, using basic VAD without noise suppression")
                         self.logger.info("   Install with: pip install speexdsp-ns (optional)")
                         self.logger.info("   Or set 'speex_noise_suppression: false' in config")
                 else:
-                    self.logger.info("ℹ️ Speex noise suppression disabled in configuration")
+                    self.logger.info("[INFO] Speex noise suppression disabled in configuration")
             
             self.model = WakeWordModel(
                 wakeword_models=[actual_model_name],
                 **model_kwargs
             )
             
-            self.logger.info(f"✅ Successfully loaded model: {actual_model_name}")
+            self.logger.info(f"[OK] Successfully loaded model: {actual_model_name}")
             self.logger.info(f"Available models: {list(self.model.models.keys())}")
             
         except Exception as e:
-            self.logger.error(f"❌ Failed to load wake word model '{self.model_name}': {e}")
+            self.logger.error(f"[ERROR] Failed to load wake word model '{self.model_name}': {e}")
             
             # Check if this is a missing model file error
             if "Could not open" in str(e) and ".tflite" in str(e):
                 self.logger.error("")
-                self.logger.error("🔧 Troubleshooting steps:")
+                self.logger.error("[HELP] Troubleshooting steps:")
                 self.logger.error("1. Check internet connectivity for model download")
                 self.logger.error("2. Try running: python -c \"import openwakeword; openwakeword.utils.download_models()\"")
                 self.logger.error("3. Download manually from: https://github.com/dscripka/openWakeWord/releases")
@@ -454,9 +454,9 @@ class WakeWordDetector:
             try:
                 logger.info("Ensuring models are available...")
                 utils.download_models()
-                logger.info("✅ Models download completed")
+                logger.info("[OK] Models download completed")
             except Exception as e:
-                logger.warning(f"⚠️ Model download failed: {e}")
+                logger.warning(f"[WARNING] Model download failed: {e}")
                 logger.info("Attempting to use existing models...")
             
             # Try to load a model
@@ -466,21 +466,21 @@ class WakeWordDetector:
             dummy_audio = np.zeros(1280, dtype=np.float32)  # 80ms of silence
             predictions = test_model.predict(dummy_audio)
             
-            logger.info("✅ OpenWakeWord installation test passed")
+            logger.info("[OK] OpenWakeWord installation test passed")
             logger.info(f"Available models: {list(test_model.models.keys())}")
             
             return True
             
         except ImportError as e:
-            logger.error(f"❌ OpenWakeWord not installed: {e}")
+            logger.error(f"[ERROR] OpenWakeWord not installed: {e}")
             logger.error("Install with: pip install openwakeword>=0.6.0")
             return False
         except Exception as e:
-            logger.error(f"❌ OpenWakeWord installation test failed: {e}")
+            logger.error(f"[ERROR] OpenWakeWord installation test failed: {e}")
             
             # Provide helpful troubleshooting info
             logger.error("")
-            logger.error("🔧 Troubleshooting steps:")
+            logger.error("[HELP] Troubleshooting steps:")
             logger.error("1. Check internet connectivity for model download")
             logger.error("2. Try: python -c \"import openwakeword; openwakeword.utils.download_models()\"")
             logger.error("3. Check if you have write permissions in the package directory")
