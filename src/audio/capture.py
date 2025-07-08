@@ -43,9 +43,10 @@ class AudioCapture:
             self.resampling_ratio = self.target_sample_rate / self.device_sample_rate
             self.logger.info(f"Will resample from {self.device_sample_rate}Hz to {self.target_sample_rate}Hz")
         
-        # Threading
+        # Threading and async handling
         self.processing_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
+        self.event_loop: Optional[asyncio.AbstractEventLoop] = None
     
     async def start(self) -> None:
         """Start audio capture"""
@@ -54,6 +55,9 @@ class AudioCapture:
             return
         
         try:
+            # Store the current event loop for async callback handling
+            self.event_loop = asyncio.get_event_loop()
+            
             # Get device info
             device_info = self._get_device_info()
             if device_info:
@@ -186,10 +190,19 @@ class AudioCapture:
                 # Process the audio
                 processed_audio = self._process_audio_chunk(audio_data)
                 
-                # Send to callbacks
+                # Send to callbacks (handle both sync and async)
                 for callback in self.callback_handlers:
                     try:
-                        callback(processed_audio)
+                        if asyncio.iscoroutinefunction(callback):
+                            # Handle async callback
+                            if self.event_loop:
+                                future = asyncio.run_coroutine_threadsafe(callback(processed_audio), self.event_loop)
+                                # Don't wait for completion to avoid blocking audio processing
+                            else:
+                                self.logger.warning("Async callback registered but no event loop available")
+                        else:
+                            # Handle sync callback
+                            callback(processed_audio)
                     except Exception as e:
                         self.logger.error(f"Error in audio callback: {e}")
                 

@@ -265,6 +265,14 @@ class VoiceAssistant:
                 # Audio from capture is at the device sample rate (before resampling to 24kHz)
                 device_sample_rate = self.config.audio.sample_rate
                 self.wake_word_detector.process_audio(audio_data, input_sample_rate=device_sample_rate)
+                # Debug: Log that audio is being sent to wake word detector
+                if hasattr(self, '_wake_word_debug_counter'):
+                    self._wake_word_debug_counter += 1
+                else:
+                    self._wake_word_debug_counter = 1
+                    
+                if self._wake_word_debug_counter % 100 == 0:  # Every 100 chunks
+                    self.logger.debug(f"Sent {self._wake_word_debug_counter} audio chunks to wake word detector")
         else:
             # During active session, send audio to OpenAI
             await self._send_audio_to_openai(audio_data)
@@ -286,6 +294,14 @@ class VoiceAssistant:
         # Send audio to OpenAI
         if self.openai_client:
             await self.openai_client.send_audio(audio_data)
+            # Debug: Log audio being sent to OpenAI
+            if hasattr(self, '_openai_audio_counter'):
+                self._openai_audio_counter += 1
+            else:
+                self._openai_audio_counter = 1
+                
+            if self._openai_audio_counter % 50 == 0:  # Every 50 chunks
+                self.logger.debug(f"Sent {self._openai_audio_counter} audio chunks to OpenAI")
     
     async def _on_audio_response(self, audio_data: bytes) -> None:
         """Handle audio response from OpenAI"""
@@ -314,12 +330,27 @@ class VoiceAssistant:
     def _on_wake_word_detected(self, model_name: str, confidence: float) -> None:
         """Handle wake word detection"""
         self.logger.info(f"Wake word '{model_name}' detected with confidence {confidence:.3f}")
+        print(f"*** WAKE WORD DETECTED: {model_name} (confidence: {confidence:.3f}) ***")
+        
+        # Ensure OpenAI connection
+        if not self.openai_client or self.openai_client.state.value != "connected":
+            self.logger.warning("OpenAI client not connected, attempting connection...")
+            asyncio.create_task(self._ensure_openai_connection())
         
         # Start voice session
         asyncio.create_task(self._start_session())
         
         # Optional: Play acknowledgment sound or provide visual feedback
         # This could be implemented later
+    
+    async def _ensure_openai_connection(self) -> None:
+        """Ensure OpenAI client is connected"""
+        if self.openai_client:
+            try:
+                await self.openai_client.connect()
+                self.logger.info("OpenAI client connected for wake word session")
+            except Exception as e:
+                self.logger.error(f"Failed to connect OpenAI client: {e}")
 
 
 def setup_signal_handlers(assistant: VoiceAssistant) -> None:
