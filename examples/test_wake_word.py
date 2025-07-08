@@ -242,8 +242,16 @@ async def interactive_test(config_path, sensitivity=None, debug_predictions=Fals
         # Debug: Log when sending audio to detector
         if audio_chunks_processed % 200 == 0:  # Every 200 chunks
             logger.debug(f"Sending audio to detector: chunk {audio_chunks_processed}, level {audio_level:.3f}, bytes {len(audio_data)}")
+            print(f"   DEBUG: Calling detector.process_audio() - chunk {audio_chunks_processed}")
         
-        detector.process_audio(audio_data, input_sample_rate=config.audio.sample_rate)
+        # Try to call detector with error handling
+        try:
+            detector.process_audio(audio_data, input_sample_rate=config.audio.sample_rate)
+            if audio_chunks_processed % 200 == 0:
+                print(f"   DEBUG: detector.process_audio() succeeded")
+        except Exception as e:
+            print(f"   ERROR: detector.process_audio() failed: {e}")
+            logger.error(f"Audio callback error: {e}")
     
     audio_capture.add_callback(audio_callback)
     
@@ -296,11 +304,12 @@ def main():
     parser.add_argument("--interactive", action="store_true", help="Interactive testing mode")
     parser.add_argument("--sensitivity", type=float, help="Override wake word sensitivity (0.0-1.0)")
     parser.add_argument("--debug-predictions", action="store_true", help="Show all OpenWakeWord predictions")
+    parser.add_argument("--log-level", default="INFO", help="Set logging level (DEBUG, INFO, WARNING, ERROR)")
     
     args = parser.parse_args()
     
     # Setup logging
-    setup_logging("INFO", console=True)
+    setup_logging(args.log_level, console=True)
     
     async def run_tests():
         if args.installation:
