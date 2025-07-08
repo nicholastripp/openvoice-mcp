@@ -54,6 +54,9 @@ class WakeWordDetector:
         # Performance tracking
         self.last_detection_time = 0
         self.detection_cooldown = config.cooldown
+        
+        # Startup tracking to prevent immediate false positives
+        self.startup_time = 0
     
     async def start(self) -> None:
         """Start wake word detection"""
@@ -72,6 +75,7 @@ class WakeWordDetector:
             self.detection_thread.start()
             
             self.is_running = True
+            self.startup_time = time.time()
             self.logger.info(f"Wake word detection started with model: {self.model_name}")
             
         except Exception as e:
@@ -143,12 +147,16 @@ class WakeWordDetector:
                 
                 self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {len(audio_array)} -> {len(audio_float)} samples (level: {audio_level:.3f})")
             
-            # Queue for processing (removed audio threshold - let OpenWakeWord handle it)
-            self.audio_queue.put(audio_float, block=False)
-            
-            # Debug: Log audio activity
-            if audio_level > 0.01:  # Only log when there's significant audio
-                self.logger.debug(f"Audio activity detected: level={audio_level:.3f}, samples={len(audio_float)}")
+            # Only process audio with sufficient activity to prevent false positives
+            if audio_level > 0.005:  # Minimum threshold for legitimate audio activity
+                self.audio_queue.put(audio_float, block=False)
+                
+                # Debug: Log audio activity
+                if audio_level > 0.01:  # Only log when there's significant audio
+                    self.logger.debug(f"Audio activity detected: level={audio_level:.3f}, samples={len(audio_float)}")
+            else:
+                # Skip silence/noise that causes false positives
+                self.logger.debug(f"Skipping low-level audio: level={audio_level:.3f}")
             
         except Exception as e:
             self.logger.error(f"Error processing audio: {e}")
@@ -381,6 +389,11 @@ class WakeWordDetector:
                 for model_name, confidence in predictions.items():
                     if confidence >= self.sensitivity:
                         current_time = time.time()
+                        
+                        # Skip detections in first 3 seconds to prevent startup false positives
+                        if current_time - self.startup_time < 3.0:
+                            self.logger.debug(f"Skipping detection during startup period: {current_time - self.startup_time:.1f}s")
+                            continue
                         
                         # Check cooldown to prevent rapid re-triggers
                         time_since_last = current_time - self.last_detection_time

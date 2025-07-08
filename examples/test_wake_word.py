@@ -241,6 +241,10 @@ async def interactive_test(config_path, sensitivity=None):
     
     await detector.start()
     
+    # Add startup delay to prevent false positives
+    print("Starting wake word detector...")
+    await asyncio.sleep(2.0)  # 2 second startup delay
+    
     print(f"\n[MIC] Wake word detector started with audio input!")
     print(f"Model: {config.wake_word.model}")
     print(f"Sensitivity: {config.wake_word.sensitivity}")
