@@ -233,10 +233,11 @@ async def test_audio_format(config_path):
         for i in range(0, len(audio_bytes), chunk_size):
             chunk = audio_bytes[i:i+chunk_size]
             chunk_duration_ms = len(chunk) / 2 / target_sample_rate * 1000
-            logger.debug(f"Sending chunk {i//chunk_size + 1}: {len(chunk)} bytes ({chunk_duration_ms:.1f}ms)")
+            logger.info(f"Sending chunk {i//chunk_size + 1}: {len(chunk)} bytes ({chunk_duration_ms:.1f}ms)")
             
             await client.send_audio(chunk)
-            await asyncio.sleep(0.05)  # Wait 50ms between chunks
+            # Wait appropriate time for chunk duration (simulate real-time)
+            await asyncio.sleep(chunk_duration_ms / 1000.0)
         
         logger.info(f"Sent total of {duration_ms:.1f}ms of recorded audio")
         

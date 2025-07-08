@@ -100,6 +100,8 @@ class OpenAIRealtimeClient:
         # Audio buffer tracking
         self.audio_buffer = []
         self.audio_buffer_duration_ms = 0  # Track duration in milliseconds
+        self.audio_chunks_sent = 0  # Track number of chunks sent
+        self.last_audio_send_time = 0  # Track timing for proper streaming
         
     async def connect(self) -> bool:
         """
@@ -227,15 +229,33 @@ class OpenAIRealtimeClient:
         self.logger.info(f"SEND DEBUG: send_audio called with {len(audio_data)} bytes, text_only={self.text_only}, state={self.state}")
             
         try:
+            # Validate audio data format
+            if not self._validate_audio_format(audio_data):
+                self.logger.error("Audio format validation failed - skipping audio data")
+                return
+            
             # Track audio buffer duration (PCM16 at 24kHz, mono)
             # Each sample is 2 bytes (16-bit), so duration = bytes / 2 / 24000 * 1000 (ms)
             duration_ms = len(audio_data) / 2 / 24000 * 1000
             self.audio_buffer_duration_ms += duration_ms
+            self.audio_chunks_sent += 1
             
-            self.logger.info(f"AUDIO DEBUG: Received {len(audio_data)} bytes, calculated {duration_ms:.1f}ms, total buffer: {self.audio_buffer_duration_ms:.1f}ms")
+            import time
+            current_time = time.time()
+            if self.last_audio_send_time > 0:
+                time_since_last = (current_time - self.last_audio_send_time) * 1000  # Convert to ms
+                self.logger.debug(f"Time since last chunk: {time_since_last:.1f}ms")
+            self.last_audio_send_time = current_time
+            
+            self.logger.info(f"AUDIO DEBUG: Chunk {self.audio_chunks_sent}: {len(audio_data)} bytes, {duration_ms:.1f}ms, total buffer: {self.audio_buffer_duration_ms:.1f}ms")
             
             # Convert to base64
             audio_b64 = base64.b64encode(audio_data).decode()
+            
+            # Validate base64 encoding
+            if not self._validate_base64_audio(audio_b64, len(audio_data)):
+                self.logger.error("Base64 audio validation failed - skipping audio data")
+                return
             
             # Send audio event
             event = {
@@ -259,23 +279,38 @@ class OpenAIRealtimeClient:
             return
             
         try:
-            self.logger.info(f"COMMIT DEBUG: About to commit audio buffer with {self.audio_buffer_duration_ms:.1f}ms of audio")
+            self.logger.info(f"COMMIT DEBUG: About to commit audio buffer with {self.audio_buffer_duration_ms:.1f}ms of audio ({self.audio_chunks_sent} chunks)")
             
             # Validate buffer has sufficient audio (minimum 100ms required by OpenAI)
             if self.audio_buffer_duration_ms < 100:
                 self.logger.warning(f"Audio buffer too small: {self.audio_buffer_duration_ms:.1f}ms (minimum 100ms required)")
                 return
             
+            # Validate we actually sent chunks
+            if self.audio_chunks_sent == 0:
+                self.logger.error("No audio chunks were sent to buffer")
+                return
+                
+            # Add a small delay to ensure all chunks are processed
+            await asyncio.sleep(0.1)
+            
             # Commit audio buffer
+            self.logger.info("Sending input_audio_buffer.commit event...")
             await self._send_event({"type": "input_audio_buffer.commit"})
             
+            # Small delay before requesting response
+            await asyncio.sleep(0.05)
+            
             # Request response
+            self.logger.info("Sending response.create event...")
             await self._send_event({"type": "response.create"})
             
-            self.logger.debug(f"Committed {self.audio_buffer_duration_ms:.1f}ms of audio")
+            self.logger.info(f"Successfully committed {self.audio_buffer_duration_ms:.1f}ms of audio ({self.audio_chunks_sent} chunks)")
             
-            # Reset buffer duration tracking
+            # Reset buffer tracking
             self.audio_buffer_duration_ms = 0
+            self.audio_chunks_sent = 0
+            self.last_audio_send_time = 0
             
         except Exception as e:
             self.logger.error(f"Error committing audio: {e}")
@@ -554,3 +589,90 @@ class OpenAIRealtimeClient:
         # Send updated session if connected
         if self.state == ConnectionState.CONNECTED:
             asyncio.create_task(self._send_session_update())
+    
+    def _validate_audio_format(self, audio_data: bytes) -> bool:
+        """
+        Validate audio data format for OpenAI requirements
+        
+        Args:
+            audio_data: Raw audio bytes to validate
+            
+        Returns:
+            True if audio format is valid, False otherwise
+        """
+        try:
+            # Check if we have audio data
+            if not audio_data or len(audio_data) == 0:
+                self.logger.error("Audio validation failed: No audio data")
+                return False
+            
+            # Check if audio data length is even (each sample is 2 bytes for PCM16)
+            if len(audio_data) % 2 != 0:
+                self.logger.error(f"Audio validation failed: Odd number of bytes ({len(audio_data)}), PCM16 requires even number")
+                return False
+            
+            # Check minimum audio length (at least 10ms worth of data)
+            min_samples = int(24000 * 0.01)  # 10ms at 24kHz
+            min_bytes = min_samples * 2  # 2 bytes per sample
+            if len(audio_data) < min_bytes:
+                self.logger.error(f"Audio validation failed: Too short ({len(audio_data)} bytes), minimum {min_bytes} bytes required")
+                return False
+            
+            # Check for audio content (not all zeros)
+            import struct
+            sample_count = len(audio_data) // 2
+            samples = struct.unpack(f'<{sample_count}h', audio_data)  # Little-endian signed 16-bit
+            
+            # Check for actual audio content
+            max_amplitude = max(abs(sample) for sample in samples)
+            if max_amplitude == 0:
+                self.logger.error("Audio validation failed: All samples are zero (silence)")
+                return False
+            
+            if max_amplitude < 100:  # Very quiet
+                self.logger.warning(f"Audio validation warning: Very low amplitude ({max_amplitude})")
+            
+            # Log audio characteristics
+            avg_amplitude = sum(abs(sample) for sample in samples) / len(samples)
+            self.logger.debug(f"Audio validation: {len(audio_data)} bytes, {sample_count} samples, max_amp={max_amplitude}, avg_amp={avg_amplitude:.1f}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Audio validation error: {e}")
+            return False
+    
+    def _validate_base64_audio(self, audio_b64: str, expected_bytes: int) -> bool:
+        """
+        Validate base64 encoded audio data
+        
+        Args:
+            audio_b64: Base64 encoded audio string
+            expected_bytes: Expected number of original bytes
+            
+        Returns:
+            True if base64 encoding is valid, False otherwise
+        """
+        try:
+            # Check if base64 string is valid
+            if not audio_b64:
+                self.logger.error("Base64 validation failed: Empty string")
+                return False
+            
+            # Test decode
+            decoded = base64.b64decode(audio_b64)
+            if len(decoded) != expected_bytes:
+                self.logger.error(f"Base64 validation failed: Decoded length {len(decoded)} != expected {expected_bytes}")
+                return False
+            
+            # Check base64 length is reasonable
+            expected_b64_len = ((expected_bytes + 2) // 3) * 4  # Base64 encoding formula
+            if abs(len(audio_b64) - expected_b64_len) > 10:  # Allow some tolerance
+                self.logger.warning(f"Base64 validation warning: Length {len(audio_b64)} != expected ~{expected_b64_len}")
+            
+            self.logger.debug(f"Base64 validation: {len(audio_b64)} chars -> {len(decoded)} bytes")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Base64 validation error: {e}")
+            return False
