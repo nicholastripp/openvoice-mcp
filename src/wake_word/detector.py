@@ -151,9 +151,13 @@ class WakeWordDetector:
                 
                 self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {len(audio_array)} -> {len(audio_float)} samples (level: {audio_level:.3f})")
             
-            # Only process audio with sufficient activity to prevent false positives
-            if audio_level > 0.005:  # Minimum threshold for legitimate audio activity
+            # Immediate debug feedback (not just debug logs)
+            print(f"   DETECTOR: audio_level={audio_level:.3f}, samples={len(audio_float)}")
+            
+            # Lower threshold to allow speech audio (was 0.005)
+            if audio_level > 0.001:  # Much lower threshold for legitimate audio activity
                 self.audio_queue.put(audio_float, block=False)
+                print(f"   DETECTOR: QUEUED audio for OpenWakeWord (level={audio_level:.3f}, queue_size={self.audio_queue.qsize()})")
                 self.logger.debug(f"Queued audio for processing: level={audio_level:.3f}, samples={len(audio_float)}, queue_size={self.audio_queue.qsize()}")
                 
                 # Debug: Log audio activity
@@ -161,6 +165,7 @@ class WakeWordDetector:
                     self.logger.debug(f"Audio activity detected: level={audio_level:.3f}, samples={len(audio_float)}")
             else:
                 # Skip silence/noise that causes false positives
+                print(f"   DETECTOR: FILTERED OUT low audio (level={audio_level:.3f})")
                 self.logger.debug(f"Skipping low-level audio: level={audio_level:.3f}")
             
         except Exception as e:
@@ -389,6 +394,10 @@ class WakeWordDetector:
                     continue
                 
                 chunks_processed += 1
+                
+                # Immediate debug feedback for OpenWakeWord processing
+                if chunks_processed % 50 == 0:  # Every 50 chunks
+                    print(f"   DETECTOR: OpenWakeWord processing chunk #{chunks_processed}, queue_size={self.audio_queue.qsize()}")
                 
                 # Debug: Log queue processing periodically
                 if chunks_processed % 100 == 0:
