@@ -128,60 +128,117 @@ async def test_function_calling(config_path):
 
 
 async def test_audio_format(config_path):
-    """Test audio format requirements"""
+    """Test audio format requirements using live microphone recording"""
     logger = get_logger("OpenAIAudio")
     
     try:
         import numpy as np
+        import sounddevice as sd
+        from scipy import signal
+        from utils.dependencies import validate_audio_dependencies, validate_audio_device_access
+        
+        # Validate dependencies first
+        try:
+            validate_audio_dependencies()
+            logger.info("✅ All audio dependencies validated")
+        except Exception as e:
+            logger.error(f"❌ Audio dependency validation failed: {e}")
+            return False
         
         config = load_config(config_path)
         client = OpenAIRealtimeClient(config.openai, "You are a helpful assistant.")
         
         # Connect
-        logger.info("Testing audio format requirements...")
+        logger.info("Testing audio format requirements with live microphone...")
         success = await client.connect()
         if not success:
             logger.error("❌ Failed to connect")
             return False
         
-        # Generate test audio (PCM16, 24kHz, mono)
-        sample_rate = 24000
-        duration = 0.5  # 500ms - shorter test
-        frequency = 440  # A4 note
+        # Check microphone availability using validation utility
+        logger.info("Checking microphone availability...")
+        try:
+            input_devices, output_devices = validate_audio_device_access()
+            logger.info(f"✅ Found {len(input_devices)} input devices")
+        except Exception as e:
+            logger.error(f"❌ Audio device validation failed: {e}")
+            return False
         
-        # Generate sine wave with proper amplitude for int16
-        t = np.linspace(0, duration, int(sample_rate * duration), False)
-        # Use amplitude that maps well to int16 range (-32768 to 32767)
-        audio_signal = np.sin(2 * np.pi * frequency * t) * 0.3  # 30% volume
+        # Use default input device
+        try:
+            default_input = sd.default.device[0]
+            device_info = sd.query_devices(default_input)
+            logger.info(f"Using microphone: {device_info['name']}")
+        except Exception as e:
+            logger.warning(f"Could not get default device info: {e}")
         
-        # Convert to PCM16 format (signed 16-bit integers)
-        audio_pcm16 = (audio_signal * 32767).astype(np.int16)
+        # Record audio from microphone
+        recording_duration = 2.0  # Record 2 seconds
+        device_sample_rate = 44100  # Common microphone sample rate
+        target_sample_rate = 24000  # OpenAI requirement
         
-        # Ensure we have the expected number of samples
-        expected_samples = int(sample_rate * duration)
-        actual_samples = len(audio_pcm16)
-        logger.info(f"Generated {actual_samples} samples, expected {expected_samples}")
+        logger.info(f"Recording {recording_duration} seconds of audio...")
+        logger.info("Please speak into the microphone or make some noise...")
         
-        # Convert to bytes in little-endian format (standard for PCM16)
-        audio_bytes = audio_pcm16.tobytes()
+        # Record audio
+        recording = sd.rec(
+            frames=int(device_sample_rate * recording_duration),
+            samplerate=device_sample_rate,
+            channels=1,
+            device=None,  # Use default
+            dtype=np.float32
+        )
+        sd.wait()  # Wait for recording to complete
         
-        # Calculate expected duration and verify
-        expected_duration_ms = len(audio_bytes) / 2 / sample_rate * 1000
-        logger.info(f"Audio data: {len(audio_bytes)} bytes, expected duration: {expected_duration_ms:.1f}ms")
+        # Check if we got audio data
+        if recording is None or len(recording) == 0:
+            logger.error("❌ No audio data recorded")
+            return False
+        
+        # Flatten to mono if needed
+        if recording.ndim > 1:
+            recording = np.mean(recording, axis=1)
+        
+        # Check audio level
+        max_amplitude = np.max(np.abs(recording))
+        logger.info(f"Recorded audio level: {max_amplitude:.4f}")
+        
+        if max_amplitude < 0.001:  # Very quiet
+            logger.warning("⚠️ Audio level very low - you may need to speak louder or check microphone")
+        
+        # Resample to 24kHz if needed
+        if device_sample_rate != target_sample_rate:
+            logger.info(f"Resampling from {device_sample_rate}Hz to {target_sample_rate}Hz...")
+            new_length = int(len(recording) * target_sample_rate / device_sample_rate)
+            resampled = signal.resample(recording, new_length)
+        else:
+            resampled = recording
+        
+        # Convert to PCM16
+        # Clamp to [-1, 1] range
+        resampled = np.clip(resampled, -1.0, 1.0)
+        
+        # Convert to int16
+        pcm16_data = (resampled * 32767).astype(np.int16)
+        audio_bytes = pcm16_data.tobytes()
+        
+        # Calculate duration
+        duration_ms = len(audio_bytes) / 2 / target_sample_rate * 1000
+        logger.info(f"Processed audio: {len(audio_bytes)} bytes, {duration_ms:.1f}ms duration")
         
         # Send audio in chunks to simulate streaming (50ms chunks)
-        chunk_size = int(sample_rate * 0.05 * 2)  # 50ms of 16-bit audio (2 bytes per sample)
+        chunk_size = int(target_sample_rate * 0.05 * 2)  # 50ms of 16-bit audio (2 bytes per sample)
         
         logger.info(f"Sending audio in {chunk_size}-byte chunks (50ms each)...")
         for i in range(0, len(audio_bytes), chunk_size):
             chunk = audio_bytes[i:i+chunk_size]
-            chunk_duration_ms = len(chunk) / 2 / sample_rate * 1000
+            chunk_duration_ms = len(chunk) / 2 / target_sample_rate * 1000
             logger.debug(f"Sending chunk {i//chunk_size + 1}: {len(chunk)} bytes ({chunk_duration_ms:.1f}ms)")
             
             await client.send_audio(chunk)
             await asyncio.sleep(0.05)  # Wait 50ms between chunks
         
-        logger.info(f"Sent total of {expected_duration_ms:.1f}ms of audio in {len(audio_bytes)} bytes")
+        logger.info(f"Sent total of {duration_ms:.1f}ms of recorded audio")
         
         # Commit audio buffer (client now validates minimum duration)
         logger.info("Committing audio buffer...")
@@ -193,8 +250,13 @@ async def test_audio_format(config_path):
         await client.disconnect()
         logger.info("✅ Audio format test completed")
         
-    except ImportError:
-        logger.warning("❌ NumPy not available, skipping audio test")
+    except ImportError as e:
+        logger.warning(f"❌ Required audio libraries not available: {e}")
+        logger.info("Please install: pip install numpy scipy sounddevice")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Microphone access failed: {e}")
+        logger.info("Please check microphone permissions and hardware")
         return False
     except Exception as e:
         logger.error(f"❌ Audio test failed: {e}")
