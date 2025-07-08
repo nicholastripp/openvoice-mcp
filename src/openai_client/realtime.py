@@ -64,8 +64,8 @@ class OpenAIRealtimeClient:
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.function_handlers: Dict[str, Callable] = {}
         
-        # Session configuration following Billy Bass pattern
-        # Keep audio format fields even in text-only mode as OpenAI expects them
+        # Build base session configuration
+        # Keep audio format fields as they may be required by OpenAI API
         self.session_config = {
             "modalities": ["text"] if text_only else ["audio", "text"],
             "voice": config.voice,
@@ -74,16 +74,20 @@ class OpenAIRealtimeClient:
             "tools": [],
             "temperature": config.temperature,
             "instructions": personality_prompt,
-            "turn_detection": {
+        }
+        
+        # Only add audio-specific settings if not in text-only mode
+        # This prevents OpenAI from expecting audio input in text-only mode
+        if not text_only:
+            self.session_config["turn_detection"] = {
                 "type": "server_vad",
                 "threshold": 0.5,
                 "prefix_padding_ms": 300,
                 "silence_duration_ms": 200
-            },
-            "input_audio_transcription": {
+            }
+            self.session_config["input_audio_transcription"] = {
                 "model": "whisper-1"
             }
-        }
         
         # Reconnection settings
         self.reconnect_delay = 5.0
