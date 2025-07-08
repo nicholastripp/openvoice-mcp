@@ -64,6 +64,10 @@ class WakeWordDetector:
         self.last_detection_time = 0
         self.detection_cooldown = config.cooldown
         
+        # Detection stability - require consecutive chunks above threshold
+        self.detection_stability_count = 2  # Require N consecutive chunks above threshold
+        self.recent_confidences = []  # Track recent confidence levels
+        
         # Model state management to prevent stuck predictions
         self.predictions_history = []  # Track recent predictions to detect stuck state
         self.stuck_detection_threshold = 5  # Number of identical predictions to trigger reset
@@ -124,6 +128,7 @@ class WakeWordDetector:
         self.predictions_history = []
         self.chunks_since_reset = 0
         self.last_model_reset_time = 0
+        self.recent_confidences = []  # Reset detection stability tracking
         
         self.logger.info("Wake word detection stopped")
     
@@ -192,7 +197,7 @@ class WakeWordDetector:
             else:
                 self._amp_debug_counter = 1
                 
-            if self._amp_debug_counter % 100 == 0:  # Every 100 chunks
+            if self._amp_debug_counter % 500 == 0:  # Every 500 chunks (reduced for production)
                 self.logger.debug(f"Audio amplification: {pre_amp_level:.4f} -> {post_amp_level:.4f} (50x gain)")
                 print(f"   DETECTOR: AMPLIFICATION: {pre_amp_level:.4f} -> {post_amp_level:.4f} (50x gain)")
             
@@ -594,6 +599,14 @@ class WakeWordDetector:
                     continue
                 
                 for model_name, confidence in predictions.items():
+                    # Track confidence for stability detection
+                    self.recent_confidences.append(confidence)
+                    
+                    # Keep only recent confidences for stability check
+                    max_history = self.detection_stability_count * 2
+                    if len(self.recent_confidences) > max_history:
+                        self.recent_confidences.pop(0)
+                    
                     # Log any confidence above threshold for debugging
                     if confidence > self.sensitivity * 0.3:  # Log at 30% of sensitivity
                         print(f"   DETECTOR: {model_name} confidence {confidence:.3f} (threshold: {self.sensitivity:.3f}, above 30%)")
@@ -603,13 +616,26 @@ class WakeWordDetector:
                         
                         print(f"   DETECTOR: DETECTION CANDIDATE: {model_name} confidence {confidence:.3f} >= {self.sensitivity:.3f}")
                         
-                        # Check cooldown to prevent rapid re-triggers (removed artificial startup delay)
+                        # Check detection stability - require consecutive chunks above threshold
+                        recent_above_threshold = sum(1 for c in self.recent_confidences[-self.detection_stability_count:] if c >= self.sensitivity)
+                        stable_detection = recent_above_threshold >= self.detection_stability_count
+                        
+                        if not stable_detection:
+                            print(f"   DETECTOR: Detection not stable: {recent_above_threshold}/{self.detection_stability_count} consecutive chunks above threshold")
+                            continue
+                        
+                        print(f"   DETECTOR: STABLE DETECTION: {recent_above_threshold}/{self.detection_stability_count} consecutive chunks above threshold")
+                        
+                        # Check cooldown to prevent rapid re-triggers
                         time_since_last = current_time - self.last_detection_time
                         if time_since_last >= self.detection_cooldown:
                             print(f"   DETECTOR: WAKE WORD DETECTED! {model_name} (confidence: {confidence:.3f})")
                             self.logger.info(f"Wake word detected: {model_name} (confidence: {confidence:.3f})")
                             self.logger.debug(f"Cooldown passed: {time_since_last:.1f}s >= {self.detection_cooldown}s")
                             self.last_detection_time = current_time
+                            
+                            # Clear confidence history after successful detection
+                            self.recent_confidences = []
                             
                             # Call detection callbacks
                             for callback in self.detection_callbacks:
@@ -780,6 +806,7 @@ class WakeWordDetector:
         self.predictions_history = []
         self.chunks_since_reset = 0
         self.last_model_reset_time = time.time()
+        self.recent_confidences = []  # Reset detection stability tracking
         
         # Reset warm-up state - model needs re-warming after reset
         self.model_ready = False
