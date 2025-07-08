@@ -59,8 +59,13 @@ class WakeWordDetector:
         self.last_detection_time = 0
         self.detection_cooldown = config.cooldown
         
-        # Remove startup time tracking (replaced with VAD and buffer initialization)
-        # self.startup_time = 0  # No longer needed
+        # Model state management to prevent stuck predictions
+        self.predictions_history = []  # Track recent predictions to detect stuck state
+        self.stuck_detection_threshold = 5  # Number of identical predictions to trigger reset
+        self.last_model_reset_time = 0
+        self.model_reset_interval = 30.0  # Reset model every 30 seconds as preventive measure
+        self.chunks_since_reset = 0
+        self.reset_on_stuck = True  # Enable automatic reset when stuck state detected
     
     async def start(self) -> None:
         """Start wake word detection"""
@@ -106,9 +111,14 @@ class WakeWordDetector:
             except Empty:
                 break
         
-        # Clear audio buffer
+        # Clear audio buffer and reset state tracking
         if hasattr(self, 'audio_buffer'):
             self.audio_buffer = np.array([], dtype=np.float32)
+        
+        # Reset state tracking
+        self.predictions_history = []
+        self.chunks_since_reset = 0
+        self.last_model_reset_time = 0
         
         self.logger.info("Wake word detection stopped")
     
@@ -145,8 +155,13 @@ class WakeWordDetector:
             # Convert bytes to numpy array (assuming PCM16)
             audio_array = np.frombuffer(audio_data, dtype=np.int16)
             
-            # Convert to float32 and normalize
+            # Convert to float32 and normalize to [-1.0, 1.0] range (OpenWakeWord requirement)
             audio_float = audio_array.astype(np.float32) / 32767.0
+            
+            # Validate audio format
+            if not self._validate_audio_chunk(audio_float):
+                self.logger.debug("Invalid audio chunk skipped")
+                return
             
             # Calculate audio level for debugging
             audio_level = np.max(np.abs(audio_float))
@@ -450,28 +465,48 @@ class WakeWordDetector:
                 if chunks_processed % 100 == 0:
                     self.logger.debug(f"Detection loop processed {chunks_processed} chunks, queue size: {self.audio_queue.qsize()}")
                 
-                # Process with OpenWakeWord - ADD COMPREHENSIVE DEBUGGING
+                # Process with OpenWakeWord with comprehensive state management
                 try:
+                    # Check if model needs reset (preventive or stuck state)
+                    if self._should_reset_model():
+                        self._reset_model_state()
+                    
                     print(f"   DETECTOR: Calling model.predict() with chunk: samples={len(audio_chunk)}, dtype={audio_chunk.dtype}")
                     predictions = self.model.predict(audio_chunk)
                     print(f"   DETECTOR: model.predict() returned: {predictions}")
+                    
+                    # Track predictions for stuck state detection
+                    self._track_prediction(predictions)
+                    self.chunks_since_reset += 1
+                    
                 except Exception as e:
                     print(f"   DETECTOR: ERROR in model.predict(): {e}")
                     self.logger.error(f"OpenWakeWord prediction error: {e}")
+                    # Reset model on error
+                    self._reset_model_state()
                     continue
                 
-                # Debug: Log all predictions to understand what's happening
+                # Enhanced prediction logging with stuck state detection
                 if predictions:
                     max_confidence = max(predictions.values()) if predictions else 0.0
-                    print(f"   DETECTOR: OpenWakeWord predictions: {predictions} (max: {max_confidence:.3f})")
+                    
+                    # Check if we're in stuck state and log it
+                    stuck_indicator = " [STUCK]" if self._is_stuck_state() else ""
+                    reset_indicator = f" [RESET #{self.chunks_since_reset}]" if self.chunks_since_reset <= 3 else ""
+                    
+                    print(f"   DETECTOR: OpenWakeWord predictions: {predictions} (max: {max_confidence:.3f}){stuck_indicator}{reset_indicator}")
                     
                     # Show prediction scores periodically and for any significant activity
                     if chunks_processed % 100 == 0 or max_confidence > 0.05:
-                        formatted_predictions = {k: f"{v:.3f}" for k, v in predictions.items()}
-                        print(f"   DETECTOR: OpenWakeWord predictions: {formatted_predictions} (max: {max_confidence:.3f})")
+                        formatted_predictions = {k: f"{v:.8f}" for k, v in predictions.items()}  # More precision
+                        print(f"   DETECTOR: Detailed predictions: {formatted_predictions} (max: {max_confidence:.8f}){stuck_indicator}")
                     
-                    if max_confidence > 0.1:  # Log any significant predictions
-                        self.logger.debug(f"OpenWakeWord predictions: {predictions}")
+                    # Log significant predictions or stuck state warnings
+                    if max_confidence > 0.1:  # Significant predictions
+                        self.logger.debug(f"OpenWakeWord significant prediction: {predictions}")
+                    elif self._is_stuck_state() and chunks_processed % 25 == 0:  # Stuck state warnings
+                        self.logger.warning(f"Model stuck state detected at chunk {chunks_processed}: {predictions}")
+                        
                 else:
                     print(f"   DETECTOR: OpenWakeWord returned EMPTY predictions!")
                     if chunks_processed % 50 == 0:  # Log empty predictions periodically
@@ -554,16 +589,120 @@ class WakeWordDetector:
         Use this method if you need to clear persistent wake word detections
         or reset the model state during operation.
         """
+        self._reset_model_state()
+    
+    def _validate_audio_chunk(self, audio_float: np.ndarray) -> bool:
+        """
+        Validate audio chunk format and quality
+        
+        Args:
+            audio_float: Audio data as float32 array
+            
+        Returns:
+            True if audio chunk is valid, False otherwise
+        """
+        # Check data type
+        if audio_float.dtype != np.float32:
+            self.logger.warning(f"Invalid audio dtype: {audio_float.dtype}, expected float32")
+            return False
+        
+        # Check for NaN or infinite values
+        if np.any(np.isnan(audio_float)) or np.any(np.isinf(audio_float)):
+            self.logger.warning("Audio contains NaN or infinite values")
+            return False
+        
+        # Check range (should be [-1.0, 1.0] for OpenWakeWord)
+        if np.any(np.abs(audio_float) > 1.0):
+            self.logger.warning(f"Audio values out of range: max={np.max(np.abs(audio_float)):.3f}, expected <= 1.0")
+            # Don't reject, just warn and clip
+            np.clip(audio_float, -1.0, 1.0, out=audio_float)
+        
+        return True
+    
+    def _should_reset_model(self) -> bool:
+        """
+        Check if model should be reset based on time or stuck state
+        
+        Returns:
+            True if model should be reset, False otherwise
+        """
+        current_time = time.time()
+        
+        # Preventive reset based on time interval
+        if current_time - self.last_model_reset_time > self.model_reset_interval:
+            self.logger.debug(f"Model reset due to time interval ({self.model_reset_interval}s)")
+            return True
+        
+        # Reset if stuck state detected
+        if self.reset_on_stuck and self._is_stuck_state():
+            self.logger.warning("Model stuck state detected, resetting model")
+            return True
+        
+        return False
+    
+    def _is_stuck_state(self) -> bool:
+        """
+        Check if model is in stuck state (identical predictions)
+        
+        Returns:
+            True if model appears to be stuck, False otherwise
+        """
+        if len(self.predictions_history) < self.stuck_detection_threshold:
+            return False
+        
+        # Check if last N predictions are identical
+        recent_predictions = self.predictions_history[-self.stuck_detection_threshold:]
+        
+        # Extract the first model's prediction value for comparison
+        if not recent_predictions[0]:
+            return False
+        
+        first_model_name = list(recent_predictions[0].keys())[0]
+        first_value = recent_predictions[0][first_model_name]
+        
+        # Check if all recent predictions are identical
+        for pred in recent_predictions[1:]:
+            if not pred or first_model_name not in pred:
+                return False
+            if abs(pred[first_model_name] - first_value) > 1e-10:  # Allow tiny floating point differences
+                return False
+        
+        return True
+    
+    def _track_prediction(self, predictions: dict) -> None:
+        """
+        Track prediction for stuck state detection
+        
+        Args:
+            predictions: Dictionary of model predictions
+        """
+        # Keep only recent predictions in history
+        max_history = self.stuck_detection_threshold * 2
+        self.predictions_history.append(predictions.copy() if predictions else {})
+        
+        if len(self.predictions_history) > max_history:
+            self.predictions_history.pop(0)
+    
+    def _reset_model_state(self) -> None:
+        """
+        Reset model state and clear tracking data
+        """
         if self.model:
             try:
                 self.model.reset()
-                self.logger.info("OpenWakeWord model buffers reset")
+                self.logger.info(f"OpenWakeWord model reset (chunks since last reset: {self.chunks_since_reset})")
             except Exception as e:
-                self.logger.warning(f"Failed to reset model buffers: {e}")
+                self.logger.warning(f"Failed to reset model: {e}")
         
         # Clear internal audio buffer
         self.audio_buffer = np.array([], dtype=np.float32)
-        self.logger.debug("Internal audio buffer cleared")
+        
+        # Reset tracking data
+        self.predictions_history = []
+        self.chunks_since_reset = 0
+        self.last_model_reset_time = time.time()
+        
+        self.logger.debug("Model state reset completed")
     
     @staticmethod
     def test_installation() -> bool:
