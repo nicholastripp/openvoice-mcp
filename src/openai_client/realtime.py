@@ -64,30 +64,33 @@ class OpenAIRealtimeClient:
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.function_handlers: Dict[str, Callable] = {}
         
-        # Session configuration - modalities depend on text_only mode
+        # Session configuration - always include audio format fields to prevent defaults
+        # This matches the Billy Bass pattern and prevents OpenAI from making assumptions
         base_config = {
             "modalities": ["text"] if text_only else ["audio", "text"],
             "voice": config.voice,
+            "input_audio_format": "pcm16",
+            "output_audio_format": "pcm16",
             "tools": [],
             "temperature": config.temperature,
             "instructions": personality_prompt
         }
         
-        # Add audio-specific configuration only if not text-only
-        if not text_only:
-            base_config.update({
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 200
-                },
-                "input_audio_transcription": {
-                    "model": "whisper-1"
-                }
-            })
+        # Configure turn detection based on mode
+        if text_only:
+            # Explicitly disable VAD in text-only mode to prevent audio buffer commits
+            base_config["turn_detection"] = None
+        else:
+            # Full VAD configuration for audio mode
+            base_config["turn_detection"] = {
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 200
+            }
+            base_config["input_audio_transcription"] = {
+                "model": "whisper-1"
+            }
         
         self.session_config = base_config
         
