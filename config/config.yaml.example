@@ -39,6 +39,10 @@ wake_word:
   download_timeout: 300           # Download timeout in seconds
   retry_downloads: 3              # Number of download retry attempts
   
+  # Noise Suppression Settings
+  speex_noise_suppression: true   # Enable Speex noise suppression if available
+                                  # Set to false if speexdsp_ns is not installed
+  
   # Available models: hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu
   # To download models manually: python download_wake_word_models.py --download-all
   

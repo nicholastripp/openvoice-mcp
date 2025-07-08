@@ -54,6 +54,9 @@ class WakeWordConfig:
     auto_download: bool = True
     download_timeout: int = 300
     retry_downloads: int = 3
+    
+    # Noise suppression settings
+    speex_noise_suppression: bool = True  # Enable if speexdsp_ns is available
 
 
 @dataclass

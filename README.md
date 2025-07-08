@@ -113,6 +113,24 @@ The assistant uses OpenWakeWord for local wake word detection. Models are automa
    python download_wake_word_models.py --test
    ```
 
+5. **If you see "No module named 'speexdsp_ns'" error:**
+   
+   **Option A (Quick Fix)**: Disable Speex noise suppression in config:
+   ```yaml
+   wake_word:
+     vad_enabled: true
+     speex_noise_suppression: false
+   ```
+   
+   **Option B (Full Feature)**: Install the optional dependency:
+   ```bash
+   # Install system dependency
+   sudo apt-get install libspeexdsp-dev
+   
+   # Install Python package
+   pip install speexdsp-ns
+   ```
+
 ## Implementation Status
 
 ✅ **Core Implementation Complete** - All major components are implemented and ready for testing.

@@ -287,7 +287,19 @@ class WakeWordDetector:
             # Initialize model with VAD if enabled
             model_kwargs = {}
             if self.vad_enabled:
-                model_kwargs['enable_speex_noise_suppression'] = True
+                # Check if speexdsp_ns is available and user wants noise suppression
+                speex_enabled = getattr(self.config, 'speex_noise_suppression', True)
+                if speex_enabled:
+                    try:
+                        import speexdsp_ns
+                        model_kwargs['enable_speex_noise_suppression'] = True
+                        self.logger.info("✅ Speex noise suppression enabled")
+                    except ImportError:
+                        self.logger.info("ℹ️ speexdsp_ns not available, using basic VAD without noise suppression")
+                        self.logger.info("   Install with: pip install speexdsp-ns (optional)")
+                        self.logger.info("   Or set 'speex_noise_suppression: false' in config")
+                else:
+                    self.logger.info("ℹ️ Speex noise suppression disabled in configuration")
             
             self.model = WakeWordModel(
                 wakeword_models=[actual_model_name],
