@@ -278,11 +278,16 @@ class OpenAIRealtimeClient:
             
             await self._send_event(event)
             
-            # Do NOT send response.create when VAD is enabled
-            # The server will automatically generate responses when it detects
-            # the end of user input (either speech or text)
-            # Manually sending response.create tries to commit the audio buffer
-            # which fails when no audio has been sent
+            # In text-only mode, we disabled VAD (turn_detection: None)
+            # so we need to manually request a response
+            if self.text_only:
+                # Send response.create to trigger OpenAI response
+                # This is safe in text-only mode since no audio buffer exists
+                await self._send_event({"type": "response.create"})
+            else:
+                # In audio mode with VAD enabled, the server will automatically 
+                # generate responses when it detects the end of user input
+                # Do NOT send response.create as it will try to commit audio buffer
             
         except Exception as e:
             self.logger.error(f"Error sending text: {e}")
