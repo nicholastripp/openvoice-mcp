@@ -352,34 +352,32 @@ class WakeWordDetector:
             self.logger.info(f"Model expects: {self.sample_rate}Hz audio in {self.chunk_size} sample chunks (80ms)")
             self.logger.info(f"Model configuration: VAD={self.vad_enabled}, Speex={speex_enabled}, sensitivity={self.sensitivity}")
             
-            # Initialize audio buffer with 1-2 seconds of silence to flush prediction buffers
-            # This replaces the artificial startup delay with proper buffer initialization
-            silence_duration = 1.5  # 1.5 seconds of silence
-            silence_samples = int(self.sample_rate * silence_duration)
-            silence_chunk = np.zeros(silence_samples, dtype=np.float32)
+            # REMOVED: Buffer initialization with silence chunks
+            # The 1.5s silence buffer initialization was causing the model to get stuck
+            # in a state where it only returns constant prediction values.
+            # 
+            # Original issue: Model was returning identical predictions (1.1165829e-06)
+            # for every audio chunk regardless of content.
+            #
+            # Solution: Let the model start with a clean state and process real audio immediately.
             
-            # Send silence in proper 80ms chunks to initialize the model
-            chunks_sent = 0
-            for i in range(0, len(silence_chunk), self.chunk_size):
-                chunk = silence_chunk[i:i + self.chunk_size]
-                if len(chunk) == self.chunk_size:  # Only send complete chunks
-                    try:
-                        init_predictions = self.model.predict(chunk)
-                        chunks_sent += 1
-                        self.logger.debug(f"Buffer init chunk {chunks_sent}: predictions={init_predictions}")
-                    except Exception as e:
-                        self.logger.error(f"Error during buffer initialization: {e}")
-                        raise
+            self.logger.info("[OK] Model loaded without buffer initialization")
+            self.logger.info("[INFO] Model will start processing audio immediately with clean state")
             
-            self.logger.info(f"[OK] Model buffers initialized with {silence_duration}s of silence ({chunks_sent} chunks)")
-            
-            # Test one more chunk to make sure the model is ready
+            # Test one minimal chunk to verify model is functional
             try:
                 test_chunk = np.zeros(self.chunk_size, dtype=np.float32)
                 test_predictions = self.model.predict(test_chunk)
-                self.logger.info(f"[TEST] Post-init test prediction: {test_predictions}")
+                self.logger.info(f"[TEST] Initial test prediction: {test_predictions}")
+                
+                # Verify we get a dictionary with model predictions
+                if not isinstance(test_predictions, dict) or not test_predictions:
+                    self.logger.warning("[WARNING] Model test prediction is empty or invalid")
+                else:
+                    self.logger.info("[OK] Model test prediction successful")
+                    
             except Exception as e:
-                self.logger.error(f"[ERROR] Post-init test failed: {e}")
+                self.logger.error(f"[ERROR] Initial model test failed: {e}")
                 raise
             
         except Exception as e:
