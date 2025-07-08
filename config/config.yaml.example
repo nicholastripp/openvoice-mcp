@@ -29,7 +29,7 @@ audio:
 wake_word:
   enabled: true                   # Enable wake word detection
   model: "alexa"                  # Wake word model (hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu)
-  sensitivity: 0.5                # Detection sensitivity (0.0-1.0, lower = more sensitive)
+  sensitivity: 0.001              # Detection sensitivity (0.0-1.0, lower = more sensitive, tuned for amplified audio)
   timeout: 5.0                    # Session timeout after wake word (seconds)
   vad_enabled: false              # Disable VAD (was causing 0.0 predictions with warm-up mechanism)
   cooldown: 2.0                   # Seconds between wake word detections

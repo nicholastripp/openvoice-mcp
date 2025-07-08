@@ -182,7 +182,19 @@ class WakeWordDetector:
             
             # Apply audio normalization fix based on test results
             # The amplify_50x method produced the best results in testing
+            pre_amp_level = np.max(np.abs(audio_float))
             audio_float = np.clip(audio_float * 50.0, -1.0, 1.0).astype(np.float32)
+            post_amp_level = np.max(np.abs(audio_float))
+            
+            # Debug logging for amplification (periodic to avoid spam)
+            if hasattr(self, '_amp_debug_counter'):
+                self._amp_debug_counter += 1
+            else:
+                self._amp_debug_counter = 1
+                
+            if self._amp_debug_counter % 100 == 0:  # Every 100 chunks
+                self.logger.debug(f"Audio amplification: {pre_amp_level:.4f} -> {post_amp_level:.4f} (50x gain)")
+                print(f"   DETECTOR: AMPLIFICATION: {pre_amp_level:.4f} -> {post_amp_level:.4f} (50x gain)")
             
             # Immediate debug feedback (not just debug logs)
             print(f"   DETECTOR: audio_level={audio_level:.3f}, samples={len(audio_float)}")
