@@ -155,15 +155,17 @@ async def interactive_test(config_path):
     from audio.capture import AudioCapture
     
     # Track detections
+    import time
     detection_count = 0
-    last_detection_time = 0
+    last_detection_time = time.time()
     
     def on_detection(model_name, confidence):
         nonlocal detection_count, last_detection_time
         detection_count += 1
-        current_time = asyncio.get_event_loop().time()
+        import time
+        current_time = time.time()
         
-        print(f"\\n[DETECTED] WAKE WORD #{detection_count}: {model_name} (confidence: {confidence:.3f})")
+        print(f"\n[DETECTED] WAKE WORD #{detection_count}: {model_name} (confidence: {confidence:.3f})")
         print(f"   Detection time: {current_time - last_detection_time:.1f}s since last")
         print("   Listening for next detection...")
         
@@ -183,26 +185,27 @@ async def interactive_test(config_path):
     
     await detector.start()
     
-    print(f"\\n[MIC] Wake word detector started with audio input!")
+    print(f"\n[MIC] Wake word detector started with audio input!")
     print(f"Model: {config.wake_word.model}")
     print(f"Sensitivity: {config.wake_word.sensitivity}")
     print(f"Audio device: {config.audio.input_device}")
     print(f"Sample rate: {config.audio.sample_rate}Hz")
     print(f"Say '{config.wake_word.model}' to test detection")
     print("Press Ctrl+C to stop")
-    print("\\nListening...")
+    print("\nListening...")
     
     try:
-        last_detection_time = asyncio.get_event_loop().time()
+        import time
+        last_status_time = time.time()
         while True:
             await asyncio.sleep(1.0)
             # Show periodic status
-            current_time = asyncio.get_event_loop().time()
-            if current_time - last_detection_time > 10:  # Every 10 seconds
+            current_time = time.time()
+            if current_time - last_status_time > 10:  # Every 10 seconds
                 print(f"   Still listening... ({detection_count} detections so far)")
-                last_detection_time = current_time
+                last_status_time = current_time
     except KeyboardInterrupt:
-        print("\\nStopping...")
+        print("\nStopping...")
         await detector.stop()
         await audio_capture.stop()
 
