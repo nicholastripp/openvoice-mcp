@@ -180,13 +180,51 @@ class WakeWordDetector:
         except Exception as e:
             self.logger.warning(f"Error checking model availability: {e}")
             return False
+    
+    def _download_models(self) -> bool:
+        """Download OpenWakeWord models if not available"""
+        try:
+            import openwakeword
+            from openwakeword import utils
+            
+            self.logger.info("Downloading OpenWakeWord models...")
+            self.logger.info("This may take a few minutes on first run...")
+            
+            # Try to download all models
+            utils.download_models()
+            
+            self.logger.info("✅ Model download completed successfully")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Model download failed: {e}")
+            
+            # Provide helpful troubleshooting information
+            self.logger.error("")
+            self.logger.error("🔧 Manual download options:")
+            self.logger.error("1. Check internet connectivity")
+            self.logger.error("2. Try running: python -c \"import openwakeword; openwakeword.utils.download_models()\"")
+            self.logger.error("3. Download manually from: https://github.com/dscripka/openWakeWord/releases")
+            self.logger.error("")
+            
+            return False
 
     def _load_model(self) -> None:
         """Load OpenWakeWord model"""
         try:
             # Check if model is available first
             if not self._check_model_availability():
-                raise FileNotFoundError(f"Model '{self.model_name}' is not available")
+                self.logger.info(f"Model '{self.model_name}' not found, attempting download...")
+                
+                # Try to download models
+                if self._download_models():
+                    # Check again after download
+                    if not self._check_model_availability():
+                        raise FileNotFoundError(f"Model '{self.model_name}' is still not available after download")
+                    else:
+                        self.logger.info(f"Successfully downloaded model '{self.model_name}'")
+                else:
+                    raise FileNotFoundError(f"Model '{self.model_name}' is not available and download failed")
             
             # Map common model names to OpenWakeWord models
             model_mapping = {
@@ -209,24 +247,21 @@ class WakeWordDetector:
                 **model_kwargs
             )
             
-            self.logger.info(f"Loaded model: {actual_model_name}")
+            self.logger.info(f"✅ Successfully loaded model: {actual_model_name}")
             self.logger.info(f"Available models: {list(self.model.models.keys())}")
             
         except Exception as e:
-            self.logger.error(f"Failed to load wake word model '{self.model_name}': {e}")
+            self.logger.error(f"❌ Failed to load wake word model '{self.model_name}': {e}")
             
             # Check if this is a missing model file error
             if "Could not open" in str(e) and ".tflite" in str(e):
-                self.logger.error("Wake word model file not found.")
-                self.logger.error("This typically happens on first run.")
                 self.logger.error("")
-                self.logger.error("🔧 Quick Fix Options:")
-                self.logger.error("1. Run: python download_wake_word_models.py")
-                self.logger.error("2. Use a pre-installed model (if available)")
-                self.logger.error("3. Change your config to use 'alexa' or 'hey_mycroft'")
+                self.logger.error("🔧 Troubleshooting steps:")
+                self.logger.error("1. Check internet connectivity for model download")
+                self.logger.error("2. Try running: python -c \"import openwakeword; openwakeword.utils.download_models()\"")
+                self.logger.error("3. Download manually from: https://github.com/dscripka/openWakeWord/releases")
+                self.logger.error("4. Check if your model name is correct (alexa, hey_jarvis, hey_mycroft, etc.)")
                 self.logger.error("")
-                self.logger.error("📋 To download models:")
-                self.logger.error("   python download_wake_word_models.py")
                 
                 # Try to list available models
                 try:
@@ -238,7 +273,10 @@ class WakeWordDetector:
             try:
                 dummy_model = WakeWordModel()
                 available = list(dummy_model.models.keys())
-                self.logger.info(f"Available models: {available}")
+                if available:
+                    self.logger.info(f"Available models after download attempt: {available}")
+                else:
+                    self.logger.warning("No models available - download may have failed")
             except:
                 pass
             raise
@@ -344,8 +382,20 @@ class WakeWordDetector:
             # Try to import and create a simple model
             import openwakeword
             from openwakeword import Model as WakeWordModel
+            from openwakeword import utils
             
-            # Try to load a model (this will download if needed)
+            logger.info("Testing OpenWakeWord installation...")
+            
+            # Try to download models if they don't exist
+            try:
+                logger.info("Ensuring models are available...")
+                utils.download_models()
+                logger.info("✅ Models download completed")
+            except Exception as e:
+                logger.warning(f"⚠️ Model download failed: {e}")
+                logger.info("Attempting to use existing models...")
+            
+            # Try to load a model
             test_model = WakeWordModel(wakeword_models=['hey_jarvis_v0.1'])
             
             # Test with dummy audio
@@ -359,7 +409,17 @@ class WakeWordDetector:
             
         except ImportError as e:
             logger.error(f"❌ OpenWakeWord not installed: {e}")
+            logger.error("Install with: pip install openwakeword>=0.6.0")
             return False
         except Exception as e:
             logger.error(f"❌ OpenWakeWord installation test failed: {e}")
+            
+            # Provide helpful troubleshooting info
+            logger.error("")
+            logger.error("🔧 Troubleshooting steps:")
+            logger.error("1. Check internet connectivity for model download")
+            logger.error("2. Try: python -c \"import openwakeword; openwakeword.utils.download_models()\"")
+            logger.error("3. Check if you have write permissions in the package directory")
+            logger.error("")
+            
             return False
