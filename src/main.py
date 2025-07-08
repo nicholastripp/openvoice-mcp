@@ -262,8 +262,9 @@ class VoiceAssistant:
         if not self.session_active:
             # Send audio to wake word detector with proper sample rate
             if self.wake_word_detector:
-                # Audio from capture is at 24kHz (OpenAI target rate)
-                self.wake_word_detector.process_audio(audio_data, input_sample_rate=24000)
+                # Audio from capture is at the device sample rate (before resampling to 24kHz)
+                device_sample_rate = self.config.audio.sample_rate
+                self.wake_word_detector.process_audio(audio_data, input_sample_rate=device_sample_rate)
         else:
             # During active session, send audio to OpenAI
             await self._send_audio_to_openai(audio_data)

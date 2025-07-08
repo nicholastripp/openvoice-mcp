@@ -139,26 +139,72 @@ async def interactive_test(config_path):
     config = load_config(config_path)
     detector = WakeWordDetector(config.wake_word)
     
+    # Test audio device first
+    from audio.capture import AudioCapture
+    logger.info("Testing audio device...")
+    devices = AudioCapture.list_devices()
+    if devices:
+        logger.info(f"Available audio devices: {len(devices)}")
+        for device in devices[:3]:  # Show first 3 devices
+            logger.info(f"  - {device['name']} ({device['index']})")
+    else:
+        logger.warning("No audio devices found!")
+        return
+    
+    # Import audio capture for microphone input
+    from audio.capture import AudioCapture
+    
+    # Track detections
+    detection_count = 0
+    last_detection_time = 0
+    
     def on_detection(model_name, confidence):
-        print(f"\\n🎯 WAKE WORD DETECTED: {model_name} (confidence: {confidence:.3f})")
-        print("Listening...")
+        nonlocal detection_count, last_detection_time
+        detection_count += 1
+        current_time = asyncio.get_event_loop().time()
+        
+        print(f"\\n🎯 WAKE WORD DETECTED #{detection_count}: {model_name} (confidence: {confidence:.3f})")
+        print(f"   Detection time: {current_time - last_detection_time:.1f}s since last")
+        print("   Listening for next detection...")
+        
+        last_detection_time = current_time
     
     detector.add_detection_callback(on_detection)
     
+    # Start audio capture
+    audio_capture = AudioCapture(config.audio)
+    await audio_capture.start()
+    
+    # Connect audio to wake word detector
+    def audio_callback(audio_data):
+        detector.process_audio(audio_data, input_sample_rate=config.audio.sample_rate)
+    
+    audio_capture.add_callback(audio_callback)
+    
     await detector.start()
     
-    print(f"\\nWake word detector started!")
+    print(f"\\n🎤 Wake word detector started with audio input!")
     print(f"Model: {config.wake_word.model}")
     print(f"Sensitivity: {config.wake_word.sensitivity}")
+    print(f"Audio device: {config.audio.input_device}")
+    print(f"Sample rate: {config.audio.sample_rate}Hz")
     print(f"Say '{config.wake_word.model}' to test detection")
     print("Press Ctrl+C to stop")
+    print("\\nListening...")
     
     try:
+        last_detection_time = asyncio.get_event_loop().time()
         while True:
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(1.0)
+            # Show periodic status
+            current_time = asyncio.get_event_loop().time()
+            if current_time - last_detection_time > 10:  # Every 10 seconds
+                print(f"   Still listening... ({detection_count} detections so far)")
+                last_detection_time = current_time
     except KeyboardInterrupt:
         print("\\nStopping...")
         await detector.stop()
+        await audio_capture.stop()
 
 
 def main():

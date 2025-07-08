@@ -131,6 +131,9 @@ class WakeWordDetector:
             # Convert to float32 and normalize
             audio_float = audio_array.astype(np.float32) / 32767.0
             
+            # Calculate audio level for debugging
+            audio_level = np.max(np.abs(audio_float))
+            
             # Resample to 16kHz if needed (OpenWakeWord requirement)
             if input_sample_rate != self.sample_rate:
                 from scipy import signal
@@ -138,10 +141,12 @@ class WakeWordDetector:
                 new_length = int(len(audio_float) * self.sample_rate / input_sample_rate)
                 audio_float = signal.resample(audio_float, new_length)
                 
-                self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {len(audio_array)} -> {len(audio_float)} samples")
+                self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {len(audio_array)} -> {len(audio_float)} samples (level: {audio_level:.3f})")
             
-            # Queue for processing
-            self.audio_queue.put(audio_float, block=False)
+            # Only process if there's actual audio content
+            if audio_level > 0.001:  # Minimum threshold for audio activity
+                # Queue for processing
+                self.audio_queue.put(audio_float, block=False)
             
         except Exception as e:
             self.logger.error(f"Error processing audio: {e}")
