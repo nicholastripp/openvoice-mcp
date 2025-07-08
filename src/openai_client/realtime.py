@@ -107,11 +107,13 @@ class OpenAIRealtimeClient:
         Returns:
             True if connected successfully, False otherwise
         """
+        print(f"DEBUG: connect() called, current state: {self.state}, text_only: {self.text_only}")
         if self.state in [ConnectionState.CONNECTED, ConnectionState.CONNECTING]:
             return True
             
         self.state = ConnectionState.CONNECTING
         self.logger.info("Connecting to OpenAI Realtime API...")
+        print("DEBUG: Starting connection to OpenAI Realtime API...")
         
         # Log websockets version for debugging
         if WEBSOCKETS_VERSION:
@@ -169,7 +171,9 @@ class OpenAIRealtimeClient:
             asyncio.create_task(self._event_loop())
             
             # Send session configuration
+            print("DEBUG: About to send session update...")
             await self._send_session_update()
+            print("DEBUG: Session update sent successfully")
             
             return True
             
@@ -353,6 +357,7 @@ class OpenAIRealtimeClient:
         try:
             async for message in self.websocket:
                 try:
+                    print(f"DEBUG WEBSOCKET RECV: {message[:200]}...")  # First 200 chars
                     self.logger.info(f"WEBSOCKET RECV: {message}")
                     event_data = json.loads(message)
                     event = RealtimeEvent(
@@ -425,6 +430,7 @@ class OpenAIRealtimeClient:
         elif event_type == "error":
             # Error from OpenAI
             error_data = event.data.get("error", {})
+            print(f"DEBUG: Received error event: {error_data}")
             self.logger.error(f"OpenAI error: {error_data}")
             await self._emit_event("error", error_data)
         
@@ -496,6 +502,7 @@ class OpenAIRealtimeClient:
             self.logger.info(f"SEND EVENT DEBUG: Sending {event['type']} event")
             
         message = json.dumps(event)
+        print(f"DEBUG WEBSOCKET SEND: {message[:200]}...")  # First 200 chars
         self.logger.info(f"WEBSOCKET SEND: {message}")
         await self.websocket.send(message)
     

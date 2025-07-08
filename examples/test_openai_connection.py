@@ -23,6 +23,7 @@ from utils.logger import setup_logging, get_logger
 
 async def test_connection(config_path):
     """Test basic connection to OpenAI Realtime API"""
+    print("DEBUG: test_connection() starting...")
     logger = get_logger("OpenAITest")
     
     try:
