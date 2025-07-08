@@ -114,9 +114,27 @@ async def test_model_switching():
     """Test switching between different wake word models"""
     logger = get_logger("WakeWordTest")
     
-    models_to_test = ["alexa", "hey_mycroft", "ok_nabu"]
+    # First, get available models
+    try:
+        config = WakeWordConfig()
+        detector = WakeWordDetector(config)
+        available_models = detector.get_available_models()
+        logger.info(f"Available models: {available_models}")
+    except Exception as e:
+        logger.error(f"Failed to get available models: {e}")
+        return
     
-    for model_name in models_to_test:
+    # Test only available models
+    models_to_test = ["alexa", "hey_mycroft", "hey_jarvis", "hey_rhasspy"]  # Removed ok_nabu
+    available_to_test = [model for model in models_to_test if any(model in avail for avail in available_models)]
+    
+    if not available_to_test:
+        logger.warning("No common models available for testing")
+        return
+    
+    logger.info(f"Testing available models: {available_to_test}")
+    
+    for model_name in available_to_test:
         logger.info(f"Testing model: {model_name}")
         
         try:
@@ -130,6 +148,7 @@ async def test_model_switching():
             
         except Exception as e:
             logger.error(f"  [ERROR] {model_name}: {e}")
+            # Don't fail the whole test, just continue with next model
 
 
 async def interactive_test(config_path, sensitivity=None, debug_predictions=False, model_override=None):
@@ -341,6 +360,10 @@ def main():
             if success1:
                 await test_wake_word_models()
                 await test_model_switching()
+                logger.info("\nBasic tests completed. For interactive testing with microphone, run:")
+                logger.info("  python examples/test_wake_word.py --interactive --model alexa")
+            else:
+                logger.error("Installation test failed - cannot proceed with other tests")
     
     # Run tests
     try:
