@@ -65,12 +65,8 @@ class OpenAIRealtimeClient:
         self.function_handlers: Dict[str, Callable] = {}
         
         # Build base session configuration
-        # Keep audio format fields as they may be required by OpenAI API
         self.session_config = {
             "modalities": ["text"] if text_only else ["audio", "text"],
-            "voice": config.voice,
-            "input_audio_format": "pcm16",
-            "output_audio_format": "pcm16", 
             "tools": [],
             "temperature": config.temperature,
             "instructions": personality_prompt,
@@ -79,6 +75,9 @@ class OpenAIRealtimeClient:
         # Only add audio-specific settings if not in text-only mode
         # This prevents OpenAI from expecting audio input in text-only mode
         if not text_only:
+            self.session_config["voice"] = config.voice
+            self.session_config["input_audio_format"] = "pcm16"
+            self.session_config["output_audio_format"] = "pcm16"
             self.session_config["turn_detection"] = {
                 "type": "server_vad",
                 "threshold": 0.5,
@@ -94,8 +93,9 @@ class OpenAIRealtimeClient:
         self.max_reconnect_attempts = 10
         self.reconnect_attempts = 0
         
-        # Audio buffer
+        # Audio buffer tracking
         self.audio_buffer = []
+        self.audio_buffer_duration_ms = 0  # Track duration in milliseconds
         
     async def connect(self) -> bool:
         """
@@ -212,7 +212,16 @@ class OpenAIRealtimeClient:
             self.logger.warning("Cannot send audio: not connected")
             return
             
+        if self.text_only:
+            self.logger.warning("Cannot send audio in text-only mode")
+            return
+            
         try:
+            # Track audio buffer duration (PCM16 at 24kHz, mono)
+            # Each sample is 2 bytes (16-bit), so duration = bytes / 2 / 24000 * 1000 (ms)
+            duration_ms = len(audio_data) / 2 / 24000 * 1000
+            self.audio_buffer_duration_ms += duration_ms
+            
             # Convert to base64
             audio_b64 = base64.b64encode(audio_data).decode()
             
@@ -223,6 +232,7 @@ class OpenAIRealtimeClient:
             }
             
             await self._send_event(event)
+            self.logger.debug(f"Sent {duration_ms:.1f}ms of audio (total: {self.audio_buffer_duration_ms:.1f}ms)")
             
         except Exception as e:
             self.logger.error(f"Error sending audio: {e}")
@@ -232,12 +242,26 @@ class OpenAIRealtimeClient:
         if self.state != ConnectionState.CONNECTED:
             return
             
+        if self.text_only:
+            self.logger.warning("Cannot commit audio in text-only mode")
+            return
+            
         try:
+            # Validate buffer has sufficient audio (minimum 100ms required by OpenAI)
+            if self.audio_buffer_duration_ms < 100:
+                self.logger.warning(f"Audio buffer too small: {self.audio_buffer_duration_ms:.1f}ms (minimum 100ms required)")
+                return
+            
             # Commit audio buffer
             await self._send_event({"type": "input_audio_buffer.commit"})
             
             # Request response
             await self._send_event({"type": "response.create"})
+            
+            self.logger.debug(f"Committed {self.audio_buffer_duration_ms:.1f}ms of audio")
+            
+            # Reset buffer duration tracking
+            self.audio_buffer_duration_ms = 0
             
         except Exception as e:
             self.logger.error(f"Error committing audio: {e}")
@@ -270,9 +294,10 @@ class OpenAIRealtimeClient:
             
             await self._send_event(event)
             
-            # Let server VAD handle response generation for both text and audio modes
-            # Following Billy Bass pattern - never send manual response.create
-            # The server will automatically generate responses when appropriate
+            # For text-only mode, we need to manually request response
+            # For audio mode, let server VAD handle response generation
+            if self.text_only:
+                await self._send_event({"type": "response.create"})
             
         except Exception as e:
             self.logger.error(f"Error sending text: {e}")

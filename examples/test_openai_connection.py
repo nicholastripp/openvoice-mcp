@@ -43,6 +43,14 @@ async def test_connection(config_path):
         logger.info("✅ Successfully connected to OpenAI Realtime API")
         logger.info(f"Session ID: {client.session_id}")
         
+        # Verify text-only mode configuration
+        logger.info("Verifying text-only mode configuration...")
+        session_config = client.session_config
+        if "input_audio_format" in session_config:
+            logger.warning("⚠️  Warning: Audio format fields present in text-only mode")
+        if session_config.get("modalities") != ["text"]:
+            logger.warning(f"⚠️  Warning: Expected modalities ['text'], got {session_config.get('modalities')}")
+        
         # Test text message
         logger.info("Testing text message...")
         await client.send_text("Hello, this is a test message. Please respond with a brief greeting.")
@@ -51,7 +59,7 @@ async def test_connection(config_path):
         await asyncio.sleep(3)
         
         await client.disconnect()
-        logger.info("✅ OpenAI test completed successfully")
+        logger.info("✅ OpenAI text-only test completed successfully")
         
     except Exception as e:
         logger.error(f"❌ OpenAI test failed: {e}")
@@ -147,28 +155,20 @@ async def test_audio_format(config_path):
         
         # Send audio in chunks to simulate streaming (50ms chunks)
         chunk_size = int(sample_rate * 0.05 * 2)  # 50ms of 16-bit audio
-        total_duration_ms = 0
         
+        logger.info("Sending audio in 50ms chunks...")
         for i in range(0, len(audio_bytes), chunk_size):
             chunk = audio_bytes[i:i+chunk_size]
             await client.send_audio(chunk)
             await asyncio.sleep(0.05)  # Wait 50ms between chunks
-            total_duration_ms += 50
             
             # Log progress
             if i % (chunk_size * 4) == 0:  # Every 200ms
-                logger.debug(f"Sent {total_duration_ms}ms of audio")
+                logger.debug(f"Sent {(i/len(audio_bytes)*duration*1000):.0f}ms of audio")
         
-        logger.info(f"Sent total of {total_duration_ms}ms of audio")
+        logger.info(f"Sent total of {duration*1000:.0f}ms of audio")
         
-        # Ensure we have at least 150ms of audio before committing (OpenAI requires 100ms minimum)
-        if total_duration_ms < 150:
-            additional_wait = (150 - total_duration_ms) / 1000.0
-            logger.info(f"Waiting additional {additional_wait:.1f}s to ensure sufficient buffer")
-            await asyncio.sleep(additional_wait)
-        
-        # Small additional delay before committing
-        await asyncio.sleep(0.1)
+        # Commit audio buffer (client now validates minimum duration)
         logger.info("Committing audio buffer...")
         await client.commit_audio()
         
