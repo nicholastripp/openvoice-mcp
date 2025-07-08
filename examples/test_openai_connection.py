@@ -50,6 +50,10 @@ async def test_connection(config_path):
             logger.warning("⚠️  Warning: Audio format fields present in text-only mode")
         if session_config.get("modalities") != ["text"]:
             logger.warning(f"⚠️  Warning: Expected modalities ['text'], got {session_config.get('modalities')}")
+        if session_config.get("turn_detection") is not None:
+            logger.warning(f"⚠️  Warning: Expected turn_detection=None in text-only mode, got {session_config.get('turn_detection')}")
+        else:
+            logger.info("✅ VAD properly disabled in text-only mode")
         
         # Test text message
         logger.info("Testing text message...")

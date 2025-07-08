@@ -72,9 +72,9 @@ class OpenAIRealtimeClient:
             "instructions": personality_prompt,
         }
         
-        # Only add audio-specific settings if not in text-only mode
-        # This prevents OpenAI from expecting audio input in text-only mode
+        # Configure audio vs text-only mode
         if not text_only:
+            # Audio mode: include all audio-related settings
             self.session_config["voice"] = config.voice
             self.session_config["input_audio_format"] = "pcm16"
             self.session_config["output_audio_format"] = "pcm16"
@@ -87,6 +87,9 @@ class OpenAIRealtimeClient:
             self.session_config["input_audio_transcription"] = {
                 "model": "whisper-1"
             }
+        else:
+            # Text-only mode: explicitly disable VAD to prevent audio buffer operations
+            self.session_config["turn_detection"] = None
         
         # Reconnection settings
         self.reconnect_delay = 5.0

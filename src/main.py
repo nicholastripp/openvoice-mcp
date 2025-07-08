@@ -234,8 +234,8 @@ class VoiceAssistant:
             
         self.session_active = False
         
-        # Commit any pending audio to OpenAI
-        if self.openai_client:
+        # Commit any pending audio to OpenAI (only in audio mode)
+        if self.openai_client and not self.openai_client.text_only:
             await self.openai_client.commit_audio()
         
         self.logger.info("Voice session ended")
@@ -298,8 +298,8 @@ class VoiceAssistant:
         """Handle user speech stopped"""
         self.logger.debug("User speech stopped")
         
-        # Commit audio buffer to trigger OpenAI response
-        if self.openai_client:
+        # Commit audio buffer to trigger OpenAI response (only in audio mode)
+        if self.openai_client and not self.openai_client.text_only:
             await self.openai_client.commit_audio()
     
     async def _on_openai_error(self, error_data: dict) -> None:
