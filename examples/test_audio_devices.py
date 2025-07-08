@@ -141,7 +141,7 @@ def test_input_levels(device_id=None, duration=10, sample_rate=48000):
     max_level = 0.0
     start_time = time.time()
     
-    def audio_callback(indata, frames, time, status):
+    def audio_callback(indata, frames, time_info, status):
         nonlocal max_level
         if status:
             logger.warning(f"Audio callback status: {status}")
@@ -151,11 +151,12 @@ def test_input_levels(device_id=None, duration=10, sample_rate=48000):
         audio_levels.append(level)
         max_level = max(max_level, level)
         
-        # Real-time feedback with visual bar
+        # Real-time feedback with visual bar (use Python's time module)
+        import time
         current_time = time.time() - start_time
         bar_length = int(level * 50)  # Scale to 50 chars
-        bar = "█" * bar_length + "░" * (50 - bar_length)
-        print(f"\r{current_time:5.1f}s │{bar}│ {level:.6f} (max: {max_level:.6f})", end="")
+        bar = "#" * bar_length + "." * (50 - bar_length)  # Use ASCII chars for compatibility
+        print(f"\r{current_time:5.1f}s |{bar}| {level:.6f} (max: {max_level:.6f})", end="")
     
     try:
         # Start audio stream
