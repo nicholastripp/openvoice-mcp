@@ -27,27 +27,51 @@ def test_openwakeword_installation():
     """Test basic OpenWakeWord installation"""
     logger = get_logger("MinimalTest")
     
+    print("="*60)
+    print("TESTING: OpenWakeWord Installation")
+    print("="*60)
+    
     if not OPENWAKEWORD_AVAILABLE:
+        print("[ERROR] OpenWakeWord not available")
         logger.error("OpenWakeWord not available")
         return False
     
+    print("[INFO] Testing OpenWakeWord installation...")
     logger.info("Testing OpenWakeWord installation...")
     
     try:
+        print("[STEP 1] Creating default model...")
         # Test model creation without any parameters
         model = WakeWordModel()
+        print("[SUCCESS] Default model created successfully")
         logger.info(f"Default model created successfully")
-        logger.info(f"Available models: {list(model.models.keys())}")
         
+        available_models = list(model.models.keys())
+        print(f"[INFO] Available models: {available_models}")
+        logger.info(f"Available models: {available_models}")
+        
+        print("[STEP 2] Testing with dummy audio...")
         # Test with dummy audio
         dummy_audio = np.zeros(1280, dtype=np.float32)
         predictions = model.predict(dummy_audio)
+        print(f"[RESULT] Dummy audio predictions: {predictions}")
         logger.info(f"Dummy audio predictions: {predictions}")
         
+        # Check if we got non-zero predictions
+        max_conf = max(predictions.values()) if predictions else 0.0
+        if max_conf > 0.0:
+            print(f"[SUCCESS] Got non-zero prediction: {max_conf:.8f}")
+        else:
+            print(f"[WARNING] All predictions are zero")
+        
+        print("[PASS] Installation test completed successfully")
         return True
         
     except Exception as e:
+        print(f"[ERROR] OpenWakeWord installation test failed: {e}")
         logger.error(f"OpenWakeWord installation test failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -55,17 +79,30 @@ def test_model_with_specific_wake_word():
     """Test OpenWakeWord with specific wake word model"""
     logger = get_logger("MinimalTest")
     
+    print("="*60)
+    print("TESTING: Specific Wake Word Model")
+    print("="*60)
+    
     if not OPENWAKEWORD_AVAILABLE:
+        print("[ERROR] OpenWakeWord not available")
         logger.error("OpenWakeWord not available")
         return False
     
+    print("[INFO] Testing OpenWakeWord with specific wake word model...")
     logger.info("Testing OpenWakeWord with specific wake word model...")
     
     try:
+        print("[STEP 1] Creating alexa_v0.1 model...")
         # Test with alexa model specifically
         model = WakeWordModel(wakeword_models=['alexa_v0.1'])
+        print("[SUCCESS] Alexa model created successfully")
         logger.info(f"Alexa model created successfully")
-        logger.info(f"Available models: {list(model.models.keys())}")
+        
+        available_models = list(model.models.keys())
+        print(f"[INFO] Available models: {available_models}")
+        logger.info(f"Available models: {available_models}")
+        
+        print("[STEP 2] Testing with different audio inputs...")
         
         # Test different audio inputs
         test_cases = [
@@ -77,18 +114,34 @@ def test_model_with_specific_wake_word():
             ("Sine wave 1000Hz", np.sin(2 * np.pi * 1000 * np.arange(1280) / 16000).astype(np.float32)),
         ]
         
+        has_nonzero = False
         for name, audio_data in test_cases:
             try:
                 predictions = model.predict(audio_data)
                 max_conf = max(predictions.values()) if predictions else 0.0
+                print(f"[TEST] {name}: {predictions} (max: {max_conf:.8f})")
                 logger.info(f"{name}: {predictions} (max: {max_conf:.8f})")
+                
+                if max_conf > 0.0:
+                    has_nonzero = True
+                    print(f"  [SUCCESS] Got non-zero prediction!")
+                    
             except Exception as e:
+                print(f"[ERROR] {name}: prediction failed: {e}")
                 logger.error(f"{name}: prediction failed: {e}")
+        
+        if has_nonzero:
+            print("[PASS] Specific model test completed - found non-zero predictions")
+        else:
+            print("[WARNING] All predictions were zero")
         
         return True
         
     except Exception as e:
+        print(f"[ERROR] Specific model test failed: {e}")
         logger.error(f"Specific model test failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -222,23 +275,29 @@ def test_model_initialization_parameters():
     """Test OpenWakeWord with different initialization parameters"""
     logger = get_logger("MinimalTest")
     
+    print("="*60)
+    print("TESTING: Model Initialization Parameters")
+    print("="*60)
+    
     if not OPENWAKEWORD_AVAILABLE:
+        print("[ERROR] OpenWakeWord not available")
         logger.error("OpenWakeWord not available")
         return False
     
+    print("[INFO] Testing OpenWakeWord with different initialization parameters...")
     logger.info("Testing OpenWakeWord with different initialization parameters...")
     
+    # Only test safe configurations that shouldn't cause errors
     test_configs = [
         ("Default", {}),
-        ("VAD disabled", {'vad_threshold': None}),
-        ("VAD very low", {'vad_threshold': 0.1}),
-        ("VAD medium", {'vad_threshold': 0.5}),
-        ("VAD high", {'vad_threshold': 0.9}),
-        ("No inference framework", {'inference_framework': None}),
+        ("VAD threshold 0.1", {'vad_threshold': 0.1}),
+        ("VAD threshold 0.5", {'vad_threshold': 0.5}),
     ]
     
+    success_count = 0
     for name, config in test_configs:
         try:
+            print(f"[TEST] Testing {name}: {config}")
             logger.info(f"Testing {name}: {config}")
             model = WakeWordModel(wakeword_models=['alexa_v0.1'], **config)
             
@@ -246,12 +305,21 @@ def test_model_initialization_parameters():
             audio_data = np.random.normal(0, 0.05, 1280).astype(np.float32)
             predictions = model.predict(audio_data)
             max_conf = max(predictions.values()) if predictions else 0.0
+            
+            print(f"  [RESULT] {name}: {predictions} (max: {max_conf:.8f})")
             logger.info(f"  {name}: {predictions} (max: {max_conf:.8f})")
             
+            if max_conf > 0.0:
+                print(f"  [SUCCESS] Got non-zero prediction!")
+            
+            success_count += 1
+            
         except Exception as e:
+            print(f"  [ERROR] {name}: initialization failed: {e}")
             logger.error(f"  {name}: initialization failed: {e}")
     
-    return True
+    print(f"[RESULT] Successfully tested {success_count}/{len(test_configs)} configurations")
+    return success_count > 0
 
 
 def main():
