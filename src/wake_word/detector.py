@@ -367,12 +367,28 @@ class WakeWordDetector:
             silence_chunk = np.zeros(silence_samples, dtype=np.float32)
             
             # Send silence in proper 80ms chunks to initialize the model
+            chunks_sent = 0
             for i in range(0, len(silence_chunk), self.chunk_size):
                 chunk = silence_chunk[i:i + self.chunk_size]
                 if len(chunk) == self.chunk_size:  # Only send complete chunks
-                    self.model.predict(chunk)
+                    try:
+                        init_predictions = self.model.predict(chunk)
+                        chunks_sent += 1
+                        self.logger.debug(f"Buffer init chunk {chunks_sent}: predictions={init_predictions}")
+                    except Exception as e:
+                        self.logger.error(f"Error during buffer initialization: {e}")
+                        raise
             
-            self.logger.info(f"[OK] Model buffers initialized with {silence_duration}s of silence")
+            self.logger.info(f"[OK] Model buffers initialized with {silence_duration}s of silence ({chunks_sent} chunks)")
+            
+            # Test one more chunk to make sure the model is ready
+            try:
+                test_chunk = np.zeros(self.chunk_size, dtype=np.float32)
+                test_predictions = self.model.predict(test_chunk)
+                self.logger.info(f"[TEST] Post-init test prediction: {test_predictions}")
+            except Exception as e:
+                self.logger.error(f"[ERROR] Post-init test failed: {e}")
+                raise
             
         except Exception as e:
             self.logger.error(f"[ERROR] Failed to load wake word model '{self.model_name}': {e}")
@@ -444,19 +460,33 @@ class WakeWordDetector:
                 if chunks_processed % 100 == 0:
                     self.logger.debug(f"Detection loop processed {chunks_processed} chunks, queue size: {self.audio_queue.qsize()}")
                 
-                # Process with OpenWakeWord
-                predictions = self.model.predict(audio_chunk)
+                # Process with OpenWakeWord - ADD COMPREHENSIVE DEBUGGING
+                try:
+                    print(f"   DETECTOR: Calling model.predict() with chunk: samples={len(audio_chunk)}, dtype={audio_chunk.dtype}")
+                    predictions = self.model.predict(audio_chunk)
+                    print(f"   DETECTOR: model.predict() returned: {predictions}")
+                except Exception as e:
+                    print(f"   DETECTOR: ERROR in model.predict(): {e}")
+                    self.logger.error(f"OpenWakeWord prediction error: {e}")
+                    continue
                 
                 # Debug: Log all predictions to understand what's happening
-                max_confidence = max(predictions.values()) if predictions else 0.0
-                
-                # Show prediction scores periodically and for any significant activity
-                if chunks_processed % 100 == 0 or max_confidence > 0.05:
-                    formatted_predictions = {k: f"{v:.3f}" for k, v in predictions.items()}
-                    print(f"   DETECTOR: OpenWakeWord predictions: {formatted_predictions} (max: {max_confidence:.3f})")
-                
-                if max_confidence > 0.1:  # Log any significant predictions
-                    self.logger.debug(f"OpenWakeWord predictions: {predictions}")
+                if predictions:
+                    max_confidence = max(predictions.values()) if predictions else 0.0
+                    print(f"   DETECTOR: OpenWakeWord predictions: {predictions} (max: {max_confidence:.3f})")
+                    
+                    # Show prediction scores periodically and for any significant activity
+                    if chunks_processed % 100 == 0 or max_confidence > 0.05:
+                        formatted_predictions = {k: f"{v:.3f}" for k, v in predictions.items()}
+                        print(f"   DETECTOR: OpenWakeWord predictions: {formatted_predictions} (max: {max_confidence:.3f})")
+                    
+                    if max_confidence > 0.1:  # Log any significant predictions
+                        self.logger.debug(f"OpenWakeWord predictions: {predictions}")
+                else:
+                    print(f"   DETECTOR: OpenWakeWord returned EMPTY predictions!")
+                    if chunks_processed % 50 == 0:  # Log empty predictions periodically
+                        self.logger.warning(f"OpenWakeWord predictions are empty at chunk {chunks_processed}")
+                    continue
                 
                 # Check for wake word detection
                 for model_name, confidence in predictions.items():
