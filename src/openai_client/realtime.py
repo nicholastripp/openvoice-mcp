@@ -75,7 +75,7 @@ class OpenAIRealtimeClient:
         
         # Configure audio vs text-only mode
         if not text_only:
-            # Audio mode: include all audio-related settings
+            # Audio mode: include all audio-related settings with exact OpenAI specifications
             self.session_config["voice"] = config.voice
             self.session_config["input_audio_format"] = "pcm16"
             self.session_config["output_audio_format"] = "pcm16"
@@ -88,6 +88,9 @@ class OpenAIRealtimeClient:
             self.session_config["input_audio_transcription"] = {
                 "model": "whisper-1"
             }
+            
+            # Log audio configuration for debugging
+            self.logger.info(f"Audio session config: input_format={self.session_config['input_audio_format']}, output_format={self.session_config['output_audio_format']}")
         else:
             # Text-only mode: explicitly disable VAD to prevent audio buffer operations
             self.session_config["turn_detection"] = None
@@ -255,6 +258,11 @@ class OpenAIRealtimeClient:
             # Validate base64 encoding
             if not self._validate_base64_audio(audio_b64, len(audio_data)):
                 self.logger.error("Base64 audio validation failed - skipping audio data")
+                return
+            
+            # Test base64 roundtrip integrity
+            if not self._test_base64_roundtrip(audio_data, audio_b64):
+                self.logger.error("Base64 roundtrip test failed - skipping audio data")
                 return
             
             # Send audio event
@@ -636,6 +644,9 @@ class OpenAIRealtimeClient:
             avg_amplitude = sum(abs(sample) for sample in samples) / len(samples)
             self.logger.debug(f"Audio validation: {len(audio_data)} bytes, {sample_count} samples, max_amp={max_amplitude}, avg_amp={avg_amplitude:.1f}")
             
+            # Add raw audio inspection - log first few bytes and samples
+            self._log_raw_audio_inspection(audio_data, samples)
+            
             return True
             
         except Exception as e:
@@ -675,4 +686,174 @@ class OpenAIRealtimeClient:
             
         except Exception as e:
             self.logger.error(f"Base64 validation error: {e}")
+            return False
+    
+    def _log_raw_audio_inspection(self, audio_data: bytes, samples: tuple) -> None:
+        """
+        Log detailed raw audio inspection for debugging
+        
+        Args:
+            audio_data: Raw audio bytes
+            samples: Unpacked audio samples
+        """
+        try:
+            # Log first 20 bytes in hex format
+            hex_bytes = ' '.join(f'{b:02x}' for b in audio_data[:20])
+            self.logger.debug(f"Raw audio bytes (first 20): {hex_bytes}")
+            
+            # Log first 10 samples as signed 16-bit integers
+            first_samples = samples[:10]
+            self.logger.debug(f"First 10 samples: {list(first_samples)}")
+            
+            # Check byte order by examining sample values
+            import struct
+            
+            # Test little-endian interpretation (what we should have)
+            le_samples = struct.unpack('<10h', audio_data[:20])
+            self.logger.debug(f"Little-endian interpretation: {list(le_samples)}")
+            
+            # Test big-endian interpretation (to compare)
+            be_samples = struct.unpack('>10h', audio_data[:20])
+            self.logger.debug(f"Big-endian interpretation: {list(be_samples)}")
+            
+            # Check if samples are reasonable for PCM16
+            reasonable_samples = sum(1 for s in first_samples if -32768 <= s <= 32767)
+            self.logger.debug(f"Samples in valid PCM16 range: {reasonable_samples}/10")
+            
+            # Check for obvious patterns that might indicate format issues
+            if all(s == 0 for s in first_samples):
+                self.logger.warning("First 10 samples are all zero")
+            elif all(abs(s) < 100 for s in first_samples):
+                self.logger.warning("First 10 samples are very quiet")
+            elif any(abs(s) > 30000 for s in first_samples):
+                self.logger.warning("Some samples are very loud (possible clipping)")
+            
+            # Check for alternating pattern that might indicate channel issues
+            if len(first_samples) >= 4:
+                even_samples = first_samples[::2]
+                odd_samples = first_samples[1::2]
+                if all(s == 0 for s in even_samples) or all(s == 0 for s in odd_samples):
+                    self.logger.warning("Alternating samples are zero (possible stereo/mono confusion)")
+            
+        except Exception as e:
+            self.logger.error(f"Error in raw audio inspection: {e}")
+    
+    def _create_minimal_test_audio(self) -> bytes:
+        """
+        Create minimal test audio with exact OpenAI PCM16 specification
+        
+        Returns:
+            PCM16 audio data as bytes (24kHz, mono, little-endian)
+        """
+        try:
+            import struct
+            import math
+            
+            # Create exactly 500ms of audio (well above 100ms minimum)
+            sample_rate = 24000
+            duration_seconds = 0.5
+            frequency = 440.0  # A4 note
+            
+            # Generate samples
+            samples = []
+            for i in range(int(sample_rate * duration_seconds)):
+                t = i / sample_rate
+                # Generate pure sine wave
+                sample_value = math.sin(2 * math.pi * frequency * t) * 0.5  # 50% amplitude
+                # Convert to 16-bit signed integer
+                sample_int = int(sample_value * 32767)
+                # Clamp to valid range
+                sample_int = max(-32768, min(32767, sample_int))
+                samples.append(sample_int)
+            
+            # Pack as little-endian 16-bit signed integers
+            audio_data = struct.pack('<' + 'h' * len(samples), *samples)
+            
+            self.logger.info(f"Created minimal test audio: {len(audio_data)} bytes, {len(samples)} samples, {duration_seconds}s at {sample_rate}Hz")
+            
+            return audio_data
+            
+        except Exception as e:
+            self.logger.error(f"Error creating minimal test audio: {e}")
+            return b''
+    
+    def _test_base64_roundtrip(self, original_audio: bytes, audio_b64: str) -> bool:
+        """
+        Test base64 encoding/decoding roundtrip integrity
+        
+        Args:
+            original_audio: Original audio bytes
+            audio_b64: Base64 encoded audio string
+            
+        Returns:
+            True if roundtrip is successful, False otherwise
+        """
+        try:
+            # Decode the base64 back to bytes
+            decoded_audio = base64.b64decode(audio_b64)
+            
+            # Compare with original
+            if decoded_audio != original_audio:
+                self.logger.error(f"Base64 roundtrip failed: original={len(original_audio)} bytes, decoded={len(decoded_audio)} bytes")
+                
+                # Log first few bytes for comparison
+                if len(original_audio) >= 10 and len(decoded_audio) >= 10:
+                    orig_hex = ' '.join(f'{b:02x}' for b in original_audio[:10])
+                    dec_hex = ' '.join(f'{b:02x}' for b in decoded_audio[:10])
+                    self.logger.error(f"Original first 10 bytes: {orig_hex}")
+                    self.logger.error(f"Decoded first 10 bytes:  {dec_hex}")
+                
+                return False
+            
+            # Test base64 string validity
+            if not self._validate_base64_string(audio_b64):
+                self.logger.error("Base64 string validation failed")
+                return False
+            
+            self.logger.debug(f"Base64 roundtrip successful: {len(original_audio)} bytes ↔ {len(audio_b64)} chars")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Base64 roundtrip test error: {e}")
+            return False
+    
+    def _validate_base64_string(self, b64_string: str) -> bool:
+        """
+        Validate base64 string format
+        
+        Args:
+            b64_string: Base64 string to validate
+            
+        Returns:
+            True if valid base64 string, False otherwise
+        """
+        try:
+            # Check if string contains only valid base64 characters
+            import string
+            valid_chars = string.ascii_letters + string.digits + '+/='
+            
+            if not all(c in valid_chars for c in b64_string):
+                self.logger.error("Base64 string contains invalid characters")
+                return False
+            
+            # Check if length is multiple of 4 (base64 requirement)
+            if len(b64_string) % 4 != 0:
+                self.logger.error(f"Base64 string length ({len(b64_string)}) is not multiple of 4")
+                return False
+            
+            # Check padding
+            padding_count = b64_string.count('=')
+            if padding_count > 2:
+                self.logger.error(f"Base64 string has too much padding ({padding_count})")
+                return False
+            
+            # Padding should only be at the end
+            if '=' in b64_string[:-2]:
+                self.logger.error("Base64 string has padding in wrong position")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Base64 string validation error: {e}")
             return False
