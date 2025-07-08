@@ -239,6 +239,10 @@ async def interactive_test(config_path, sensitivity=None, debug_predictions=Fals
         if audio_chunks_processed % 100 == 0:  # Every 100 chunks (~5 seconds)
             print(f"   Audio processing: {audio_chunks_processed} chunks, current level: {audio_level:.3f}")
         
+        # Debug: Log when sending audio to detector
+        if audio_chunks_processed % 200 == 0:  # Every 200 chunks
+            logger.debug(f"Sending audio to detector: chunk {audio_chunks_processed}, level {audio_level:.3f}, bytes {len(audio_data)}")
+        
         detector.process_audio(audio_data, input_sample_rate=config.audio.sample_rate)
     
     audio_capture.add_callback(audio_callback)
@@ -254,6 +258,12 @@ async def interactive_test(config_path, sensitivity=None, debug_predictions=Fals
     print(f"Sensitivity: {config.wake_word.sensitivity}")
     print(f"Audio device: {config.audio.input_device}")
     print(f"Sample rate: {config.audio.sample_rate}Hz")
+    
+    # Debug: Check detection thread status
+    thread_status = "running" if detector.detection_thread and detector.detection_thread.is_alive() else "not running"
+    print(f"Detection thread: {thread_status}")
+    print(f"Queue size: {detector.audio_queue.qsize()}")
+    
     print(f"Say '{config.wake_word.model}' to test detection")
     print("Press Ctrl+C to stop")
     if config.wake_word.sensitivity > 0.4:

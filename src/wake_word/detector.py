@@ -126,7 +126,11 @@ class WakeWordDetector:
             input_sample_rate: Sample rate of input audio (default 24000 for OpenAI)
         """
         if not self.is_running:
+            self.logger.debug("process_audio called but detector not running")
             return
+        
+        # Debug: Log that we're receiving audio
+        self.logger.debug(f"process_audio called: {len(audio_data)} bytes at {input_sample_rate}Hz")
         
         try:
             # Convert bytes to numpy array (assuming PCM16)
@@ -150,6 +154,7 @@ class WakeWordDetector:
             # Only process audio with sufficient activity to prevent false positives
             if audio_level > 0.005:  # Minimum threshold for legitimate audio activity
                 self.audio_queue.put(audio_float, block=False)
+                self.logger.debug(f"Queued audio for processing: level={audio_level:.3f}, samples={len(audio_float)}, queue_size={self.audio_queue.qsize()}")
                 
                 # Debug: Log audio activity
                 if audio_level > 0.01:  # Only log when there's significant audio
