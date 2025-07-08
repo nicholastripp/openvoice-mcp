@@ -64,38 +64,26 @@ class OpenAIRealtimeClient:
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.function_handlers: Dict[str, Callable] = {}
         
-        # Session configuration - only include relevant fields for each mode
-        if text_only:
-            # Text-only mode: minimal configuration with no audio-related fields
-            # This prevents OpenAI from attempting any audio buffer operations
-            self.session_config = {
-                "modalities": ["text"],
-                "voice": config.voice,
-                "tools": [],
-                "temperature": config.temperature,
-                "instructions": personality_prompt,
-                "turn_detection": None  # Explicitly disable VAD
+        # Session configuration following Billy Bass pattern
+        # Keep audio format fields even in text-only mode as OpenAI expects them
+        self.session_config = {
+            "modalities": ["text"] if text_only else ["audio", "text"],
+            "voice": config.voice,
+            "input_audio_format": "pcm16",
+            "output_audio_format": "pcm16", 
+            "tools": [],
+            "temperature": config.temperature,
+            "instructions": personality_prompt,
+            "turn_detection": {
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 200
+            },
+            "input_audio_transcription": {
+                "model": "whisper-1"
             }
-        else:
-            # Audio mode: full configuration with all audio-related fields
-            self.session_config = {
-                "modalities": ["audio", "text"],
-                "voice": config.voice,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "tools": [],
-                "temperature": config.temperature,
-                "instructions": personality_prompt,
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 200
-                },
-                "input_audio_transcription": {
-                    "model": "whisper-1"
-                }
-            }
+        }
         
         # Reconnection settings
         self.reconnect_delay = 5.0
@@ -278,17 +266,9 @@ class OpenAIRealtimeClient:
             
             await self._send_event(event)
             
-            # In text-only mode, we disabled VAD (turn_detection: None)
-            # so we need to manually request a response
-            if self.text_only:
-                # Send response.create to trigger OpenAI response
-                # This is safe in text-only mode since no audio buffer exists
-                await self._send_event({"type": "response.create"})
-            else:
-                # In audio mode with VAD enabled, the server will automatically 
-                # generate responses when it detects the end of user input
-                # Do NOT send response.create as it will try to commit audio buffer
-                pass
+            # Let server VAD handle response generation for both text and audio modes
+            # Following Billy Bass pattern - never send manual response.create
+            # The server will automatically generate responses when appropriate
             
         except Exception as e:
             self.logger.error(f"Error sending text: {e}")
