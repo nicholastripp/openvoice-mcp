@@ -132,7 +132,7 @@ async def test_model_switching():
             logger.error(f"  [ERROR] {model_name}: {e}")
 
 
-async def interactive_test(config_path, sensitivity=None, debug_predictions=False):
+async def interactive_test(config_path, sensitivity=None, debug_predictions=False, model_override=None):
     """Interactive wake word testing"""
     logger = get_logger("WakeWordTest")
     
@@ -142,6 +142,11 @@ async def interactive_test(config_path, sensitivity=None, debug_predictions=Fals
     if sensitivity is not None:
         config.wake_word.sensitivity = sensitivity
         print(f"Overriding sensitivity to {sensitivity}")
+    
+    # Override model if specified
+    if model_override is not None:
+        config.wake_word.model = model_override
+        print(f"Overriding model to {model_override}")
     
     # Enable debug predictions if requested
     if debug_predictions:
@@ -178,10 +183,11 @@ async def interactive_test(config_path, sensitivity=None, debug_predictions=Fals
         # Debug: Show that callback is being called
         logger.debug(f"Detection callback called: count={detection_count}, confidence={confidence:.3f}")
         
-        print(f"\n[DETECTED] WAKE WORD #{detection_count}: {model_name} (confidence: {confidence:.3f})")
-        print(f"   Detection time: {current_time - last_detection_time:.1f}s since last")
-        print(f"   Cooldown: {config.wake_word.cooldown}s - next detection possible at {current_time + config.wake_word.cooldown:.1f}")
-        print("   Listening for next detection...")
+        print(f"\n*** [DETECTED] WAKE WORD #{detection_count}: {model_name} (confidence: {confidence:.3f}) ***")
+        print(f"    Detection time: {current_time - last_detection_time:.1f}s since last")
+        print(f"    Cooldown: {config.wake_word.cooldown}s - next detection possible at {current_time + config.wake_word.cooldown:.1f}")
+        print("    Listening for next detection...")
+        print("*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***")
         
         last_detection_time = current_time
     
@@ -274,9 +280,12 @@ async def interactive_test(config_path, sensitivity=None, debug_predictions=Fals
     
     print(f"Say '{config.wake_word.model}' to test detection")
     print("Press Ctrl+C to stop")
-    if config.wake_word.sensitivity > 0.4:
-        print(f"TIP: If no detections, try lower sensitivity: --sensitivity 0.3")
+    if config.wake_word.sensitivity > 0.3:
+        print(f"TIP: If no detections, try lower sensitivity: --sensitivity 0.1")
+    elif config.wake_word.sensitivity > 0.1:
+        print(f"TIP: For very permissive testing, try: --sensitivity 0.05")
     print("\nListening...")
+    print(f"DEBUG: Will show prediction scores every 100 chunks and for confidence > 0.05")
     
     try:
         import time
@@ -286,7 +295,7 @@ async def interactive_test(config_path, sensitivity=None, debug_predictions=Fals
             # Show periodic status
             current_time = time.time()
             if current_time - last_status_time > 5:  # Every 5 seconds
-                print(f"   Still listening... ({detection_count} detections so far, last: {current_time - last_detection_time:.1f}s ago)")
+                print(f"   Still listening... ({detection_count} detections so far, last: {current_time - last_detection_time:.1f}s ago, sensitivity: {config.wake_word.sensitivity:.3f})")
                 last_status_time = current_time
     except KeyboardInterrupt:
         print("\nStopping...")
@@ -302,7 +311,8 @@ def main():
     parser.add_argument("--detection", type=int, metavar="DURATION", help="Test detection for N seconds")
     parser.add_argument("--switch", action="store_true", help="Test model switching")
     parser.add_argument("--interactive", action="store_true", help="Interactive testing mode")
-    parser.add_argument("--sensitivity", type=float, help="Override wake word sensitivity (0.0-1.0)")
+    parser.add_argument("--sensitivity", type=float, help="Override wake word sensitivity (0.0-1.0, try 0.1 for permissive testing)")
+    parser.add_argument("--model", type=str, help="Override wake word model (alexa, hey_jarvis, hey_mycroft, hey_rhasspy, ok_nabu)")
     parser.add_argument("--debug-predictions", action="store_true", help="Show all OpenWakeWord predictions")
     parser.add_argument("--log-level", default="INFO", help="Set logging level (DEBUG, INFO, WARNING, ERROR)")
     
@@ -321,7 +331,7 @@ def main():
         elif args.switch:
             await test_model_switching()
         elif args.interactive:
-            await interactive_test(args.config, args.sensitivity, args.debug_predictions)
+            await interactive_test(args.config, args.sensitivity, args.debug_predictions, args.model)
         else:
             # Run basic tests
             logger = get_logger("WakeWordTest")

@@ -77,6 +77,7 @@ class WakeWordDetector:
             self.is_running = True
             self.startup_time = time.time()
             self.logger.info(f"Wake word detection started with model: {self.model_name}")
+            self.logger.info(f"Audio parameters: {self.sample_rate}Hz, chunk_size={self.chunk_size} samples ({self.chunk_size/self.sample_rate*1000:.1f}ms)")
             
         except Exception as e:
             self.logger.error(f"Failed to start wake word detection: {e}")
@@ -333,6 +334,7 @@ class WakeWordDetector:
             
             self.logger.info(f"[OK] Successfully loaded model: {actual_model_name}")
             self.logger.info(f"Available models: {list(self.model.models.keys())}")
+            self.logger.info(f"Model expects: {self.sample_rate}Hz audio in {self.chunk_size} sample chunks")
             
         except Exception as e:
             self.logger.error(f"[ERROR] Failed to load wake word model '{self.model_name}': {e}")
@@ -397,7 +399,8 @@ class WakeWordDetector:
                 
                 # Immediate debug feedback for OpenWakeWord processing
                 if chunks_processed % 50 == 0:  # Every 50 chunks
-                    print(f"   DETECTOR: OpenWakeWord processing chunk #{chunks_processed}, queue_size={self.audio_queue.qsize()}")
+                    chunk_length_ms = len(audio_chunk) / self.sample_rate * 1000
+                    print(f"   DETECTOR: OpenWakeWord processing chunk #{chunks_processed}, samples={len(audio_chunk)}, duration={chunk_length_ms:.1f}ms, queue_size={self.audio_queue.qsize()}")
                 
                 # Debug: Log queue processing periodically
                 if chunks_processed % 100 == 0:
@@ -408,22 +411,36 @@ class WakeWordDetector:
                 
                 # Debug: Log all predictions to understand what's happening
                 max_confidence = max(predictions.values()) if predictions else 0.0
+                
+                # Show prediction scores periodically and for any significant activity
+                if chunks_processed % 100 == 0 or max_confidence > 0.05:
+                    formatted_predictions = {k: f"{v:.3f}" for k, v in predictions.items()}
+                    print(f"   DETECTOR: OpenWakeWord predictions: {formatted_predictions} (max: {max_confidence:.3f})")
+                
                 if max_confidence > 0.1:  # Log any significant predictions
                     self.logger.debug(f"OpenWakeWord predictions: {predictions}")
                 
                 # Check for wake word detection
                 for model_name, confidence in predictions.items():
+                    # Log any confidence above threshold for debugging
+                    if confidence > self.sensitivity * 0.3:  # Log at 30% of sensitivity
+                        print(f"   DETECTOR: {model_name} confidence {confidence:.3f} (threshold: {self.sensitivity:.3f}, above 30%)")
+                    
                     if confidence >= self.sensitivity:
                         current_time = time.time()
                         
+                        print(f"   DETECTOR: DETECTION CANDIDATE: {model_name} confidence {confidence:.3f} >= {self.sensitivity:.3f}")
+                        
                         # Skip detections in first 3 seconds to prevent startup false positives
                         if current_time - self.startup_time < 3.0:
+                            print(f"   DETECTOR: Skipping detection during startup period: {current_time - self.startup_time:.1f}s")
                             self.logger.debug(f"Skipping detection during startup period: {current_time - self.startup_time:.1f}s")
                             continue
                         
                         # Check cooldown to prevent rapid re-triggers
                         time_since_last = current_time - self.last_detection_time
                         if time_since_last >= self.detection_cooldown:
+                            print(f"   DETECTOR: WAKE WORD DETECTED! {model_name} (confidence: {confidence:.3f})")
                             self.logger.info(f"Wake word detected: {model_name} (confidence: {confidence:.3f})")
                             self.logger.debug(f"Cooldown passed: {time_since_last:.1f}s >= {self.detection_cooldown}s")
                             self.last_detection_time = current_time
@@ -435,6 +452,7 @@ class WakeWordDetector:
                                 except Exception as e:
                                     self.logger.error(f"Error in detection callback: {e}")
                         else:
+                            print(f"   DETECTOR: Detection in cooldown: {model_name} (confidence: {confidence:.3f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
                             self.logger.debug(f"Wake word detected but in cooldown: {model_name} (confidence: {confidence:.3f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
                 
             except Exception as e:
@@ -472,7 +490,8 @@ class WakeWordDetector:
             'sensitivity': self.sensitivity,
             'vad_enabled': self.vad_enabled,
             'sample_rate': self.sample_rate,
-            'chunk_size': self.chunk_size
+            'chunk_size': self.chunk_size,
+            'chunk_duration_ms': self.chunk_size / self.sample_rate * 1000
         }
     
     @staticmethod
