@@ -42,6 +42,10 @@ class WakeWordDetector:
         self.audio_queue = Queue()
         self.detection_callbacks = []
         
+        # Audio chunk buffer for accumulating to 80ms (1280 samples at 16kHz)
+        self.audio_buffer = np.array([], dtype=np.float32)
+        self.target_chunk_size = self.chunk_size  # 1280 samples (80ms at 16kHz)
+        
         # Threading
         self.detection_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
@@ -55,8 +59,8 @@ class WakeWordDetector:
         self.last_detection_time = 0
         self.detection_cooldown = config.cooldown
         
-        # Startup tracking to prevent immediate false positives
-        self.startup_time = 0
+        # Remove startup time tracking (replaced with VAD and buffer initialization)
+        # self.startup_time = 0  # No longer needed
     
     async def start(self) -> None:
         """Start wake word detection"""
@@ -75,9 +79,9 @@ class WakeWordDetector:
             self.detection_thread.start()
             
             self.is_running = True
-            self.startup_time = time.time()
             self.logger.info(f"Wake word detection started with model: {self.model_name}")
             self.logger.info(f"Audio parameters: {self.sample_rate}Hz, chunk_size={self.chunk_size} samples ({self.chunk_size/self.sample_rate*1000:.1f}ms)")
+            self.logger.info("Ready for immediate wake word detection (no startup delay)")
             
         except Exception as e:
             self.logger.error(f"Failed to start wake word detection: {e}")
@@ -95,12 +99,16 @@ class WakeWordDetector:
         if self.detection_thread and self.detection_thread.is_alive():
             self.detection_thread.join(timeout=2.0)
         
-        # Clear queue
+        # Clear queue and buffer
         while not self.audio_queue.empty():
             try:
                 self.audio_queue.get_nowait()
             except Empty:
                 break
+        
+        # Clear audio buffer
+        if hasattr(self, 'audio_buffer'):
+            self.audio_buffer = np.array([], dtype=np.float32)
         
         self.logger.info("Wake word detection stopped")
     
@@ -157,13 +165,23 @@ class WakeWordDetector:
             
             # Lower threshold to allow speech audio (was 0.005)
             if audio_level > 0.001:  # Much lower threshold for legitimate audio activity
-                self.audio_queue.put(audio_float, block=False)
-                print(f"   DETECTOR: QUEUED audio for OpenWakeWord (level={audio_level:.3f}, queue_size={self.audio_queue.qsize()})")
-                self.logger.debug(f"Queued audio for processing: level={audio_level:.3f}, samples={len(audio_float)}, queue_size={self.audio_queue.qsize()}")
+                # Add to buffer instead of directly queuing
+                self.audio_buffer = np.concatenate([self.audio_buffer, audio_float])
+                
+                # Check if we have enough samples for OpenWakeWord (80ms = 1280 samples at 16kHz)
+                while len(self.audio_buffer) >= self.target_chunk_size:
+                    # Extract exactly 1280 samples
+                    chunk_for_oww = self.audio_buffer[:self.target_chunk_size]
+                    self.audio_buffer = self.audio_buffer[self.target_chunk_size:]
+                    
+                    # Queue the properly-sized chunk for OpenWakeWord
+                    self.audio_queue.put(chunk_for_oww, block=False)
+                    print(f"   DETECTOR: QUEUED 80ms chunk for OpenWakeWord (samples={len(chunk_for_oww)}, buffer_remaining={len(self.audio_buffer)}, queue_size={self.audio_queue.qsize()})")
+                    self.logger.debug(f"Queued 80ms chunk for processing: samples={len(chunk_for_oww)}, buffer_remaining={len(self.audio_buffer)}, queue_size={self.audio_queue.qsize()}")
                 
                 # Debug: Log audio activity
                 if audio_level > 0.01:  # Only log when there's significant audio
-                    self.logger.debug(f"Audio activity detected: level={audio_level:.3f}, samples={len(audio_float)}")
+                    self.logger.debug(f"Audio activity detected: level={audio_level:.3f}, samples={len(audio_float)}, buffer_size={len(self.audio_buffer)}")
             else:
                 # Skip silence/noise that causes false positives
                 print(f"   DETECTOR: FILTERED OUT low audio (level={audio_level:.3f})")
@@ -310,22 +328,27 @@ class WakeWordDetector:
             
             actual_model_name = model_mapping.get(self.model_name, self.model_name)
             
-            # Initialize model with VAD if enabled
+            # Initialize model with VAD and noise suppression
             model_kwargs = {}
+            
+            # Enable VAD threshold for intelligent wake word filtering (replaces startup delay)
             if self.vad_enabled:
-                # Check if speexdsp_ns is available and user wants noise suppression
-                speex_enabled = getattr(self.config, 'speex_noise_suppression', True)
-                if speex_enabled:
-                    try:
-                        import speexdsp_ns
-                        model_kwargs['enable_speex_noise_suppression'] = True
-                        self.logger.info("[OK] Speex noise suppression enabled")
-                    except ImportError:
-                        self.logger.info("[INFO] speexdsp_ns not available, using basic VAD without noise suppression")
-                        self.logger.info("   Install with: pip install speexdsp-ns (optional)")
-                        self.logger.info("   Or set 'speex_noise_suppression: false' in config")
-                else:
-                    self.logger.info("[INFO] Speex noise suppression disabled in configuration")
+                model_kwargs['vad_threshold'] = 0.5  # VAD threshold for filtering non-speech
+                self.logger.info("[OK] VAD threshold enabled (0.5) for intelligent wake word filtering")
+            
+            # Enable Speex noise suppression for better performance
+            speex_enabled = getattr(self.config, 'speex_noise_suppression', True)
+            if speex_enabled:
+                try:
+                    import speexdsp_ns
+                    model_kwargs['enable_speex_noise_suppression'] = True
+                    self.logger.info("[OK] Speex noise suppression enabled")
+                except ImportError:
+                    self.logger.info("[INFO] speexdsp_ns not available, using basic processing without noise suppression")
+                    self.logger.info("   Install with: pip install speexdsp-ns (optional)")
+                    self.logger.info("   Or set 'speex_noise_suppression: false' in config")
+            else:
+                self.logger.info("[INFO] Speex noise suppression disabled in configuration")
             
             self.model = WakeWordModel(
                 wakeword_models=[actual_model_name],
@@ -334,7 +357,22 @@ class WakeWordDetector:
             
             self.logger.info(f"[OK] Successfully loaded model: {actual_model_name}")
             self.logger.info(f"Available models: {list(self.model.models.keys())}")
-            self.logger.info(f"Model expects: {self.sample_rate}Hz audio in {self.chunk_size} sample chunks")
+            self.logger.info(f"Model expects: {self.sample_rate}Hz audio in {self.chunk_size} sample chunks (80ms)")
+            self.logger.info(f"Model configuration: VAD={self.vad_enabled}, Speex={speex_enabled}, sensitivity={self.sensitivity}")
+            
+            # Initialize audio buffer with 1-2 seconds of silence to flush prediction buffers
+            # This replaces the artificial startup delay with proper buffer initialization
+            silence_duration = 1.5  # 1.5 seconds of silence
+            silence_samples = int(self.sample_rate * silence_duration)
+            silence_chunk = np.zeros(silence_samples, dtype=np.float32)
+            
+            # Send silence in proper 80ms chunks to initialize the model
+            for i in range(0, len(silence_chunk), self.chunk_size):
+                chunk = silence_chunk[i:i + self.chunk_size]
+                if len(chunk) == self.chunk_size:  # Only send complete chunks
+                    self.model.predict(chunk)
+            
+            self.logger.info(f"[OK] Model buffers initialized with {silence_duration}s of silence")
             
         except Exception as e:
             self.logger.error(f"[ERROR] Failed to load wake word model '{self.model_name}': {e}")
@@ -431,13 +469,7 @@ class WakeWordDetector:
                         
                         print(f"   DETECTOR: DETECTION CANDIDATE: {model_name} confidence {confidence:.3f} >= {self.sensitivity:.3f}")
                         
-                        # Skip detections in first 3 seconds to prevent startup false positives
-                        if current_time - self.startup_time < 3.0:
-                            print(f"   DETECTOR: Skipping detection during startup period: {current_time - self.startup_time:.1f}s")
-                            self.logger.debug(f"Skipping detection during startup period: {current_time - self.startup_time:.1f}s")
-                            continue
-                        
-                        # Check cooldown to prevent rapid re-triggers
+                        # Check cooldown to prevent rapid re-triggers (removed artificial startup delay)
                         time_since_last = current_time - self.last_detection_time
                         if time_since_last >= self.detection_cooldown:
                             print(f"   DETECTOR: WAKE WORD DETECTED! {model_name} (confidence: {confidence:.3f})")
@@ -491,8 +523,27 @@ class WakeWordDetector:
             'vad_enabled': self.vad_enabled,
             'sample_rate': self.sample_rate,
             'chunk_size': self.chunk_size,
-            'chunk_duration_ms': self.chunk_size / self.sample_rate * 1000
+            'chunk_duration_ms': self.chunk_size / self.sample_rate * 1000,
+            'audio_buffer_size': len(self.audio_buffer) if hasattr(self, 'audio_buffer') else 0
         }
+    
+    def reset_audio_buffers(self) -> None:
+        """
+        Reset OpenWakeWord model buffers and clear internal audio buffer
+        
+        Use this method if you need to clear persistent wake word detections
+        or reset the model state during operation.
+        """
+        if self.model:
+            try:
+                self.model.reset()
+                self.logger.info("OpenWakeWord model buffers reset")
+            except Exception as e:
+                self.logger.warning(f"Failed to reset model buffers: {e}")
+        
+        # Clear internal audio buffer
+        self.audio_buffer = np.array([], dtype=np.float32)
+        self.logger.debug("Internal audio buffer cleared")
     
     @staticmethod
     def test_installation() -> bool:
