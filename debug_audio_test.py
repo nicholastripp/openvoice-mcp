@@ -38,14 +38,22 @@ async def debug_audio_test():
     
     logger.info("Connected successfully")
     
-    # Create minimal audio data (100ms of silence)
-    sample_rate = 24000
-    duration_seconds = 0.1  # 100ms
-    samples = int(sample_rate * duration_seconds)
+    # Create minimal audio data (200ms of tone)
+    import numpy as np
     
-    # Create 100ms of zero audio (silence)
-    import struct
-    audio_data = b''.join(struct.pack('<h', 0) for _ in range(samples))
+    sample_rate = 24000
+    duration_seconds = 0.2  # 200ms to be well above 100ms minimum
+    frequency = 440  # A4 note
+    
+    # Generate sine wave with proper amplitude for int16
+    t = np.linspace(0, duration_seconds, int(sample_rate * duration_seconds), False)
+    audio_signal = np.sin(2 * np.pi * frequency * t) * 0.3  # 30% volume
+    
+    # Convert to PCM16 format (signed 16-bit integers)
+    audio_pcm16 = (audio_signal * 32767).astype(np.int16)
+    
+    # Convert to bytes in little-endian format
+    audio_data = audio_pcm16.tobytes()
     
     logger.info(f"Created {len(audio_data)} bytes of audio data ({duration_seconds*1000}ms)")
     

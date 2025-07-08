@@ -146,32 +146,42 @@ async def test_audio_format(config_path):
         
         # Generate test audio (PCM16, 24kHz, mono)
         sample_rate = 24000
-        duration = 1.0  # 1 second
+        duration = 0.5  # 500ms - shorter test
         frequency = 440  # A4 note
         
+        # Generate sine wave with proper amplitude for int16
         t = np.linspace(0, duration, int(sample_rate * duration), False)
-        audio_signal = np.sin(2 * np.pi * frequency * t) * 0.1  # Low volume
+        # Use amplitude that maps well to int16 range (-32768 to 32767)
+        audio_signal = np.sin(2 * np.pi * frequency * t) * 0.3  # 30% volume
         
-        # Convert to PCM16
+        # Convert to PCM16 format (signed 16-bit integers)
         audio_pcm16 = (audio_signal * 32767).astype(np.int16)
+        
+        # Ensure we have the expected number of samples
+        expected_samples = int(sample_rate * duration)
+        actual_samples = len(audio_pcm16)
+        logger.info(f"Generated {actual_samples} samples, expected {expected_samples}")
+        
+        # Convert to bytes in little-endian format (standard for PCM16)
         audio_bytes = audio_pcm16.tobytes()
         
-        logger.info(f"Sending {len(audio_bytes)} bytes of test audio in chunks...")
+        # Calculate expected duration and verify
+        expected_duration_ms = len(audio_bytes) / 2 / sample_rate * 1000
+        logger.info(f"Audio data: {len(audio_bytes)} bytes, expected duration: {expected_duration_ms:.1f}ms")
         
         # Send audio in chunks to simulate streaming (50ms chunks)
-        chunk_size = int(sample_rate * 0.05 * 2)  # 50ms of 16-bit audio
+        chunk_size = int(sample_rate * 0.05 * 2)  # 50ms of 16-bit audio (2 bytes per sample)
         
-        logger.info("Sending audio in 50ms chunks...")
+        logger.info(f"Sending audio in {chunk_size}-byte chunks (50ms each)...")
         for i in range(0, len(audio_bytes), chunk_size):
             chunk = audio_bytes[i:i+chunk_size]
+            chunk_duration_ms = len(chunk) / 2 / sample_rate * 1000
+            logger.debug(f"Sending chunk {i//chunk_size + 1}: {len(chunk)} bytes ({chunk_duration_ms:.1f}ms)")
+            
             await client.send_audio(chunk)
             await asyncio.sleep(0.05)  # Wait 50ms between chunks
-            
-            # Log progress
-            if i % (chunk_size * 4) == 0:  # Every 200ms
-                logger.debug(f"Sent {(i/len(audio_bytes)*duration*1000):.0f}ms of audio")
         
-        logger.info(f"Sent total of {duration*1000:.0f}ms of audio")
+        logger.info(f"Sent total of {expected_duration_ms:.1f}ms of audio in {len(audio_bytes)} bytes")
         
         # Commit audio buffer (client now validates minimum duration)
         logger.info("Committing audio buffer...")
