@@ -219,11 +219,15 @@ class OpenAIRealtimeClient:
             self.logger.warning("Cannot send audio in text-only mode")
             return
             
+        self.logger.info(f"SEND DEBUG: send_audio called with {len(audio_data)} bytes, text_only={self.text_only}, state={self.state}")
+            
         try:
             # Track audio buffer duration (PCM16 at 24kHz, mono)
             # Each sample is 2 bytes (16-bit), so duration = bytes / 2 / 24000 * 1000 (ms)
             duration_ms = len(audio_data) / 2 / 24000 * 1000
             self.audio_buffer_duration_ms += duration_ms
+            
+            self.logger.info(f"AUDIO DEBUG: Received {len(audio_data)} bytes, calculated {duration_ms:.1f}ms, total buffer: {self.audio_buffer_duration_ms:.1f}ms")
             
             # Convert to base64
             audio_b64 = base64.b64encode(audio_data).decode()
@@ -250,6 +254,8 @@ class OpenAIRealtimeClient:
             return
             
         try:
+            self.logger.info(f"COMMIT DEBUG: About to commit audio buffer with {self.audio_buffer_duration_ms:.1f}ms of audio")
+            
             # Validate buffer has sufficient audio (minimum 100ms required by OpenAI)
             if self.audio_buffer_duration_ms < 100:
                 self.logger.warning(f"Audio buffer too small: {self.audio_buffer_duration_ms:.1f}ms (minimum 100ms required)")
@@ -484,6 +490,9 @@ class OpenAIRealtimeClient:
         """Send event to OpenAI"""
         if not self.websocket or self._is_websocket_closed():
             raise ConnectionError("WebSocket not connected")
+            
+        if event.get("type") in ["input_audio_buffer.append", "input_audio_buffer.commit"]:
+            self.logger.info(f"SEND EVENT DEBUG: Sending {event['type']} event")
             
         await self.websocket.send(json.dumps(event))
     
