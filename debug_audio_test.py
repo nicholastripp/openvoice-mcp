@@ -159,12 +159,13 @@ async def debug_audio_test():
         
         logger.info(f"Sent total of {duration_ms:.1f}ms of recorded audio")
         
-        # Try to commit
-        logger.info("Attempting to commit...")
-        await client.commit_audio()
+        # With server VAD enabled, do NOT manually commit the audio buffer
+        # The server will automatically detect speech end and process the audio
+        logger.info("Waiting for server VAD to detect speech end...")
+        logger.info("(Server VAD will automatically commit the audio buffer when speech stops)")
         
-        # Wait for response
-        await asyncio.sleep(3)
+        # Wait longer for server VAD to process and respond
+        await asyncio.sleep(5)
         
     except ImportError as e:
         logger.error(f"Required audio libraries not available: {e}")

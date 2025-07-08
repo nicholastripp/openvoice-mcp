@@ -241,12 +241,13 @@ async def test_audio_format(config_path):
         
         logger.info(f"Sent total of {duration_ms:.1f}ms of recorded audio")
         
-        # Commit audio buffer (client now validates minimum duration)
-        logger.info("Committing audio buffer...")
-        await client.commit_audio()
+        # With server VAD enabled, do NOT manually commit the audio buffer
+        # The server will automatically detect speech end and process the audio
+        logger.info("Waiting for server VAD to detect speech end...")
+        logger.info("(Server VAD will automatically commit the audio buffer when speech stops)")
         
-        # Wait for response
-        await asyncio.sleep(3)
+        # Wait longer for server VAD to process and respond
+        await asyncio.sleep(5)
         
         await client.disconnect()
         logger.info("✅ Audio format test completed")

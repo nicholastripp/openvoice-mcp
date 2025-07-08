@@ -91,6 +91,8 @@ class OpenAIRealtimeClient:
             
             # Log audio configuration for debugging
             self.logger.info(f"Audio session config: input_format={self.session_config['input_audio_format']}, output_format={self.session_config['output_audio_format']}")
+            self.logger.info(f"Server VAD enabled: threshold={self.session_config['turn_detection']['threshold']}, silence_duration={self.session_config['turn_detection']['silence_duration_ms']}ms")
+            self.logger.info("⚠️  Server VAD mode: Do NOT manually call commit_audio() - server will auto-commit when speech stops")
         else:
             # Text-only mode: explicitly disable VAD to prevent audio buffer operations
             self.session_config["turn_detection"] = None
@@ -446,10 +448,12 @@ class OpenAIRealtimeClient:
             audio_b64 = event.data.get("delta", "")
             if audio_b64:
                 audio_data = base64.b64decode(audio_b64)
+                self.logger.debug(f"🔊 Received audio response chunk: {len(audio_data)} bytes")
                 await self._emit_event("audio_response", audio_data)
                 
         elif event_type == "response.audio.done":
             # Audio response complete
+            self.logger.info("🔊 Audio response completed")
             await self._emit_event("audio_response_done", None)
             
         elif event_type == "response.text.delta":
@@ -457,6 +461,7 @@ class OpenAIRealtimeClient:
             text = event.data.get("delta", "")
             # Sanitize Unicode text for safe handling
             safe_text = sanitize_unicode_text(text)
+            self.logger.debug(f"💬 Received text response chunk: '{safe_text}'")
             await self._emit_event("text_response", safe_text)
             
         elif event_type == "response.function_call_arguments.done":
@@ -473,7 +478,8 @@ class OpenAIRealtimeClient:
                 self.logger.error(f"Invalid function arguments: {e}")
                 
         elif event_type == "input_audio_buffer.speech_stopped":
-            # User stopped speaking
+            # User stopped speaking - server VAD detected end of speech
+            self.logger.info("🎤 Server VAD detected speech ended - audio buffer will be automatically committed")
             await self._emit_event("speech_stopped", None)
             
         elif event_type == "error":
