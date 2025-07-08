@@ -288,6 +288,7 @@ class OpenAIRealtimeClient:
                 # In audio mode with VAD enabled, the server will automatically 
                 # generate responses when it detects the end of user input
                 # Do NOT send response.create as it will try to commit audio buffer
+                pass
             
         except Exception as e:
             self.logger.error(f"Error sending text: {e}")
