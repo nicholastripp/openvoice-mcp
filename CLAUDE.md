@@ -70,6 +70,7 @@ A **standalone Raspberry Pi application** (not a HACS integration) that:
 2. **Library Versions**: Test on target hardware - library behavior differs between architectures
 3. **Audio Devices**: Device enumeration and naming differs between macOS and Linux
 4. **Installation**: ARM-specific package compilation may affect dependency installation
+5. **NO EMOJI USAGE**: **CRITICAL** - Raspberry Pi terminals default to latin-1 encoding which cannot display emoji characters. Never use emoji in any code, comments, or output strings. Use ASCII alternatives like [OK], [ERROR], [WARNING], etc.
 
 ### Testing Requirements
 - All critical functionality must be tested on actual Raspberry Pi hardware

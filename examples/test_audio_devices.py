@@ -132,7 +132,7 @@ def test_input_levels(device_id=None, duration=10, sample_rate=48000):
         logger.info("Testing input levels for default input device")
     
     print(f"\nTesting microphone input for {duration} seconds...")
-    print("🎤 SPEAK NORMALLY, then LOUDLY, then whisper...")
+    print("[MIC] SPEAK NORMALLY, then LOUDLY, then whisper...")
     print("Press Ctrl+C to stop early")
     print("-" * 60)
     
@@ -184,30 +184,30 @@ def test_input_levels(device_id=None, duration=10, sample_rate=48000):
         percentile_95 = np.percentile(audio_levels, 95)
         
         print("-" * 60)
-        print("🔍 AUDIO LEVEL ANALYSIS:")
+        print("[ANALYSIS] AUDIO LEVEL ANALYSIS:")
         print(f"  Maximum level:     {max_level:.6f}")
         print(f"  Average level:     {avg_level:.6f}")
         print(f"  95th percentile:   {percentile_95:.6f}")
         print(f"  Samples collected: {len(audio_levels)}")
         
         # Assessment
-        print("\n📊 ASSESSMENT:")
+        print("\n[ASSESSMENT] MICROPHONE STATUS:")
         if max_level < 0.001:
-            print("  ❌ VERY LOW - Microphone may not be working or gain extremely low")
+            print("  [FAIL] VERY LOW - Microphone may not be working or gain extremely low")
             print("     Expected for wake word detection: > 0.05")
         elif max_level < 0.01:
-            print("  ⚠️  LOW - Microphone working but needs significant gain adjustment")
+            print("  [WARN] LOW - Microphone working but needs significant gain adjustment")
             print("     Current vs Expected: {:.6f} vs > 0.05".format(max_level))
         elif max_level < 0.05:
-            print("  ⚠️  MARGINAL - May work but could be unreliable for wake word detection")
+            print("  [WARN] MARGINAL - May work but could be unreliable for wake word detection")
         elif max_level < 0.1:
-            print("  ✅ GOOD - Should work well for wake word detection")
+            print("  [OK] GOOD - Should work well for wake word detection")
         else:
-            print("  ✅ EXCELLENT - Strong microphone input levels")
+            print("  [OK] EXCELLENT - Strong microphone input levels")
         
         # Specific recommendations for wake word detection
         if max_level < 0.05:
-            print("\n💡 WAKE WORD DETECTION RECOMMENDATIONS:")
+            print("\n[RECOMMENDATIONS] WAKE WORD DETECTION FIX:")
             print("  1. Increase microphone gain: alsamixer (F4 for capture)")
             print("  2. Check microphone connection and power")
             print("  3. Try a USB microphone with built-in amplification")
@@ -235,12 +235,12 @@ def record_and_playback_test(device_id=None, duration=3, sample_rate=48000):
     else:
         logger.info("Recording test for default input device")
     
-    print(f"\n🎙️  Recording {duration} seconds of audio...")
+    print(f"\n[RECORD] Recording {duration} seconds of audio...")
     print("Say: 'Alexa, test microphone one two three'")
     
     try:
         # Record audio
-        print("🔴 Recording... (speak now)")
+        print("[REC] Recording... (speak now)")
         recording = sd.rec(
             int(duration * sample_rate),
             samplerate=sample_rate,
@@ -254,20 +254,20 @@ def record_and_playback_test(device_id=None, duration=3, sample_rate=48000):
         max_level = np.max(np.abs(recording))
         avg_level = np.mean(np.abs(recording))
         
-        print(f"✅ Recording complete!")
+        print(f"[OK] Recording complete!")
         print(f"  Max level: {max_level:.6f}")
         print(f"  Avg level: {avg_level:.6f}")
         
         if max_level < 0.001:
-            print("❌ No audio detected - check microphone connection")
+            print("[FAIL] No audio detected - check microphone connection")
             return False
         
         # Play back the recording
-        print(f"\n🔊 Playing back recording...")
+        print(f"\n[PLAY] Playing back recording...")
         sd.play(recording, samplerate=sample_rate)
         sd.wait()  # Wait for playback to complete
         
-        print("✅ Record and playback test complete")
+        print("[OK] Record and playback test complete")
         print("   Does the playback sound clear and at reasonable volume?")
         
         return True
@@ -296,37 +296,37 @@ def diagnose_device(device_id):
         return False
     
     logger.info(f"Comprehensive diagnosis for device {device_id}")
-    print(f"\n🔬 DIAGNOSING Device {device_id}: {device_info['name']}")
+    print(f"\n[DIAGNOSIS] DIAGNOSING Device {device_id}: {device_info['name']}")
     print("=" * 70)
     
     # Device info
-    print(f"📋 DEVICE INFORMATION:")
+    print(f"[INFO] DEVICE INFORMATION:")
     print(f"  Sample Rate: {device_info['default_samplerate']:.0f} Hz")
     print(f"  Input Channels: {device_info['max_input_channels']}")
     print(f"  API: {sd.query_hostapis()[device_info['hostapi']]['name']}")
     
     # Test 1: Input levels
-    print(f"\n🎚️  TEST 1: INPUT LEVEL ANALYSIS (10 seconds)")
+    print(f"\n[TEST1] INPUT LEVEL ANALYSIS (10 seconds)")
     success1 = test_input_levels(device_id, duration=10)
     
     if not success1:
-        print("❌ Input level test failed - device may not be functional")
+        print("[FAIL] Input level test failed - device may not be functional")
         return False
     
     # Test 2: Record and playback
-    print(f"\n🎙️  TEST 2: RECORD AND PLAYBACK VERIFICATION (5 seconds)")
+    print(f"\n[TEST2] RECORD AND PLAYBACK VERIFICATION (5 seconds)")
     success2 = record_and_playback_test(device_id, duration=5)
     
     # Overall assessment
-    print(f"\n📊 OVERALL ASSESSMENT:")
+    print(f"\n[RESULT] OVERALL ASSESSMENT:")
     if success1 and success2:
-        print("✅ Device appears to be functional")
+        print("[OK] Device appears to be functional")
         print("   If wake word detection still fails, check:")
         print("   - Audio gain settings (alsamixer)")
         print("   - Device selection in config")
         print("   - OpenWakeWord sensitivity settings")
     else:
-        print("❌ Device has issues - try a different audio device")
+        print("[FAIL] Device has issues - try a different audio device")
     
     return success1 and success2
 
@@ -335,10 +335,10 @@ def system_audio_check():
     """Display system audio troubleshooting information"""
     logger = get_logger("SystemAudioCheck")
     
-    print("\n🔧 SYSTEM AUDIO TROUBLESHOOTING GUIDE")
+    print("\n[GUIDE] SYSTEM AUDIO TROUBLESHOOTING GUIDE")
     print("=" * 70)
     
-    print("1️⃣  CHECK MICROPHONE GAIN (ALSA):")
+    print("[1] CHECK MICROPHONE GAIN (ALSA):")
     print("   alsamixer")
     print("   - Press F4 to show capture devices")
     print("   - Use arrow keys to select microphone")
@@ -347,45 +347,45 @@ def system_audio_check():
     print("   - Press Esc to exit")
     print()
     
-    print("2️⃣  LIST AUDIO HARDWARE:")
+    print("[2] LIST AUDIO HARDWARE:")
     print("   arecord -l    # List recording devices")
     print("   aplay -l      # List playback devices")
     print("   lsusb         # Check if USB microphone is detected")
     print()
     
-    print("3️⃣  TEST RECORDING WITH ALSA:")
+    print("[3] TEST RECORDING WITH ALSA:")
     print("   arecord -D hw:1,0 -f cd -t wav -d 5 test.wav")
     print("   aplay test.wav")
     print("   (Replace hw:1,0 with your device from arecord -l)")
     print()
     
-    print("4️⃣  CHECK MIXER SETTINGS:")
+    print("[4] CHECK MIXER SETTINGS:")
     print("   amixer          # Show all mixer controls")
     print("   amixer sget Mic # Show microphone settings")
     print("   amixer sset Mic 80%  # Set microphone to 80%")
     print()
     
-    print("5️⃣  USB MICROPHONE TROUBLESHOOTING:")
+    print("[5] USB MICROPHONE TROUBLESHOOTING:")
     print("   - Check if it appears in lsusb")
     print("   - Try different USB port")
     print("   - Some need power - check USB power settings")
     print("   - May need to set as default in ~/.asoundrc")
     print()
     
-    print("6️⃣  RASPBERRY PI SPECIFIC:")
+    print("[6] RASPBERRY PI SPECIFIC:")
     print("   sudo raspi-config")
-    print("   - Advanced Options → Audio")
+    print("   - Advanced Options -> Audio")
     print("   - Enable audio if disabled")
     print("   - Check if audio group membership: groups $USER")
     print()
     
-    print("7️⃣  EXPECTED AUDIO LEVELS FOR WAKE WORD DETECTION:")
+    print("[7] EXPECTED AUDIO LEVELS FOR WAKE WORD DETECTION:")
     print("   - Normal speech: 0.01 - 0.05")
     print("   - Loud speech:   0.05 - 0.15")
     print("   - Current issue: levels < 0.01 (too low)")
     print()
     
-    print("💡 If levels are still too low after trying above:")
+    print("[TIP] If levels are still too low after trying above:")
     print("   - Consider USB microphone with built-in amplification")
     print("   - Add external microphone amplifier")
     print("   - Use closer microphone placement")
@@ -399,9 +399,9 @@ def test_input_device(device_id, duration=3.0):
     success = AudioCapture.test_device(device_id, duration)
     
     if success:
-        print("✅ Input device test PASSED")
+        print("[OK] Input device test PASSED")
     else:
-        print("❌ Input device test FAILED")
+        print("[FAIL] Input device test FAILED")
     
     return success
 
@@ -414,9 +414,9 @@ def test_output_device(device_id, duration=2.0, frequency=440.0):
     success = AudioPlayback.test_device(device_id, duration, frequency)
     
     if success:
-        print("✅ Output device test PASSED")
+        print("[OK] Output device test PASSED")
     else:
-        print("❌ Output device test FAILED")
+        print("[FAIL] Output device test FAILED")
     
     return success
 
@@ -518,7 +518,7 @@ Examples:
             # Default action if no arguments
             logger.info("No specific test requested. Showing available devices...")
             list_devices_detailed() if SOUNDDEVICE_AVAILABLE else list_devices()
-            print("\n💡 For microphone issues, try: --test-input-levels")
+            print("\n[TIP] For microphone issues, try: --test-input-levels")
     
     except KeyboardInterrupt:
         print("\nTest interrupted by user")
