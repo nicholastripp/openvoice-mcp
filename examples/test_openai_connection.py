@@ -122,7 +122,7 @@ async def test_audio_format(config_path):
         import numpy as np
         
         config = load_config(config_path)
-        client = OpenAIRealtimeClient(config.openai, "You are a helpful assistant.", text_only=True)
+        client = OpenAIRealtimeClient(config.openai, "You are a helpful assistant.")
         
         # Connect
         logger.info("Testing audio format requirements...")
