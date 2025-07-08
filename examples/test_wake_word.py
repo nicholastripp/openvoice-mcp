@@ -171,8 +171,12 @@ async def interactive_test(config_path, sensitivity=None):
         import time
         current_time = time.time()
         
+        # Debug: Show that callback is being called
+        logger.debug(f"Detection callback called: count={detection_count}, confidence={confidence:.3f}")
+        
         print(f"\n[DETECTED] WAKE WORD #{detection_count}: {model_name} (confidence: {confidence:.3f})")
         print(f"   Detection time: {current_time - last_detection_time:.1f}s since last")
+        print(f"   Cooldown: {config.wake_word.cooldown}s - next detection possible at {current_time + config.wake_word.cooldown:.1f}")
         print("   Listening for next detection...")
         
         last_detection_time = current_time
@@ -253,8 +257,8 @@ async def interactive_test(config_path, sensitivity=None):
             await asyncio.sleep(1.0)
             # Show periodic status
             current_time = time.time()
-            if current_time - last_status_time > 10:  # Every 10 seconds
-                print(f"   Still listening... ({detection_count} detections so far)")
+            if current_time - last_status_time > 5:  # Every 5 seconds
+                print(f"   Still listening... ({detection_count} detections so far, last: {current_time - last_detection_time:.1f}s ago)")
                 last_status_time = current_time
     except KeyboardInterrupt:
         print("\nStopping...")

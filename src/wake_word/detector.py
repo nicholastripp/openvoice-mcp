@@ -383,8 +383,10 @@ class WakeWordDetector:
                         current_time = time.time()
                         
                         # Check cooldown to prevent rapid re-triggers
-                        if current_time - self.last_detection_time >= self.detection_cooldown:
+                        time_since_last = current_time - self.last_detection_time
+                        if time_since_last >= self.detection_cooldown:
                             self.logger.info(f"Wake word detected: {model_name} (confidence: {confidence:.3f})")
+                            self.logger.debug(f"Cooldown passed: {time_since_last:.1f}s >= {self.detection_cooldown}s")
                             self.last_detection_time = current_time
                             
                             # Call detection callbacks
@@ -394,7 +396,7 @@ class WakeWordDetector:
                                 except Exception as e:
                                     self.logger.error(f"Error in detection callback: {e}")
                         else:
-                            self.logger.debug(f"Wake word detected but in cooldown: {model_name} (confidence: {confidence:.3f})")
+                            self.logger.debug(f"Wake word detected but in cooldown: {model_name} (confidence: {confidence:.3f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
                 
             except Exception as e:
                 self.logger.error(f"Error in detection loop: {e}")
