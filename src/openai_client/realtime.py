@@ -353,6 +353,7 @@ class OpenAIRealtimeClient:
         try:
             async for message in self.websocket:
                 try:
+                    self.logger.info(f"WEBSOCKET RECV: {message}")
                     event_data = json.loads(message)
                     event = RealtimeEvent(
                         type=event_data.get("type", "unknown"),
@@ -494,7 +495,9 @@ class OpenAIRealtimeClient:
         if event.get("type") in ["input_audio_buffer.append", "input_audio_buffer.commit"]:
             self.logger.info(f"SEND EVENT DEBUG: Sending {event['type']} event")
             
-        await self.websocket.send(json.dumps(event))
+        message = json.dumps(event)
+        self.logger.info(f"WEBSOCKET SEND: {message}")
+        await self.websocket.send(message)
     
     async def _send_session_update(self) -> None:
         """Send session configuration to OpenAI"""
@@ -503,6 +506,7 @@ class OpenAIRealtimeClient:
             "session": self.session_config
         }
         
+        self.logger.info(f"SESSION CONFIG DEBUG: Sending session config: {json.dumps(self.session_config, indent=2)}")
         await self._send_event(event)
         self.logger.debug("Session configuration sent")
     
