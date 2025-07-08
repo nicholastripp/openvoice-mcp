@@ -27,7 +27,8 @@ try:
     from ha_client.conversation import HomeAssistantConversationClient
     print("DEBUG: ha_client import successful", flush=True) 
     from utils.logger import setup_logging, get_logger
-    print("DEBUG: logger import successful", flush=True)
+    from utils.text_utils import clean_entity_name, safe_str
+    print("DEBUG: logger and text_utils import successful", flush=True)
 except Exception as e:
     print(f"DEBUG: Import failed: {e}", flush=True)
     import traceback
@@ -205,7 +206,8 @@ async def test_entities(config_path):
         # Show summary
         logger.info(f"Found {len(states)} entities across {len(domains)} domains:")
         for domain, entities in sorted(domains.items()):
-            logger.info(f"  {domain}: {len(entities)} entities")
+            safe_domain = safe_str(domain)
+            logger.info(f"  {safe_domain}: {len(entities)} entities")
         
         # Show sample entities from common domains
         common_domains = ["light", "switch", "sensor", "climate", "media_player"]
@@ -216,22 +218,13 @@ async def test_entities(config_path):
                     entity_id = entity.get("entity_id", "")
                     state = entity.get("state", "")
                     friendly_name = entity.get("attributes", {}).get("friendly_name", entity_id)
-                    # Handle Unicode characters safely for logging
-                    try:
-                        # Try to log the original name first
-                        logger.info(f"  {entity_id}: {state} ({friendly_name})")
-                    except UnicodeEncodeError:
-                        # Fallback to ASCII with better character replacement
-                        import unicodedata
-                        try:
-                            # Normalize and convert to ASCII with proper replacements
-                            friendly_name_safe = unicodedata.normalize('NFKD', friendly_name)
-                            friendly_name_safe = friendly_name_safe.encode('ascii', errors='ignore').decode('ascii')
-                            if not friendly_name_safe.strip():
-                                friendly_name_safe = entity_id
-                            logger.info(f"  {entity_id}: {state} ({friendly_name_safe})")
-                        except:
-                            logger.info(f"  {entity_id}: {state} ({entity_id})")
+                    
+                    # Clean entity data for safe logging using our Unicode utilities
+                    safe_entity_id = safe_str(entity_id)
+                    safe_state = safe_str(state)
+                    safe_friendly_name = clean_entity_name(friendly_name)
+                    
+                    logger.info(f"  {safe_entity_id}: {safe_state} ({safe_friendly_name})")
         
         await ha_client.stop()
         return True

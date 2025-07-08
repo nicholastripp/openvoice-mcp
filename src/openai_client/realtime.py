@@ -25,6 +25,7 @@ except ImportError:
 
 from config import OpenAIConfig
 from utils.logger import get_logger
+from utils.text_utils import sanitize_unicode_text, safe_str
 
 
 class ConnectionState(Enum):
@@ -357,8 +358,11 @@ class OpenAIRealtimeClient:
         try:
             async for message in self.websocket:
                 try:
-                    print(f"DEBUG WEBSOCKET RECV: {message[:200]}...")  # First 200 chars
-                    self.logger.info(f"WEBSOCKET RECV: {message}")
+                    # Sanitize Unicode characters in the message for safe printing/logging
+                    safe_message = sanitize_unicode_text(message)
+                    print(f"DEBUG WEBSOCKET RECV: {safe_message[:200]}...")  # First 200 chars
+                    self.logger.info(f"WEBSOCKET RECV: {safe_message}")
+                    
                     event_data = json.loads(message)
                     event = RealtimeEvent(
                         type=event_data.get("type", "unknown"),
@@ -369,9 +373,9 @@ class OpenAIRealtimeClient:
                     await self._handle_event(event)
                     
                 except json.JSONDecodeError as e:
-                    self.logger.error(f"Invalid JSON received: {e}")
+                    self.logger.error(f"Invalid JSON received: {safe_str(e)}")
                 except Exception as e:
-                    self.logger.error(f"Error processing event: {e}")
+                    self.logger.error(f"Error processing event: {safe_str(e)}")
                     
         except websockets.exceptions.ConnectionClosed:
             self.logger.warning("WebSocket connection closed")
@@ -408,7 +412,9 @@ class OpenAIRealtimeClient:
         elif event_type == "response.text.delta":
             # Text response chunk
             text = event.data.get("delta", "")
-            await self._emit_event("text_response", text)
+            # Sanitize Unicode text for safe handling
+            safe_text = sanitize_unicode_text(text)
+            await self._emit_event("text_response", safe_text)
             
         elif event_type == "response.function_call_arguments.done":
             # Function call complete
@@ -430,9 +436,10 @@ class OpenAIRealtimeClient:
         elif event_type == "error":
             # Error from OpenAI
             error_data = event.data.get("error", {})
-            print(f"DEBUG: Received error event: {error_data}")
-            self.logger.error(f"OpenAI error: {error_data}")
-            await self._emit_event("error", error_data)
+            safe_error_data = {k: sanitize_unicode_text(str(v)) for k, v in error_data.items()}
+            print(f"DEBUG: Received error event: {safe_error_data}")
+            self.logger.error(f"OpenAI error: {safe_error_data}")
+            await self._emit_event("error", safe_error_data)
         
         # Emit generic event
         await self._emit_event(event_type, event.data)
@@ -502,8 +509,10 @@ class OpenAIRealtimeClient:
             self.logger.info(f"SEND EVENT DEBUG: Sending {event['type']} event")
             
         message = json.dumps(event)
-        print(f"DEBUG WEBSOCKET SEND: {message[:200]}...")  # First 200 chars
-        self.logger.info(f"WEBSOCKET SEND: {message}")
+        # Sanitize Unicode for safe printing/logging
+        safe_message = sanitize_unicode_text(message)
+        print(f"DEBUG WEBSOCKET SEND: {safe_message[:200]}...")  # First 200 chars
+        self.logger.info(f"WEBSOCKET SEND: {safe_message}")
         await self.websocket.send(message)
     
     async def _send_session_update(self) -> None:
@@ -513,7 +522,9 @@ class OpenAIRealtimeClient:
             "session": self.session_config
         }
         
-        self.logger.info(f"SESSION CONFIG DEBUG: Sending session config: {json.dumps(self.session_config, indent=2)}")
+        # Sanitize session config for safe logging
+        safe_config = sanitize_unicode_text(json.dumps(self.session_config, indent=2))
+        self.logger.info(f"SESSION CONFIG DEBUG: Sending session config: {safe_config}")
         await self._send_event(event)
         self.logger.debug("Session configuration sent")
     
