@@ -180,6 +180,10 @@ class WakeWordDetector:
                 
                 self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {len(audio_array)} -> {len(audio_float)} samples (level: {audio_level:.3f})")
             
+            # Apply audio normalization fix based on test results
+            # The amplify_50x method produced the best results in testing
+            audio_float = np.clip(audio_float * 50.0, -1.0, 1.0).astype(np.float32)
+            
             # Immediate debug feedback (not just debug logs)
             print(f"   DETECTOR: audio_level={audio_level:.3f}, samples={len(audio_float)}")
             
