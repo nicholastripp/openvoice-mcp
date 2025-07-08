@@ -65,7 +65,7 @@ class WakeWordDetector:
         self.detection_cooldown = config.cooldown
         
         # Detection stability - require consecutive chunks above threshold
-        self.detection_stability_count = 2  # Require N consecutive chunks above threshold
+        self.detection_stability_count = 1  # Require N consecutive chunks above threshold (reduced for testing)
         self.recent_confidences = []  # Track recent confidence levels
         
         # Model state management to prevent stuck predictions
