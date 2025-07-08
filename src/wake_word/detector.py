@@ -143,10 +143,12 @@ class WakeWordDetector:
                 
                 self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {len(audio_array)} -> {len(audio_float)} samples (level: {audio_level:.3f})")
             
-            # Only process if there's actual audio content
-            if audio_level > 0.001:  # Minimum threshold for audio activity
-                # Queue for processing
-                self.audio_queue.put(audio_float, block=False)
+            # Queue for processing (removed audio threshold - let OpenWakeWord handle it)
+            self.audio_queue.put(audio_float, block=False)
+            
+            # Debug: Log audio activity
+            if audio_level > 0.01:  # Only log when there's significant audio
+                self.logger.debug(f"Audio activity detected: level={audio_level:.3f}, samples={len(audio_float)}")
             
         except Exception as e:
             self.logger.error(f"Error processing audio: {e}")

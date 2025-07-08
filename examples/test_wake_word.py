@@ -132,11 +132,17 @@ async def test_model_switching():
             logger.error(f"  [ERROR] {model_name}: {e}")
 
 
-async def interactive_test(config_path):
+async def interactive_test(config_path, sensitivity=None):
     """Interactive wake word testing"""
     logger = get_logger("WakeWordTest")
     
     config = load_config(config_path)
+    
+    # Override sensitivity if specified
+    if sensitivity is not None:
+        config.wake_word.sensitivity = sensitivity
+        print(f"Overriding sensitivity to {sensitivity}")
+    
     detector = WakeWordDetector(config.wake_word)
     
     # Test audio device first
@@ -173,12 +179,58 @@ async def interactive_test(config_path):
     
     detector.add_detection_callback(on_detection)
     
-    # Start audio capture
+    # Start audio capture and test microphone
     audio_capture = AudioCapture(config.audio)
     await audio_capture.start()
     
-    # Connect audio to wake word detector
+    # Test microphone for 2 seconds
+    print("Testing microphone for 2 seconds...")
+    test_audio_levels = []
+    test_start_time = time.time()
+    
+    def mic_test_callback(audio_data):
+        import numpy as np
+        audio_array = np.frombuffer(audio_data, dtype=np.int16)
+        audio_float = audio_array.astype(np.float32) / 32767.0
+        audio_level = np.max(np.abs(audio_float))
+        test_audio_levels.append(audio_level)
+    
+    audio_capture.add_callback(mic_test_callback)
+    
+    # Wait for test
+    while time.time() - test_start_time < 2.0:
+        await asyncio.sleep(0.1)
+    
+    # Remove test callback
+    audio_capture.remove_callback(mic_test_callback)
+    
+    # Show results
+    if test_audio_levels:
+        max_level = max(test_audio_levels)
+        avg_level = sum(test_audio_levels) / len(test_audio_levels)
+        print(f"Microphone test: max={max_level:.3f}, avg={avg_level:.3f}")
+        if max_level < 0.001:
+            print("WARNING: Very low audio levels detected - check microphone")
+    else:
+        print("WARNING: No audio data received - check microphone connection")
+    
+    # Connect audio to wake word detector with debugging
+    audio_chunks_processed = 0
+    
     def audio_callback(audio_data):
+        nonlocal audio_chunks_processed
+        audio_chunks_processed += 1
+        
+        # Calculate audio level for debugging
+        import numpy as np
+        audio_array = np.frombuffer(audio_data, dtype=np.int16)
+        audio_float = audio_array.astype(np.float32) / 32767.0
+        audio_level = np.max(np.abs(audio_float))
+        
+        # Log audio activity periodically
+        if audio_chunks_processed % 100 == 0:  # Every 100 chunks (~5 seconds)
+            print(f"   Audio processing: {audio_chunks_processed} chunks, current level: {audio_level:.3f}")
+        
         detector.process_audio(audio_data, input_sample_rate=config.audio.sample_rate)
     
     audio_capture.add_callback(audio_callback)
@@ -218,6 +270,7 @@ def main():
     parser.add_argument("--detection", type=int, metavar="DURATION", help="Test detection for N seconds")
     parser.add_argument("--switch", action="store_true", help="Test model switching")
     parser.add_argument("--interactive", action="store_true", help="Interactive testing mode")
+    parser.add_argument("--sensitivity", type=float, help="Override wake word sensitivity (0.0-1.0)")
     
     args = parser.parse_args()
     
@@ -234,7 +287,7 @@ def main():
         elif args.switch:
             await test_model_switching()
         elif args.interactive:
-            await interactive_test(args.config)
+            await interactive_test(args.config, args.sensitivity)
         else:
             # Run basic tests
             logger = get_logger("WakeWordTest")
@@ -249,7 +302,7 @@ def main():
     try:
         asyncio.run(run_tests())
     except KeyboardInterrupt:
-        print("\\nTest interrupted by user")
+        print("\nTest interrupted by user")
 
 
 if __name__ == "__main__":
