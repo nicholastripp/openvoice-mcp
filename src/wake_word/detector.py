@@ -331,24 +331,16 @@ class WakeWordDetector:
             # Initialize model with VAD and noise suppression
             model_kwargs = {}
             
-            # Enable VAD threshold for intelligent wake word filtering (replaces startup delay)
+            # TEMPORARILY DISABLE VAD threshold for debugging (likely cause of 0.0 predictions)
             if self.vad_enabled:
-                model_kwargs['vad_threshold'] = 0.5  # VAD threshold for filtering non-speech
-                self.logger.info("[OK] VAD threshold enabled (0.5) for intelligent wake word filtering")
+                # model_kwargs['vad_threshold'] = 0.5  # VAD threshold for filtering non-speech
+                self.logger.info("[DEBUG] VAD threshold DISABLED for debugging - should see non-zero predictions")
+                self.logger.info("[DEBUG] If this fixes the issue, VAD threshold 0.5 was too aggressive")
             
-            # Enable Speex noise suppression for better performance
-            speex_enabled = getattr(self.config, 'speex_noise_suppression', True)
-            if speex_enabled:
-                try:
-                    import speexdsp_ns
-                    model_kwargs['enable_speex_noise_suppression'] = True
-                    self.logger.info("[OK] Speex noise suppression enabled")
-                except ImportError:
-                    self.logger.info("[INFO] speexdsp_ns not available, using basic processing without noise suppression")
-                    self.logger.info("   Install with: pip install speexdsp-ns (optional)")
-                    self.logger.info("   Or set 'speex_noise_suppression: false' in config")
-            else:
-                self.logger.info("[INFO] Speex noise suppression disabled in configuration")
+            # TEMPORARILY DISABLE Speex noise suppression for debugging
+            speex_enabled = False  # Force disable for minimal config testing
+            self.logger.info("[DEBUG] Speex noise suppression DISABLED for debugging")
+            self.logger.info("[DEBUG] Testing with minimal OpenWakeWord configuration")
             
             self.model = WakeWordModel(
                 wakeword_models=[actual_model_name],
