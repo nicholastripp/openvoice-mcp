@@ -58,6 +58,8 @@ class AudioPlayback:
         # Playback smoothing
         self.underrun_count = 0
         self.last_underrun_warning = 0
+        self.consecutive_underruns = 0
+        self.max_consecutive_underruns = 5  # Force completion after 5 consecutive underruns
         
         # Audio completion tracking
         self.completion_callbacks = []
@@ -321,6 +323,9 @@ class AudioPlayback:
                 # Use buffered audio
                 outdata[:, 0] = self.audio_buffer[:frames]
                 self.audio_buffer = self.audio_buffer[frames:]
+                
+                # Reset consecutive underrun count when we have enough audio
+                self.consecutive_underruns = 0
             elif len(self.audio_buffer) > 0:
                 # Use what we have and pad with silence
                 available_frames = len(self.audio_buffer)
@@ -335,13 +340,48 @@ class AudioPlayback:
                 if current_time - self.last_underrun_warning > 3.0:  # Log every 3 seconds max
                     self.logger.warning(f"Audio underrun #{self.underrun_count}: needed {frames}, had {available_frames}, buffer_size={len(self.audio_buffer)}")
                     self.last_underrun_warning = current_time
+                
+                # Count silence frames for completion detection
+                silence_frames = frames - available_frames
+                self.silence_frames_count += silence_frames
+                self.consecutive_underruns += 1  # Track consecutive underruns
+                
+                # If we have too many underruns, this may indicate completion
+                if self.underrun_count >= 3 and self.audio_queue.empty():
+                    self.logger.debug(f"Multiple underruns detected ({self.underrun_count}) with empty queue - may indicate completion")
+                    self._check_completion()
+                
+                # If we have excessive underruns, force completion to prevent hanging
+                if self.underrun_count >= 10:
+                    self.logger.warning(f"Excessive underruns detected ({self.underrun_count}) - forcing completion to prevent hanging")
+                    print(f"*** EXCESSIVE UNDERRUNS ({self.underrun_count}) - FORCING COMPLETION ***")
+                    self._notify_completion()
+                    return
             else:
                 # No audio available - output silence
                 # This is normal when audio stream first starts or between utterances
-                pass
+                self.silence_frames_count += frames
+                
+                # Track consecutive underruns when no audio available
+                if self.is_response_active:
+                    self.consecutive_underruns += 1
+                    
+                    # Force completion if too many consecutive underruns
+                    if self.consecutive_underruns >= self.max_consecutive_underruns:
+                        self.logger.warning(f"Too many consecutive underruns ({self.consecutive_underruns}) - forcing completion")
+                        print(f"*** TOO MANY CONSECUTIVE UNDERRUNS ({self.consecutive_underruns}) - FORCING COMPLETION ***")
+                        self._notify_completion()
+                        return
             
         except Exception as e:
             self.logger.error(f"Error in audio callback: {e}")
+            # Force completion on callback error to prevent hanging
+            if self.is_response_active:
+                self.logger.warning("Audio callback error - forcing completion to prevent hanging")
+                try:
+                    self._notify_completion()
+                except:
+                    pass  # Ignore errors in error handler
     
     def _playback_loop(self) -> None:
         """Background thread for audio processing (if needed for future features)"""
@@ -364,17 +404,41 @@ class AudioPlayback:
         """Fill the audio buffer from the queue for smooth playback"""
         try:
             # More aggressive buffer filling for variable chunk sizes
-            # Fill buffer more aggressively when low, but respect target when adequate
-            buffer_threshold = self.min_buffer_size if len(self.audio_buffer) < self.min_buffer_size else self.target_buffer_size
+            # Always try to fill to target size when possible
+            buffer_threshold = self.target_buffer_size
             
+            # If buffer is critically low, be more aggressive
+            if len(self.audio_buffer) < self.min_buffer_size:
+                buffer_threshold = self.target_buffer_size * 2  # Double target when low
+            
+            chunks_added = 0
             while len(self.audio_buffer) < buffer_threshold and not self.audio_queue.empty():
                 try:
                     audio_chunk = self.audio_queue.get_nowait()
                     self.audio_buffer = np.concatenate([self.audio_buffer, audio_chunk])
+                    chunks_added += 1
+                    
+                    # Update last audio time when we get new data
+                    if self.is_response_active:
+                        import time
+                        self.last_audio_time = time.time()
+                        
+                    # Prevent infinite loops
+                    if chunks_added > 50:  # Safety limit
+                        break
+                        
                 except Empty:
                     break
+                    
+            # Log buffer status when critically low
+            if len(self.audio_buffer) < self.min_buffer_size and chunks_added == 0:
+                self.logger.debug(f"Buffer critically low: {len(self.audio_buffer)} samples, queue empty: {self.audio_queue.empty()}")
+                
         except Exception as e:
             self.logger.error(f"Error filling buffer from queue: {e}")
+            # Try to recover by clearing potentially corrupted buffer
+            if len(self.audio_buffer) == 0:
+                self.audio_buffer = np.array([], dtype=np.float32)
     
     def _process_audio_chunk(self, audio_data: np.ndarray) -> np.ndarray:
         """

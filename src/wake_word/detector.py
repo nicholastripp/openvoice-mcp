@@ -73,17 +73,17 @@ class WakeWordDetector:
         
         # Model state management to prevent stuck predictions
         self.predictions_history = []  # Track recent predictions to detect stuck state
-        self.stuck_detection_threshold = 3  # Number of identical predictions to trigger reset (reduced for faster recovery)
+        self.stuck_detection_threshold = 10  # Number of identical predictions to trigger reset (increased from 3)
         self.last_model_reset_time = 0
-        self.model_reset_interval = 60.0  # Reset model every 1 minute (reduced for better stuck state handling)
+        self.model_reset_interval = 300.0  # Reset model every 5 minutes (increased from 60s)
         self.chunks_since_reset = 0
         self.reset_on_stuck = True  # Enable automatic reset when stuck state detected
         
         # Prediction timeout configuration
-        self.prediction_timeout = 2.0  # 2 seconds timeout for model.predict()
+        self.prediction_timeout = 5.0  # 5 seconds timeout for model.predict() (increased from 2s)
         self.prediction_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="WakeWordPredict")
         self.hung_predictions = 0
-        self.max_hung_predictions = 3  # Reset model after 3 consecutive timeouts
+        self.max_hung_predictions = 5  # Reset model after 5 consecutive timeouts (increased from 3)
     
     async def start(self) -> None:
         """Start wake word detection"""
@@ -826,7 +826,7 @@ class WakeWordDetector:
         for pred in recent_predictions[1:]:
             if not pred or first_model_name not in pred:
                 return False
-            if abs(pred[first_model_name] - first_value) > 1e-10:  # Allow tiny floating point differences
+            if abs(pred[first_model_name] - first_value) > 1e-6:  # Allow more floating point differences (increased from 1e-10)
                 return False
         
         return True
