@@ -387,28 +387,6 @@ class VoiceAssistant:
         self.logger.info("Voice session started - ready to receive audio input")
         print("*** VOICE SESSION ACTIVE - SPEAK YOUR QUESTION ***")
         
-    async def _start_session_with_greeting(self) -> None:
-        """Start a voice session with an initial greeting"""
-        # First start the regular session
-        await self._start_session()
-        
-        # Send a greeting message to OpenAI to generate an initial response
-        if self.openai_client and self.openai_client.state.value == "connected":
-            greeting_message = "Hello! I'm ready to help you with your smart home. What can I do for you?"
-            
-            try:
-                # Send the greeting as a system message to trigger an audio response
-                await self.openai_client.send_text(greeting_message)
-                
-                # Request an audio response
-                await self.openai_client._send_event({"type": "response.create"})
-                
-                self.logger.info("Sent initial greeting to OpenAI")
-                print("*** INITIAL GREETING SENT TO OPENAI ***")
-                
-            except Exception as e:
-                self.logger.error(f"Failed to send initial greeting: {e}")
-                print(f"*** ERROR SENDING INITIAL GREETING: {e} ***")
     
     async def _end_session(self) -> None:
         """End the current voice session with comprehensive cleanup"""
@@ -719,9 +697,9 @@ class VoiceAssistant:
         if self.config.session.conversation_mode == "multi_turn" and self.session_active:
             # Check if the last response contained conversation end phrases
             if self.last_user_input and self._contains_end_phrases(self.last_user_input):
-                self.logger.info("Conversation end phrase detected - sending goodbye and ending session")
-                print("*** CONVERSATION END PHRASE DETECTED - SENDING GOODBYE AND ENDING SESSION ***")
-                await self._send_goodbye_and_end_session()
+                self.logger.info("Conversation end phrase detected - ending session naturally")
+                print("*** CONVERSATION END PHRASE DETECTED - ENDING SESSION NATURALLY ***")
+                await self._end_session()
                 return
             
             # Increment conversation turn count
@@ -868,31 +846,6 @@ class VoiceAssistant:
         
         return False
     
-    async def _send_goodbye_and_end_session(self) -> None:
-        """Send a goodbye message and end the session gracefully"""
-        try:
-            if self.openai_client and self.openai_client.state.value == "connected":
-                goodbye_message = "You're welcome! Have a great day!"
-                
-                # Send the goodbye message
-                await self.openai_client.send_text(goodbye_message)
-                
-                # Request an audio response
-                await self.openai_client._send_event({"type": "response.create"})
-                
-                self.logger.info("Sent goodbye message before ending session")
-                print("*** GOODBYE MESSAGE SENT ***")
-                
-                # Give a moment for the goodbye to be processed
-                await asyncio.sleep(0.5)
-                
-            # End the session
-            await self._end_session()
-            
-        except Exception as e:
-            self.logger.error(f"Error sending goodbye message: {e}")
-            # Still end the session even if goodbye fails
-            await self._end_session()
     
     async def _periodic_cleanup(self) -> None:
         """Periodic cleanup task to prevent hanging sessions"""
@@ -1115,10 +1068,10 @@ class VoiceAssistant:
             self.logger.info(f"OpenAI client connected, state: {self.openai_client.state.value}")
             print(f"*** OPENAI CONNECTED (state: {self.openai_client.state.value}) ***")
         
-        # Start voice session with greeting
+        # Start voice session
         self.logger.info("Starting voice session from wake word detection")
         print("*** STARTING VOICE SESSION ***")
-        asyncio.run_coroutine_threadsafe(self._start_session_with_greeting(), self.loop)
+        asyncio.run_coroutine_threadsafe(self._start_session(), self.loop)
     
     async def _ensure_openai_connection(self) -> None:
         """Ensure OpenAI client is connected"""
