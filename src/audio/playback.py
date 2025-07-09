@@ -8,7 +8,6 @@ from scipy import signal
 from typing import Optional, Any
 from queue import Queue, Empty
 import threading
-import sys
 
 from config import AudioConfig
 from utils.logger import get_logger
@@ -35,27 +34,19 @@ class AudioPlayback:
         # State
         self.is_playing = False
         self.stream: Optional[sd.OutputStream] = None
-        self.audio_queue = Queue(maxsize=100)  # Increased queue size to prevent underruns
+        self.audio_queue = Queue(maxsize=150)  # Large queue for Pi stability
         
-        # Buffering for smooth playback - optimized for OpenAI's variable chunk sizes
+        # Buffering for smooth playback - optimized for Raspberry Pi hardware
         self.audio_buffer = np.array([], dtype=np.float32)
-        
-        # Platform-specific buffer tuning
-        if sys.platform.startswith('linux'):
-            # Raspberry Pi/Linux - more conservative buffering for stability
-            self.min_buffer_size = int(self.device_sample_rate * 0.15)  # 150ms buffer minimum
-            self.target_buffer_size = int(self.device_sample_rate * 0.35)  # 350ms target buffer
-        else:
-            # macOS/Windows - can handle smaller buffers
-            self.min_buffer_size = int(self.device_sample_rate * 0.1)  # 100ms buffer minimum
-            self.target_buffer_size = int(self.device_sample_rate * 0.25)  # 250ms target buffer
+        self.min_buffer_size = int(self.device_sample_rate * 0.15)  # 150ms buffer minimum
+        self.target_buffer_size = int(self.device_sample_rate * 0.35)  # 350ms target buffer
         
         # Resampling
         self.need_resampling = self.device_sample_rate != self.source_sample_rate
         if self.need_resampling:
             self.resampling_ratio = self.device_sample_rate / self.source_sample_rate
-            self.logger.info(f"Will resample from {self.source_sample_rate}Hz to {self.device_sample_rate}Hz (platform: {sys.platform})")
-        self.logger.info(f"Buffer configuration: min={self.min_buffer_size} samples, target={self.target_buffer_size} samples")
+            self.logger.info(f"Will resample from {self.source_sample_rate}Hz to {self.device_sample_rate}Hz")
+        self.logger.info(f"Raspberry Pi buffer configuration: min={self.min_buffer_size} samples ({self.min_buffer_size/self.device_sample_rate*1000:.0f}ms), target={self.target_buffer_size} samples ({self.target_buffer_size/self.device_sample_rate*1000:.0f}ms)")
         
         # Threading
         self.playback_thread: Optional[threading.Thread] = None
@@ -80,7 +71,7 @@ class AudioPlayback:
             if device_info:
                 self.logger.info(f"Using output device: {device_info['name']}")
             
-            # Create audio stream with increased buffer size (cross-platform)
+            # Create audio stream optimized for Raspberry Pi
             stream_params = {
                 'device': self.output_device if self.output_device != "default" else None,
                 'samplerate': self.device_sample_rate,
@@ -88,24 +79,10 @@ class AudioPlayback:
                 'dtype': np.float32,
                 'blocksize': self.chunk_size,
                 'callback': self._audio_callback,
-                'latency': 'low'
+                'latency': 'high'  # Higher latency for Pi stability
             }
             
-            # Add platform-specific settings only if actually supported
-            if sys.platform == 'darwin':
-                # macOS-specific settings
-                try:
-                    stream_params['extra_settings'] = sd.CoreAudioSettings(channel_map=None)
-                    self.logger.debug("Using macOS CoreAudio settings")
-                except (AttributeError, Exception) as e:
-                    self.logger.debug(f"CoreAudio settings not available: {e}")
-            elif sys.platform.startswith('linux'):
-                # Linux/Pi-specific settings - use ALSA defaults with higher latency for stability
-                stream_params['latency'] = 'high'  # More stable on Pi
-                self.logger.debug("Using Linux ALSA defaults with high latency for stability")
-            else:
-                # Windows or other platforms
-                self.logger.debug(f"Using default settings for platform: {sys.platform}")
+            self.logger.debug("Using ALSA defaults with high latency for Raspberry Pi stability")
             
             # Create stream with error handling
             try:
@@ -154,7 +131,7 @@ class AudioPlayback:
                 self.is_playing = False
                 raise RuntimeError(f"Failed to start playback thread: {e}")
             
-            self.logger.info(f"Audio playback started successfully (device: {self.output_device}, rate: {self.device_sample_rate}Hz)")
+            self.logger.info(f"Raspberry Pi audio playback started successfully (device: {self.output_device}, rate: {self.device_sample_rate}Hz, latency: high)")
             
         except Exception as e:
             self.logger.error(f"Failed to start audio playback: {e}")

@@ -63,8 +63,7 @@ class AudioCapture:
             if device_info:
                 self.logger.info(f"Using input device: {device_info['name']}")
             
-            # Create audio stream with platform-specific settings
-            import sys
+            # Create audio stream optimized for Raspberry Pi
             stream_params = {
                 'device': self.input_device if self.input_device != "default" else None,
                 'samplerate': self.device_sample_rate,
@@ -72,7 +71,7 @@ class AudioCapture:
                 'dtype': np.float32,
                 'blocksize': self.chunk_size,
                 'callback': self._audio_callback,
-                'latency': 'high' if sys.platform.startswith('linux') else 'low'  # Higher latency for Pi stability
+                'latency': 'high'  # Higher latency for Pi stability
             }
             
             # Create stream with error handling
@@ -122,7 +121,7 @@ class AudioCapture:
                 self.is_recording = False
                 raise RuntimeError(f"Failed to start capture processing thread: {e}")
             
-            self.logger.info(f"Audio capture started successfully (device: {self.input_device}, rate: {self.device_sample_rate}Hz)")
+            self.logger.info(f"Raspberry Pi audio capture started successfully (device: {self.input_device}, rate: {self.device_sample_rate}Hz, latency: high)")
             
         except Exception as e:
             self.logger.error(f"Failed to start audio capture: {e}")
