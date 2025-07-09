@@ -310,11 +310,25 @@ class VoiceAssistant:
     
     async def _on_audio_captured_for_wake_word(self, audio_data: bytes) -> None:
         """Handle captured audio for wake word detection"""
-        # Check if we should mute audio during response playback
-        if (self.config.audio.mute_during_response and 
-            self.response_active and 
-            self.config.audio.feedback_prevention):
+        # ENHANCED: Check multiple conditions for muting audio during response/cooldown
+        should_mute = (
+            self.config.audio.mute_during_response and 
+            self.config.audio.feedback_prevention and
+            (self.response_active or 
+             self.session_state == SessionState.RESPONDING or 
+             self.session_state == SessionState.COOLDOWN)
+        )
+        
+        if should_mute:
             # Skip audio processing during response playback to prevent feedback
+            if hasattr(self, '_mute_debug_counter'):
+                self._mute_debug_counter += 1
+                if self._mute_debug_counter % 50 == 0:  # Log every 50 chunks
+                    self.logger.debug(f"Audio muted: {self._mute_debug_counter} chunks skipped (state: {self.session_state.value}, response_active: {self.response_active})")
+            else:
+                self._mute_debug_counter = 1
+                self.logger.info(f"🔇 Audio muted during {self.session_state.value} state (response_active: {self.response_active})")
+                print(f"*** 🔇 AUDIO MUTED DURING {self.session_state.value.upper()} STATE ***")
             return
         
         if not self.session_active:
@@ -337,11 +351,25 @@ class VoiceAssistant:
     
     async def _on_audio_captured_direct(self, audio_data: bytes) -> None:
         """Handle captured audio directly (development mode without wake word)"""
-        # Check if we should mute audio during response playback
-        if (self.config.audio.mute_during_response and 
-            self.response_active and 
-            self.config.audio.feedback_prevention):
+        # ENHANCED: Check multiple conditions for muting audio during response/cooldown
+        should_mute = (
+            self.config.audio.mute_during_response and 
+            self.config.audio.feedback_prevention and
+            (self.response_active or 
+             self.session_state == SessionState.RESPONDING or 
+             self.session_state == SessionState.COOLDOWN)
+        )
+        
+        if should_mute:
             # Skip audio processing during response playback to prevent feedback
+            if hasattr(self, '_mute_debug_counter_direct'):
+                self._mute_debug_counter_direct += 1
+                if self._mute_debug_counter_direct % 50 == 0:  # Log every 50 chunks
+                    self.logger.debug(f"Direct audio muted: {self._mute_debug_counter_direct} chunks skipped (state: {self.session_state.value}, response_active: {self.response_active})")
+            else:
+                self._mute_debug_counter_direct = 1
+                self.logger.info(f"🔇 Direct audio muted during {self.session_state.value} state (response_active: {self.response_active})")
+                print(f"*** 🔇 DIRECT AUDIO MUTED DURING {self.session_state.value.upper()} STATE ***")
             return
         
         if not self.session_active:
@@ -353,6 +381,14 @@ class VoiceAssistant:
     
     async def _send_audio_to_openai(self, audio_data: bytes) -> None:
         """Send audio data to OpenAI and update activity"""
+        # FINAL SAFETY CHECK: Don't send audio during response or cooldown
+        if (self.config.audio.feedback_prevention and
+            (self.session_state == SessionState.RESPONDING or 
+             self.session_state == SessionState.COOLDOWN)):
+            self.logger.warning(f"🚫 BLOCKED: Attempted to send audio to OpenAI during {self.session_state.value} state")
+            print(f"*** 🚫 BLOCKED AUDIO TO OPENAI DURING {self.session_state.value.upper()} STATE ***")
+            return
+        
         # Update activity timestamp
         self.last_activity = asyncio.get_event_loop().time()
         
@@ -428,6 +464,24 @@ class VoiceAssistant:
         """Handle user speech stopped"""
         self.logger.info("User speech stopped - server VAD will automatically trigger response")
         print("*** USER STOPPED SPEAKING - SERVER VAD PROCESSING ***")
+        
+        # CRITICAL: Ignore speech events during cooldown to prevent false positives
+        if self.session_state == SessionState.COOLDOWN:
+            self.logger.warning("Ignoring speech_stopped event during cooldown - likely false positive from audio playback")
+            print("*** IGNORING SPEECH EVENT DURING COOLDOWN - PREVENTING FALSE POSITIVE ***")
+            return
+        
+        # Ignore speech events during response to prevent feedback
+        if self.session_state == SessionState.RESPONDING:
+            self.logger.warning("Ignoring speech_stopped event during response - likely audio feedback")
+            print("*** IGNORING SPEECH EVENT DURING RESPONSE - PREVENTING FEEDBACK ***")
+            return
+        
+        # Only process speech events if we're in LISTENING state
+        if self.session_state != SessionState.LISTENING:
+            self.logger.warning(f"Ignoring speech_stopped event in {self.session_state.value} state")
+            print(f"*** IGNORING SPEECH EVENT IN {self.session_state.value.upper()} STATE ***")
+            return
         
         # Transition to processing state
         self._transition_to_state(SessionState.PROCESSING)

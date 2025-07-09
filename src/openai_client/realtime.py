@@ -644,10 +644,13 @@ class OpenAIRealtimeClient:
         """Update VAD settings dynamically"""
         if self.state != ConnectionState.CONNECTED:
             self.logger.warning("Cannot update VAD settings - not connected")
+            print("*** VAD UPDATE FAILED: NOT CONNECTED ***")
             return
         
         # Update turn detection settings
         current_config = self.session_config.get("turn_detection", {})
+        old_threshold = current_config.get("threshold", "unknown")
+        old_silence = current_config.get("silence_duration_ms", "unknown")
         
         if threshold is not None:
             current_config["threshold"] = threshold
@@ -665,8 +668,17 @@ class OpenAIRealtimeClient:
             }
         }
         
-        await self._send_event(event)
-        self.logger.info(f"Updated VAD settings: threshold={current_config.get('threshold')}, silence_duration={current_config.get('silence_duration_ms')}ms")
+        # Log the update attempt with detailed info
+        self.logger.info(f"VAD UPDATE: threshold {old_threshold} -> {current_config.get('threshold')}, silence_duration {old_silence}ms -> {current_config.get('silence_duration_ms')}ms")
+        print(f"*** VAD UPDATE: threshold {old_threshold} -> {current_config.get('threshold')}, silence_duration {old_silence}ms -> {current_config.get('silence_duration_ms')}ms ***")
+        
+        try:
+            await self._send_event(event)
+            self.logger.info(f"✅ VAD settings updated successfully: threshold={current_config.get('threshold')}, silence_duration={current_config.get('silence_duration_ms')}ms")
+            print(f"*** ✅ VAD SETTINGS UPDATED: threshold={current_config.get('threshold')}, silence_duration={current_config.get('silence_duration_ms')}ms ***")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to update VAD settings: {e}")
+            print(f"*** ❌ VAD UPDATE FAILED: {e} ***")
     
     async def _handle_reconnection(self) -> None:
         """Handle automatic reconnection"""
