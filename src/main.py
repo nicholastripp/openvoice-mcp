@@ -410,6 +410,14 @@ class VoiceAssistant:
         self.conversation_turn_count = 0
         self.last_user_input = None
         
+        # Reset audio streaming counters for clean logging
+        if hasattr(self, '_openai_audio_counter'):
+            self.logger.info(f"Session ended - sent {self._openai_audio_counter} audio chunks to OpenAI")
+            self._openai_audio_counter = 0
+        if hasattr(self, '_blocked_audio_counter'):
+            self.logger.info(f"Session ended - blocked {self._blocked_audio_counter} audio chunks from OpenAI")
+            self._blocked_audio_counter = 0
+        
         # Clear audio playback queue to prevent stuck audio
         if self.audio_playback:
             try:
@@ -525,7 +533,21 @@ class VoiceAssistant:
     
     async def _send_audio_to_openai(self, audio_data: bytes) -> None:
         """Send audio data to OpenAI and update activity"""
-        # FINAL SAFETY CHECK: Don't send audio during response or cooldown
+        # CRITICAL CHECK: Only send audio when session is active and in appropriate state
+        if not self.session_active or self.session_state == SessionState.IDLE:
+            # Track blocked audio chunks for debugging
+            if hasattr(self, '_blocked_audio_counter'):
+                self._blocked_audio_counter += 1
+            else:
+                self._blocked_audio_counter = 1
+                self.logger.info(f"[BLOCKED] Started blocking audio to OpenAI - session_active: {self.session_active}, state: {self.session_state.value}")
+                print(f"*** [BLOCKED] AUDIO TO OPENAI - SESSION INACTIVE OR IDLE ***")
+            
+            if self._blocked_audio_counter % 100 == 0:  # Every 100 blocked chunks
+                self.logger.debug(f"Blocked {self._blocked_audio_counter} audio chunks from OpenAI (session_active: {self.session_active}, state: {self.session_state.value})")
+            return
+        
+        # ADDITIONAL SAFETY CHECK: Don't send audio during response or cooldown
         if (self.config.audio.feedback_prevention and
             (self.session_state == SessionState.RESPONDING or 
              self.session_state == SessionState.AUDIO_PLAYING or 
@@ -545,11 +567,11 @@ class VoiceAssistant:
                 self._openai_audio_counter += 1
             else:
                 self._openai_audio_counter = 1
-                self.logger.info("Started sending audio to OpenAI")
-                print("*** STARTED SENDING AUDIO TO OPENAI ***")
+                self.logger.info(f"Started sending audio to OpenAI (session_active: {self.session_active}, state: {self.session_state.value})")
+                print(f"*** STARTED SENDING AUDIO TO OPENAI - STATE: {self.session_state.value.upper()} ***")
                 
             if self._openai_audio_counter % 50 == 0:  # Every 50 chunks
-                self.logger.debug(f"Sent {self._openai_audio_counter} audio chunks to OpenAI")
+                self.logger.debug(f"Sent {self._openai_audio_counter} audio chunks to OpenAI (state: {self.session_state.value})")
         else:
             self.logger.error("No OpenAI client available to send audio!")
             print("*** ERROR: NO OPENAI CLIENT FOR AUDIO ***")
