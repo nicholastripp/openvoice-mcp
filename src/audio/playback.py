@@ -8,6 +8,7 @@ from scipy import signal
 from typing import Optional, Any
 from queue import Queue, Empty
 import threading
+import sys
 
 from config import AudioConfig
 from utils.logger import get_logger
@@ -38,14 +39,23 @@ class AudioPlayback:
         
         # Buffering for smooth playback - optimized for OpenAI's variable chunk sizes
         self.audio_buffer = np.array([], dtype=np.float32)
-        self.min_buffer_size = int(self.device_sample_rate * 0.1)  # 100ms buffer minimum (increased)
-        self.target_buffer_size = int(self.device_sample_rate * 0.25)  # 250ms target buffer (increased)
+        
+        # Platform-specific buffer tuning
+        if sys.platform.startswith('linux'):
+            # Raspberry Pi/Linux - more conservative buffering for stability
+            self.min_buffer_size = int(self.device_sample_rate * 0.15)  # 150ms buffer minimum
+            self.target_buffer_size = int(self.device_sample_rate * 0.35)  # 350ms target buffer
+        else:
+            # macOS/Windows - can handle smaller buffers
+            self.min_buffer_size = int(self.device_sample_rate * 0.1)  # 100ms buffer minimum
+            self.target_buffer_size = int(self.device_sample_rate * 0.25)  # 250ms target buffer
         
         # Resampling
         self.need_resampling = self.device_sample_rate != self.source_sample_rate
         if self.need_resampling:
             self.resampling_ratio = self.device_sample_rate / self.source_sample_rate
-            self.logger.info(f"Will resample from {self.source_sample_rate}Hz to {self.device_sample_rate}Hz")
+            self.logger.info(f"Will resample from {self.source_sample_rate}Hz to {self.device_sample_rate}Hz (platform: {sys.platform})")
+        self.logger.info(f"Buffer configuration: min={self.min_buffer_size} samples, target={self.target_buffer_size} samples")
         
         # Threading
         self.playback_thread: Optional[threading.Thread] = None
@@ -70,31 +80,92 @@ class AudioPlayback:
             if device_info:
                 self.logger.info(f"Using output device: {device_info['name']}")
             
-            # Create audio stream with increased buffer size
-            self.stream = sd.OutputStream(
-                device=self.output_device if self.output_device != "default" else None,
-                samplerate=self.device_sample_rate,
-                channels=self.channels,
-                dtype=np.float32,
-                blocksize=self.chunk_size,
-                callback=self._audio_callback,
-                latency='low',
-                extra_settings=sd.CoreAudioSettings(channel_map=None) if hasattr(sd, 'CoreAudioSettings') else None
-            )
+            # Create audio stream with increased buffer size (cross-platform)
+            stream_params = {
+                'device': self.output_device if self.output_device != "default" else None,
+                'samplerate': self.device_sample_rate,
+                'channels': self.channels,
+                'dtype': np.float32,
+                'blocksize': self.chunk_size,
+                'callback': self._audio_callback,
+                'latency': 'low'
+            }
             
-            # Start stream
-            self.stream.start()
-            self.is_playing = True
+            # Add platform-specific settings only if actually supported
+            if sys.platform == 'darwin':
+                # macOS-specific settings
+                try:
+                    stream_params['extra_settings'] = sd.CoreAudioSettings(channel_map=None)
+                    self.logger.debug("Using macOS CoreAudio settings")
+                except (AttributeError, Exception) as e:
+                    self.logger.debug(f"CoreAudio settings not available: {e}")
+            elif sys.platform.startswith('linux'):
+                # Linux/Pi-specific settings - use ALSA defaults with higher latency for stability
+                stream_params['latency'] = 'high'  # More stable on Pi
+                self.logger.debug("Using Linux ALSA defaults with high latency for stability")
+            else:
+                # Windows or other platforms
+                self.logger.debug(f"Using default settings for platform: {sys.platform}")
+            
+            # Create stream with error handling
+            try:
+                self.stream = sd.OutputStream(**stream_params)
+                self.logger.debug(f"Created audio stream with device: {stream_params['device']}")
+            except Exception as e:
+                self.logger.error(f"Failed to create audio stream: {e}")
+                # Try fallback with default device
+                if stream_params['device'] is not None:
+                    self.logger.info("Trying fallback to default audio device")
+                    stream_params['device'] = None
+                    try:
+                        self.stream = sd.OutputStream(**stream_params)
+                        self.logger.info("Successfully created stream with default device")
+                    except Exception as fallback_e:
+                        self.logger.error(f"Fallback to default device also failed: {fallback_e}")
+                        raise RuntimeError(f"Audio initialization failed: {e}. Fallback failed: {fallback_e}")
+                else:
+                    raise RuntimeError(f"Audio initialization failed: {e}")
+            
+            # Start stream with error handling
+            try:
+                self.stream.start()
+                self.is_playing = True
+                self.logger.debug("Audio stream started successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to start audio stream: {e}")
+                if self.stream:
+                    self.stream.close()
+                    self.stream = None
+                raise RuntimeError(f"Failed to start audio stream: {e}")
             
             # Start playback thread
-            self.stop_event.clear()
-            self.playback_thread = threading.Thread(target=self._playback_loop, daemon=True)
-            self.playback_thread.start()
+            try:
+                self.stop_event.clear()
+                self.playback_thread = threading.Thread(target=self._playback_loop, daemon=True)
+                self.playback_thread.start()
+                self.logger.debug("Audio playback thread started")
+            except Exception as e:
+                self.logger.error(f"Failed to start playback thread: {e}")
+                # Clean up stream
+                if self.stream:
+                    self.stream.stop()
+                    self.stream.close()
+                    self.stream = None
+                self.is_playing = False
+                raise RuntimeError(f"Failed to start playback thread: {e}")
             
-            self.logger.info("Audio playback started")
+            self.logger.info(f"Audio playback started successfully (device: {self.output_device}, rate: {self.device_sample_rate}Hz)")
             
         except Exception as e:
             self.logger.error(f"Failed to start audio playback: {e}")
+            # Ensure cleanup on any failure
+            self.is_playing = False
+            if hasattr(self, 'stream') and self.stream:
+                try:
+                    self.stream.close()
+                except:
+                    pass
+                self.stream = None
             raise
     
     async def stop(self) -> None:

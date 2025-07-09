@@ -63,30 +63,77 @@ class AudioCapture:
             if device_info:
                 self.logger.info(f"Using input device: {device_info['name']}")
             
-            # Create audio stream
-            self.stream = sd.InputStream(
-                device=self.input_device if self.input_device != "default" else None,
-                samplerate=self.device_sample_rate,
-                channels=self.channels,
-                dtype=np.float32,
-                blocksize=self.chunk_size,
-                callback=self._audio_callback,
-                latency='low'
-            )
+            # Create audio stream with platform-specific settings
+            import sys
+            stream_params = {
+                'device': self.input_device if self.input_device != "default" else None,
+                'samplerate': self.device_sample_rate,
+                'channels': self.channels,
+                'dtype': np.float32,
+                'blocksize': self.chunk_size,
+                'callback': self._audio_callback,
+                'latency': 'high' if sys.platform.startswith('linux') else 'low'  # Higher latency for Pi stability
+            }
             
-            # Start stream
-            self.stream.start()
-            self.is_recording = True
+            # Create stream with error handling
+            try:
+                self.stream = sd.InputStream(**stream_params)
+                self.logger.debug(f"Created audio input stream with device: {stream_params['device']}")
+            except Exception as e:
+                self.logger.error(f"Failed to create audio input stream: {e}")
+                # Try fallback with default device
+                if stream_params['device'] is not None:
+                    self.logger.info("Trying fallback to default audio input device")
+                    stream_params['device'] = None
+                    try:
+                        self.stream = sd.InputStream(**stream_params)
+                        self.logger.info("Successfully created input stream with default device")
+                    except Exception as fallback_e:
+                        self.logger.error(f"Fallback to default input device also failed: {fallback_e}")
+                        raise RuntimeError(f"Audio input initialization failed: {e}. Fallback failed: {fallback_e}")
+                else:
+                    raise RuntimeError(f"Audio input initialization failed: {e}")
+            
+            # Start stream with error handling
+            try:
+                self.stream.start()
+                self.is_recording = True
+                self.logger.debug("Audio input stream started successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to start audio input stream: {e}")
+                if self.stream:
+                    self.stream.close()
+                    self.stream = None
+                raise RuntimeError(f"Failed to start audio input stream: {e}")
             
             # Start processing thread
-            self.stop_event.clear()
-            self.processing_thread = threading.Thread(target=self._processing_loop, daemon=True)
-            self.processing_thread.start()
+            try:
+                self.stop_event.clear()
+                self.processing_thread = threading.Thread(target=self._processing_loop, daemon=True)
+                self.processing_thread.start()
+                self.logger.debug("Audio capture processing thread started")
+            except Exception as e:
+                self.logger.error(f"Failed to start capture processing thread: {e}")
+                # Clean up stream
+                if self.stream:
+                    self.stream.stop()
+                    self.stream.close()
+                    self.stream = None
+                self.is_recording = False
+                raise RuntimeError(f"Failed to start capture processing thread: {e}")
             
-            self.logger.info("Audio capture started")
+            self.logger.info(f"Audio capture started successfully (device: {self.input_device}, rate: {self.device_sample_rate}Hz)")
             
         except Exception as e:
             self.logger.error(f"Failed to start audio capture: {e}")
+            # Ensure cleanup on any failure
+            self.is_recording = False
+            if hasattr(self, 'stream') and self.stream:
+                try:
+                    self.stream.close()
+                except:
+                    pass
+                self.stream = None
             raise
     
     async def stop(self) -> None:
