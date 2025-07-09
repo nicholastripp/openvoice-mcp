@@ -58,6 +58,17 @@ session:
   auto_end_after_response: true  # Auto-end session after response completion
   response_cooldown_delay: 2.0   # Cooldown delay before ending session (seconds)
   
+  # Multi-turn conversation settings
+  conversation_mode: "single_turn"  # "single_turn" or "multi_turn"
+  multi_turn_timeout: 30.0         # Seconds to wait for follow-up questions
+  multi_turn_max_turns: 10         # Maximum conversation turns per session
+  multi_turn_end_phrases:          # Phrases to end multi-turn conversation
+    - "goodbye"
+    - "stop"
+    - "that's all"
+    - "thank you"
+    - "bye"
+  
 # System Configuration
 system:
   log_level: "INFO"              # DEBUG, INFO, WARNING, ERROR, CRITICAL

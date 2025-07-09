@@ -35,6 +35,7 @@ class SessionState(Enum):
     RESPONDING = "responding"
     AUDIO_PLAYING = "audio_playing"
     COOLDOWN = "cooldown"
+    MULTI_TURN_LISTENING = "multi_turn_listening"
 
 
 class VoiceAssistant:
@@ -66,6 +67,11 @@ class VoiceAssistant:
         self.vad_timeout_task = None
         self.response_active = False
         self.response_end_task = None
+        
+        # Multi-turn conversation state
+        self.conversation_turn_count = 0
+        self.multi_turn_timeout_task = None
+        self.last_user_input = None
         
         # Session watchdog for stuck session detection
         self.last_state_change = asyncio.get_event_loop().time()
@@ -376,6 +382,16 @@ class VoiceAssistant:
             self.response_end_task = None
             self.logger.debug("Cancelled response end task")
         
+        # Cancel multi-turn timeout task if it exists
+        if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
+            self.multi_turn_timeout_task.cancel()
+            self.multi_turn_timeout_task = None
+            self.logger.debug("Cancelled multi-turn timeout task")
+        
+        # Reset multi-turn conversation state
+        self.conversation_turn_count = 0
+        self.last_user_input = None
+        
         # Clear audio playback queue to prevent stuck audio
         if self.audio_playback:
             try:
@@ -599,6 +615,38 @@ class VoiceAssistant:
             await self.openai_client.update_vad_settings(threshold=0.6, silence_duration_ms=300)
             self.logger.debug("Restored normal VAD threshold after actual playback completion")
         
+        # Check if multi-turn conversation mode is enabled
+        if self.config.session.conversation_mode == "multi_turn" and self.session_active:
+            # Check if the last response contained conversation end phrases
+            if self.last_user_input and self._contains_end_phrases(self.last_user_input):
+                self.logger.info("Conversation end phrase detected - ending session")
+                print("*** CONVERSATION END PHRASE DETECTED - ENDING SESSION ***")
+                await self._end_session()
+                return
+            
+            # Increment conversation turn count
+            self.conversation_turn_count += 1
+            
+            # Check if we've reached the maximum number of turns
+            if self.conversation_turn_count >= self.config.session.multi_turn_max_turns:
+                self.logger.info(f"Maximum turns ({self.config.session.multi_turn_max_turns}) reached - ending session")
+                print(f"*** MAXIMUM TURNS ({self.config.session.multi_turn_max_turns}) REACHED - ENDING SESSION ***")
+                await self._end_session()
+                return
+            
+            # Transition to multi-turn listening state
+            self.logger.info(f"Multi-turn conversation active (turn {self.conversation_turn_count}/{self.config.session.multi_turn_max_turns})")
+            print(f"*** MULTI-TURN CONVERSATION ACTIVE (TURN {self.conversation_turn_count}/{self.config.session.multi_turn_max_turns}) ***")
+            print(f"*** LISTENING FOR FOLLOW-UP QUESTION (TIMEOUT: {self.config.session.multi_turn_timeout}s) ***")
+            
+            self._transition_to_state(SessionState.MULTI_TURN_LISTENING)
+            
+            # Set up timeout for multi-turn conversation
+            self.multi_turn_timeout_task = asyncio.create_task(self._handle_multi_turn_timeout())
+            
+            return
+        
+        # Original single-turn logic
         # Check if we should auto-end the session
         if (self.config.session.auto_end_after_response and 
             self.session_active and 
@@ -611,7 +659,7 @@ class VoiceAssistant:
         elif self.config.session.auto_end_after_response:
             # End session immediately if no cooldown delay
             self.logger.info("Auto-ending session after actual playback completion")
-            print("*** AUTO-ENDING SESSION AFTER ACTUAL PLAYBACK COMPLETION ***")
+            print("*** AUTO-ENDING SESSION AFTER ACTUAL PLAYBOOK COMPLETION ***")
             await self._end_session()
     
     def _schedule_fallback_session_end(self) -> None:
@@ -647,6 +695,40 @@ class VoiceAssistant:
             self.response_active = False
             self._transition_to_state(SessionState.IDLE)
     
+    async def _handle_multi_turn_timeout(self) -> None:
+        """Handle timeout for multi-turn conversations"""
+        try:
+            # Wait for multi-turn timeout
+            await asyncio.sleep(self.config.session.multi_turn_timeout)
+            
+            # If we reach here, no follow-up question was received
+            if self.session_active and self.session_state == SessionState.MULTI_TURN_LISTENING:
+                self.logger.info(f"Multi-turn conversation timeout after {self.config.session.multi_turn_timeout}s - ending session")
+                print(f"*** MULTI-TURN TIMEOUT AFTER {self.config.session.multi_turn_timeout}S - ENDING SESSION ***")
+                await self._end_session()
+        except asyncio.CancelledError:
+            # Task was cancelled (user spoke again)
+            self.logger.debug("Multi-turn timeout task cancelled - user spoke again")
+        except Exception as e:
+            self.logger.error(f"Error in multi-turn timeout handler: {e}")
+            # End session on error to prevent hanging
+            if self.session_active:
+                await self._end_session()
+    
+    def _contains_end_phrases(self, text: str) -> bool:
+        """Check if text contains conversation end phrases"""
+        if not text:
+            return False
+        
+        text_lower = text.lower().strip()
+        
+        # Check configured end phrases
+        for phrase in self.config.session.multi_turn_end_phrases:
+            if phrase.lower() in text_lower:
+                return True
+        
+        return False
+    
     async def _periodic_cleanup(self) -> None:
         """Periodic cleanup task to prevent hanging sessions"""
         while self.running:
@@ -660,8 +742,13 @@ class VoiceAssistant:
                 current_time = asyncio.get_event_loop().time()
                 
                 # If we have a session that's been active too long, clean it up
+                # For multi-turn sessions, use a longer timeout
+                timeout_threshold = self.cleanup_interval * 2
+                if self.config.session.conversation_mode == "multi_turn":
+                    timeout_threshold = max(timeout_threshold, self.config.session.multi_turn_timeout * 1.5)
+                
                 if (self.session_active and 
-                    current_time - self.last_activity > self.cleanup_interval * 2):
+                    current_time - self.last_activity > timeout_threshold):
                     
                     self.logger.warning(f"Orphaned session detected, cleaning up (inactive for {current_time - self.last_activity:.1f}s)")
                     print(f"*** ORPHANED SESSION CLEANUP AFTER {current_time - self.last_activity:.1f}S ***")
@@ -670,6 +757,22 @@ class VoiceAssistant:
                         await self._end_session()
                     except Exception as e:
                         self.logger.error(f"Error during orphaned session cleanup: {e}")
+                        # Force cleanup
+                        self.session_active = False
+                        self.response_active = False
+                        self._transition_to_state(SessionState.IDLE)
+                
+                # Check for stuck multi-turn listening state
+                if (self.session_state == SessionState.MULTI_TURN_LISTENING and
+                    current_time - self.last_state_change > self.config.session.multi_turn_timeout * 2):
+                    
+                    self.logger.warning(f"Stuck multi-turn listening state detected, cleaning up (stuck for {current_time - self.last_state_change:.1f}s)")
+                    print(f"*** STUCK MULTI-TURN LISTENING STATE CLEANUP AFTER {current_time - self.last_state_change:.1f}S ***")
+                    
+                    try:
+                        await self._end_session()
+                    except Exception as e:
+                        self.logger.error(f"Error during stuck multi-turn cleanup: {e}")
                         # Force cleanup
                         self.session_active = False
                         self.response_active = False
@@ -718,8 +821,8 @@ class VoiceAssistant:
             print("*** IGNORING SPEECH EVENT DURING AUDIO PLAYBACK - PREVENTING FEEDBACK ***")
             return
         
-        # Only process speech events if we're in LISTENING state
-        if self.session_state != SessionState.LISTENING:
+        # Only process speech events if we're in LISTENING or MULTI_TURN_LISTENING state
+        if self.session_state not in [SessionState.LISTENING, SessionState.MULTI_TURN_LISTENING]:
             self.logger.warning(f"Ignoring speech_stopped event in {self.session_state.value} state")
             print(f"*** IGNORING SPEECH EVENT IN {self.session_state.value.upper()} STATE ***")
             return
@@ -738,6 +841,12 @@ class VoiceAssistant:
             self.response_end_task.cancel()
             self.response_end_task = None
             self.logger.debug("Cancelled pending session end - user is speaking")
+        
+        # Cancel multi-turn timeout task since user is speaking
+        if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
+            self.multi_turn_timeout_task.cancel()
+            self.multi_turn_timeout_task = None
+            self.logger.debug("Cancelled multi-turn timeout - user is speaking")
         
         # Note: With server VAD enabled, OpenAI automatically commits the audio buffer
         # when speech stops. Manual commit_audio() calls cause "input_audio_buffer_commit_empty" errors

@@ -71,6 +71,17 @@ class SessionConfig:
     interrupt_threshold: float = 0.5
     auto_end_after_response: bool = True
     response_cooldown_delay: float = 2.0
+    
+    # Multi-turn conversation settings
+    conversation_mode: str = "single_turn"  # "single_turn" or "multi_turn"
+    multi_turn_timeout: float = 30.0  # seconds to wait for follow-up questions
+    multi_turn_max_turns: int = 10  # maximum conversation turns per session
+    multi_turn_end_phrases: list = None  # phrases to end conversation
+    
+    def __post_init__(self):
+        # Set default end phrases if not provided
+        if self.multi_turn_end_phrases is None:
+            self.multi_turn_end_phrases = ["goodbye", "stop", "that's all", "thank you", "bye"]
 
 
 @dataclass
