@@ -58,6 +58,14 @@ class AudioPlayback:
         # Playback smoothing
         self.underrun_count = 0
         self.last_underrun_warning = 0
+        
+        # Audio completion tracking
+        self.completion_callbacks = []
+        self.is_response_active = False
+        self.silence_frames_count = 0
+        self.silence_threshold = int(self.device_sample_rate * 0.1)  # 100ms of silence
+        self.last_audio_time = 0
+        self.completion_timeout = 3.0  # 3 seconds timeout for completion detection
     
     async def start(self) -> None:
         """Start audio playback system"""
@@ -190,6 +198,11 @@ class AudioPlayback:
             processed_audio = self._process_audio_chunk(audio_float)
             self.audio_queue.put(processed_audio, block=False)
             
+            # Update last audio time when we get new data
+            if self.is_response_active:
+                import time
+                self.last_audio_time = time.time()
+            
         except Exception as e:
             self.logger.error(f"Error queuing audio: {e}")
     
@@ -197,7 +210,44 @@ class AudioPlayback:
         """Interrupt current playback and clear queue"""
         self.interrupt_requested = True
         self.clear_queue()
+        self.is_response_active = False
+        self.silence_frames_count = 0
         self.logger.debug("Audio playback interrupted")
+    
+    def add_completion_callback(self, callback) -> None:
+        """Add a callback to be called when audio playback completes"""
+        self.completion_callbacks.append(callback)
+    
+    def remove_completion_callback(self, callback) -> None:
+        """Remove a completion callback"""
+        if callback in self.completion_callbacks:
+            self.completion_callbacks.remove(callback)
+    
+    def start_response(self) -> None:
+        """Mark the start of a response for completion tracking"""
+        self.is_response_active = True
+        self.silence_frames_count = 0
+        import time
+        self.last_audio_time = time.time()
+        self.logger.debug("Started response audio tracking")
+    
+    def end_response(self) -> None:
+        """Mark the end of a response (OpenAI finished sending)"""
+        self.logger.debug("OpenAI finished sending audio - monitoring for completion")
+        # Don't set is_response_active to False here - let completion detection handle it
+    
+    def _notify_completion(self) -> None:
+        """Notify all callbacks that audio playback has completed"""
+        if self.is_response_active:
+            self.logger.info("Audio playback completed - notifying callbacks")
+            self.is_response_active = False
+            
+            # Notify all callbacks
+            for callback in self.completion_callbacks:
+                try:
+                    callback()
+                except Exception as e:
+                    self.logger.error(f"Error in completion callback: {e}")
     
     def clear_queue(self) -> None:
         """Clear the audio playback queue and buffer"""
@@ -209,6 +259,11 @@ class AudioPlayback:
         # Also clear the internal buffer for clean start
         self.audio_buffer = np.array([], dtype=np.float32)
         self.underrun_count = 0
+        
+        # If we clear the queue, we're probably stopping playback
+        if self.is_response_active:
+            self.is_response_active = False
+            self.silence_frames_count = 0
     
     def is_queue_empty(self) -> bool:
         """Check if playback queue is empty"""

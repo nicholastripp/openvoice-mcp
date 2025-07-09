@@ -33,6 +33,7 @@ class SessionState(Enum):
     LISTENING = "listening"
     PROCESSING = "processing"
     RESPONDING = "responding"
+    AUDIO_PLAYING = "audio_playing"
     COOLDOWN = "cooldown"
 
 
@@ -148,6 +149,9 @@ class VoiceAssistant:
         
         await self.audio_capture.start()
         await self.audio_playback.start()
+        
+        # Setup audio completion callback
+        self.audio_playback.add_completion_callback(self._on_audio_playback_complete)
         
         # Initialize wake word detector
         if self.config.wake_word.enabled:
@@ -351,6 +355,7 @@ class VoiceAssistant:
             self.config.audio.feedback_prevention and
             (self.response_active or 
              self.session_state == SessionState.RESPONDING or 
+             self.session_state == SessionState.AUDIO_PLAYING or 
              self.session_state == SessionState.COOLDOWN)
         )
         
@@ -392,6 +397,7 @@ class VoiceAssistant:
             self.config.audio.feedback_prevention and
             (self.response_active or 
              self.session_state == SessionState.RESPONDING or 
+             self.session_state == SessionState.AUDIO_PLAYING or 
              self.session_state == SessionState.COOLDOWN)
         )
         
@@ -419,6 +425,7 @@ class VoiceAssistant:
         # FINAL SAFETY CHECK: Don't send audio during response or cooldown
         if (self.config.audio.feedback_prevention and
             (self.session_state == SessionState.RESPONDING or 
+             self.session_state == SessionState.AUDIO_PLAYING or 
              self.session_state == SessionState.COOLDOWN)):
             self.logger.warning(f"[BLOCKED] Attempted to send audio to OpenAI during {self.session_state.value} state")
             print(f"*** [BLOCKED] AUDIO TO OPENAI DURING {self.session_state.value.upper()} STATE ***")
@@ -458,6 +465,10 @@ class VoiceAssistant:
             if self.openai_client:
                 await self.openai_client.update_vad_settings(threshold=0.8, silence_duration_ms=500)
                 self.logger.debug("Increased VAD threshold during response playback")
+            
+            # Start audio response tracking
+            if self.audio_playback:
+                self.audio_playback.start_response()
         
         if self.audio_playback:
             self.audio_playback.play_audio(audio_data)
@@ -468,17 +479,38 @@ class VoiceAssistant:
             print("*** ERROR: NO AUDIO PLAYBACK SYSTEM ***")
     
     async def _on_audio_response_done(self, _) -> None:
-        """Handle completion of audio response"""
-        self.logger.info("Audio response playback completed")
-        print("*** AUDIO RESPONSE COMPLETED ***")
+        """Handle OpenAI finishing sending audio (not actual playback completion)"""
+        self.logger.info("OpenAI finished sending audio response")
+        print("*** OPENAI FINISHED SENDING AUDIO - WAITING FOR PLAYBACK COMPLETION ***")
         
+        # Notify audio playback that OpenAI finished sending
+        if self.audio_playback:
+            self.audio_playback.end_response()
+        
+        # Don't end session here - wait for actual audio playback completion
+        # The audio completion callback will handle session ending
+        
+        # Transition to audio playing state
+        self._transition_to_state(SessionState.AUDIO_PLAYING)
+    
+    def _on_audio_playback_complete(self) -> None:
+        """Handle actual audio playback completion"""
+        self.logger.info("Audio playback actually completed")
+        print("*** AUDIO PLAYBACK ACTUALLY COMPLETED ***")
+        
+        # Run async session ending in the main event loop
+        if self.loop:
+            asyncio.run_coroutine_threadsafe(self._handle_audio_completion(), self.loop)
+    
+    async def _handle_audio_completion(self) -> None:
+        """Handle audio completion in async context"""
         # Mark response as no longer active and restore normal VAD threshold
         self.response_active = False
         
         # Restore normal VAD threshold
         if self.openai_client:
             await self.openai_client.update_vad_settings(threshold=0.6, silence_duration_ms=300)
-            self.logger.debug("Restored normal VAD threshold after response completion")
+            self.logger.debug("Restored normal VAD threshold after actual playback completion")
         
         # Check if we should auto-end the session
         if (self.config.session.auto_end_after_response and 
@@ -491,8 +523,8 @@ class VoiceAssistant:
             self.response_end_task = asyncio.create_task(self._schedule_session_end())
         elif self.config.session.auto_end_after_response:
             # End session immediately if no cooldown delay
-            self.logger.info("Auto-ending session after response completion")
-            print("*** AUTO-ENDING SESSION AFTER RESPONSE ***")
+            self.logger.info("Auto-ending session after actual playback completion")
+            print("*** AUTO-ENDING SESSION AFTER ACTUAL PLAYBACK COMPLETION ***")
             await self._end_session()
     
     async def _on_speech_stopped(self, event_data) -> None:
@@ -510,6 +542,12 @@ class VoiceAssistant:
         if self.session_state == SessionState.RESPONDING:
             self.logger.warning("Ignoring speech_stopped event during response - likely audio feedback")
             print("*** IGNORING SPEECH EVENT DURING RESPONSE - PREVENTING FEEDBACK ***")
+            return
+        
+        # Ignore speech events during audio playback to prevent feedback
+        if self.session_state == SessionState.AUDIO_PLAYING:
+            self.logger.warning("Ignoring speech_stopped event during audio playback - likely audio feedback")
+            print("*** IGNORING SPEECH EVENT DURING AUDIO PLAYBACK - PREVENTING FEEDBACK ***")
             return
         
         # Only process speech events if we're in LISTENING state

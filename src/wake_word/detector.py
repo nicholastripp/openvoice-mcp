@@ -7,6 +7,8 @@ import threading
 from typing import Callable, Optional, Any
 from queue import Queue, Empty
 import time
+import concurrent.futures
+import signal
 
 from config import WakeWordConfig
 from utils.logger import get_logger
@@ -76,6 +78,12 @@ class WakeWordDetector:
         self.model_reset_interval = 60.0  # Reset model every 1 minute (reduced for better stuck state handling)
         self.chunks_since_reset = 0
         self.reset_on_stuck = True  # Enable automatic reset when stuck state detected
+        
+        # Prediction timeout configuration
+        self.prediction_timeout = 2.0  # 2 seconds timeout for model.predict()
+        self.prediction_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="WakeWordPredict")
+        self.hung_predictions = 0
+        self.max_hung_predictions = 3  # Reset model after 3 consecutive timeouts
     
     async def start(self) -> None:
         """Start wake word detection"""
@@ -130,6 +138,10 @@ class WakeWordDetector:
         self.chunks_since_reset = 0
         self.last_model_reset_time = 0
         self.recent_confidences = []  # Reset detection stability tracking
+        
+        # Shutdown prediction executor
+        if hasattr(self, 'prediction_executor'):
+            self.prediction_executor.shutdown(wait=True)
         
         self.logger.info("Wake word detection stopped")
     
@@ -553,8 +565,27 @@ class WakeWordDetector:
                         self._reset_model_state()
                     
                     print(f"   DETECTOR: Calling model.predict() with chunk: samples={len(audio_chunk)}, dtype={audio_chunk.dtype}")
-                    predictions = self.model.predict(audio_chunk)
+                    
+                    # Use timeout-protected prediction
+                    predictions = self._predict_with_timeout(audio_chunk)
+                    
+                    if predictions is None:
+                        print(f"   DETECTOR: model.predict() TIMED OUT after {self.prediction_timeout}s")
+                        self.logger.warning(f"OpenWakeWord prediction timed out after {self.prediction_timeout}s")
+                        self.hung_predictions += 1
+                        
+                        # Reset model if too many consecutive timeouts
+                        if self.hung_predictions >= self.max_hung_predictions:
+                            print(f"   DETECTOR: Model stuck after {self.hung_predictions} timeouts, resetting")
+                            self.logger.error(f"Model stuck after {self.hung_predictions} consecutive timeouts, resetting")
+                            self._reset_model_state()
+                            self.hung_predictions = 0
+                        continue
+                    
                     print(f"   DETECTOR: model.predict() returned: {predictions}")
+                    
+                    # Reset hung counter on successful prediction
+                    self.hung_predictions = 0
                     
                     # Track predictions for stuck state detection
                     self._track_prediction(predictions)
@@ -845,6 +876,37 @@ class WakeWordDetector:
             self._warmup_model()
         
         self.logger.debug("Model state reset completed")
+    
+    def _predict_with_timeout(self, audio_chunk: np.ndarray) -> Optional[dict]:
+        """
+        Run model prediction with timeout protection
+        
+        Args:
+            audio_chunk: Audio data for prediction
+            
+        Returns:
+            Prediction results or None if timeout
+        """
+        try:
+            # Submit prediction to thread pool executor
+            future = self.prediction_executor.submit(self.model.predict, audio_chunk)
+            
+            # Wait for result with timeout
+            predictions = future.result(timeout=self.prediction_timeout)
+            return predictions
+            
+        except concurrent.futures.TimeoutError:
+            # Prediction timed out
+            self.logger.warning(f"Model prediction timed out after {self.prediction_timeout}s")
+            
+            # Try to cancel the future (may not work if already executing)
+            future.cancel()
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error in timeout-protected prediction: {e}")
+            return None
     
     @staticmethod
     def test_installation() -> bool:
