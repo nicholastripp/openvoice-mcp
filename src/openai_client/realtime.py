@@ -81,9 +81,9 @@ class OpenAIRealtimeClient:
             self.session_config["output_audio_format"] = "pcm16"
             self.session_config["turn_detection"] = {
                 "type": "server_vad",
-                "threshold": 0.3,  # Lower threshold for better sensitivity with quiet audio
+                "threshold": 0.6,  # Higher threshold for more reliable detection
                 "prefix_padding_ms": 300,
-                "silence_duration_ms": 500  # Longer silence duration for natural speech patterns
+                "silence_duration_ms": 300  # Shorter silence duration for faster response
             }
             self.session_config["input_audio_transcription"] = {
                 "model": "whisper-1"
@@ -951,19 +951,19 @@ class OpenAIRealtimeClient:
             
             # Check if audio is too quiet (likely silence or noise)
             max_amplitude = np.max(np.abs(audio_array))
-            if max_amplitude < 100:  # Very quiet audio
+            if max_amplitude < 50:  # Relaxed threshold - only filter truly silent audio
                 self.logger.debug(f"Filtering out very quiet audio (max_amplitude: {max_amplitude})")
                 return None
             
-            # Normalize audio level for consistent VAD performance
-            # Target RMS level around 3000 (out of 32767 max)
+            # Gentle audio normalization for better VAD performance
+            # Target RMS level around 2000 (more conservative)
             rms = np.sqrt(np.mean(audio_array ** 2))
-            if rms > 0:
-                target_rms = 3000.0
+            if rms > 0 and rms < 500:  # Only normalize very quiet audio
+                target_rms = 2000.0
                 gain = target_rms / rms
                 
                 # Limit gain to prevent excessive amplification
-                gain = min(gain, 5.0)  # Max 5x amplification
+                gain = min(gain, 3.0)  # Max 3x amplification (reduced)
                 
                 # Apply gain
                 audio_array *= gain

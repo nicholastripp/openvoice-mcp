@@ -36,10 +36,10 @@ class AudioPlayback:
         self.stream: Optional[sd.OutputStream] = None
         self.audio_queue = Queue(maxsize=50)  # Limit queue size to prevent memory issues
         
-        # Buffering for smooth playback
+        # Buffering for smooth playback - optimized for OpenAI's variable chunk sizes
         self.audio_buffer = np.array([], dtype=np.float32)
-        self.min_buffer_size = int(self.device_sample_rate * 0.1)  # 100ms buffer minimum
-        self.target_buffer_size = int(self.device_sample_rate * 0.2)  # 200ms target buffer
+        self.min_buffer_size = int(self.device_sample_rate * 0.05)  # 50ms buffer minimum (reduced)
+        self.target_buffer_size = int(self.device_sample_rate * 0.15)  # 150ms target buffer (reduced)
         
         # Resampling
         self.need_resampling = self.device_sample_rate != self.source_sample_rate
@@ -214,8 +214,8 @@ class AudioPlayback:
                 self.underrun_count += 1
                 import time
                 current_time = time.time()
-                if current_time - self.last_underrun_warning > 5.0:  # Log every 5 seconds max
-                    self.logger.warning(f"Audio underrun #{self.underrun_count}: needed {frames}, had {available_frames}")
+                if current_time - self.last_underrun_warning > 3.0:  # Log every 3 seconds max
+                    self.logger.warning(f"Audio underrun #{self.underrun_count}: needed {frames}, had {available_frames}, buffer_size={len(self.audio_buffer)}")
                     self.last_underrun_warning = current_time
             else:
                 # No audio available - output silence
@@ -245,8 +245,11 @@ class AudioPlayback:
     def _fill_buffer_from_queue(self) -> None:
         """Fill the audio buffer from the queue for smooth playback"""
         try:
-            # Fill buffer up to target size if possible
-            while len(self.audio_buffer) < self.target_buffer_size and not self.audio_queue.empty():
+            # More aggressive buffer filling for variable chunk sizes
+            # Fill buffer more aggressively when low, but respect target when adequate
+            buffer_threshold = self.min_buffer_size if len(self.audio_buffer) < self.min_buffer_size else self.target_buffer_size
+            
+            while len(self.audio_buffer) < buffer_threshold and not self.audio_queue.empty():
                 try:
                     audio_chunk = self.audio_queue.get_nowait()
                     self.audio_buffer = np.concatenate([self.audio_buffer, audio_chunk])

@@ -371,8 +371,8 @@ class VoiceAssistant:
     async def _vad_timeout_handler(self) -> None:
         """Handle VAD timeout - force response if speech_stopped never fires"""
         try:
-            # Wait for VAD timeout (10 seconds after session start)
-            await asyncio.sleep(10.0)
+            # Wait for VAD timeout (3 seconds after session start)
+            await asyncio.sleep(3.0)
             
             if self.session_active:
                 self.logger.warning("VAD timeout - forcing response generation (speech_stopped never received)")
