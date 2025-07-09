@@ -73,11 +73,13 @@ class WakeWordDetector:
         
         # Model state management to prevent stuck predictions
         self.predictions_history = []  # Track recent predictions to detect stuck state
-        self.stuck_detection_threshold = 10  # Number of identical predictions to trigger reset (increased from 3)
+        self.stuck_detection_threshold = 20  # Number of identical predictions to trigger reset (increased from 10)
         self.last_model_reset_time = 0
-        self.model_reset_interval = 300.0  # Reset model every 5 minutes (increased from 60s)
+        self.model_reset_interval = 600.0  # Reset model every 10 minutes (increased from 5 minutes)
+        self.min_reset_cooldown = 60.0  # Minimum time between resets (NEW)
         self.chunks_since_reset = 0
         self.reset_on_stuck = True  # Enable automatic reset when stuck state detected
+        self.stuck_confidence_threshold = 0.001  # Only check for stuck state above this confidence (NEW)
         
         # Prediction timeout configuration
         self.prediction_timeout = 5.0  # 5 seconds timeout for model.predict() (increased from 2s)
@@ -562,7 +564,15 @@ class WakeWordDetector:
                 try:
                     # Check if model needs reset (preventive or stuck state)
                     if self._should_reset_model():
-                        self._reset_model_state()
+                        # Determine reset reason
+                        current_time = time.time()
+                        time_since_last_reset = current_time - self.last_model_reset_time
+                        if time_since_last_reset > self.model_reset_interval:
+                            self._reset_model_state("scheduled_interval")
+                        elif self._is_stuck_state():
+                            self._reset_model_state("stuck_state")
+                        else:
+                            self._reset_model_state("preventive")
                     
                     print(f"   DETECTOR: Calling model.predict() with chunk: samples={len(audio_chunk)}, dtype={audio_chunk.dtype}")
                     
@@ -578,7 +588,7 @@ class WakeWordDetector:
                         if self.hung_predictions >= self.max_hung_predictions:
                             print(f"   DETECTOR: Model stuck after {self.hung_predictions} timeouts, resetting")
                             self.logger.error(f"Model stuck after {self.hung_predictions} consecutive timeouts, resetting")
-                            self._reset_model_state()
+                            self._reset_model_state("prediction_timeout")
                             self.hung_predictions = 0
                         continue
                     
@@ -595,7 +605,7 @@ class WakeWordDetector:
                     print(f"   DETECTOR: ERROR in model.predict(): {e}")
                     self.logger.error(f"OpenWakeWord prediction error: {e}")
                     # Reset model on error
-                    self._reset_model_state()
+                    self._reset_model_state("prediction_error")
                     continue
                 
                 # Enhanced prediction logging with stuck state detection
@@ -751,7 +761,7 @@ class WakeWordDetector:
         Use this method if you need to clear persistent wake word detections
         or reset the model state during operation.
         """
-        self._reset_model_state()
+        self._reset_model_state("manual_reset")
     
     def _validate_audio_chunk(self, audio_float: np.ndarray) -> bool:
         """
@@ -790,14 +800,18 @@ class WakeWordDetector:
         """
         current_time = time.time()
         
-        # Preventive reset based on time interval
-        if current_time - self.last_model_reset_time > self.model_reset_interval:
+        # Enforce minimum cooldown between resets
+        time_since_last_reset = current_time - self.last_model_reset_time
+        if time_since_last_reset < self.min_reset_cooldown:
+            return False
+        
+        # Preventive reset based on time interval (extended from 5 to 10 minutes)
+        if time_since_last_reset > self.model_reset_interval:
             self.logger.debug(f"Model reset due to time interval ({self.model_reset_interval}s)")
             return True
         
-        # Reset if stuck state detected
+        # Reset if stuck state detected (with improved detection logic)
         if self.reset_on_stuck and self._is_stuck_state():
-            self.logger.warning("Model stuck state detected, resetting model")
             return True
         
         return False
@@ -822,14 +836,32 @@ class WakeWordDetector:
         first_model_name = list(recent_predictions[0].keys())[0]
         first_value = recent_predictions[0][first_model_name]
         
-        # Check if all recent predictions are identical
+        # Only check for stuck state if confidence is above threshold
+        # Very low confidence values (background noise) are normal and shouldn't trigger resets
+        if first_value < self.stuck_confidence_threshold:
+            return False
+        
+        # Use adaptive tolerance based on confidence level
+        # Higher confidence values need stricter comparison
+        if first_value > 0.01:
+            tolerance = 1e-6  # Strict tolerance for higher confidence
+        elif first_value > 0.001:
+            tolerance = 1e-5  # Medium tolerance for medium confidence
+        else:
+            tolerance = 1e-4  # Relaxed tolerance for low confidence
+        
+        # Check if all recent predictions are identical within tolerance
+        identical_count = 0
         for pred in recent_predictions[1:]:
             if not pred or first_model_name not in pred:
                 return False
-            if abs(pred[first_model_name] - first_value) > 1e-6:  # Allow more floating point differences (increased from 1e-10)
-                return False
+            if abs(pred[first_model_name] - first_value) <= tolerance:
+                identical_count += 1
+            else:
+                return False  # Found a different prediction, not stuck
         
-        return True
+        # Only consider stuck if we have enough identical predictions
+        return identical_count >= (self.stuck_detection_threshold - 1)
     
     def _track_prediction(self, predictions: dict) -> None:
         """
@@ -845,24 +877,51 @@ class WakeWordDetector:
         if len(self.predictions_history) > max_history:
             self.predictions_history.pop(0)
     
-    def _reset_model_state(self) -> None:
+    def _reset_model_state(self, reset_reason: str = "unknown") -> None:
         """
         Reset model state and clear tracking data
+        
+        Args:
+            reset_reason: Reason for the reset (for logging/diagnostics)
         """
+        current_time = time.time()
+        time_since_last_reset = current_time - self.last_model_reset_time
+        
+        # Enhanced logging for reset diagnostics
+        self.logger.info(f"[RESET] Resetting wake word model - Reason: {reset_reason}")
+        self.logger.info(f"[RESET] Performance metrics:")
+        self.logger.info(f"[RESET]   - Chunks processed since last reset: {self.chunks_since_reset}")
+        self.logger.info(f"[RESET]   - Time since last reset: {time_since_last_reset:.1f}s")
+        self.logger.info(f"[RESET]   - Predictions in history: {len(self.predictions_history)}")
+        self.logger.info(f"[RESET]   - Recent confidences tracked: {len(self.recent_confidences)}")
+        self.logger.info(f"[RESET]   - Hung predictions count: {self.hung_predictions}")
+        
+        # Log recent prediction pattern if stuck state
+        if reset_reason == "stuck_state" and self.predictions_history:
+            recent_predictions = self.predictions_history[-min(5, len(self.predictions_history)):]
+            self.logger.info(f"[RESET] Recent prediction pattern (last {len(recent_predictions)} predictions):")
+            for i, pred in enumerate(recent_predictions):
+                if pred:
+                    model_name = list(pred.keys())[0]
+                    confidence = pred[model_name]
+                    self.logger.info(f"[RESET]   {i+1}. {model_name}: {confidence:.8f}")
+        
         if self.model:
             try:
                 self.model.reset()
-                self.logger.info(f"OpenWakeWord model reset (chunks since last reset: {self.chunks_since_reset})")
+                self.logger.info(f"[RESET] OpenWakeWord model.reset() completed successfully")
             except Exception as e:
-                self.logger.warning(f"Failed to reset model: {e}")
+                self.logger.warning(f"[RESET] Failed to reset model: {e}")
         
         # Clear internal audio buffer
+        buffer_size = len(self.audio_buffer)
         self.audio_buffer = np.array([], dtype=np.float32)
+        self.logger.debug(f"[RESET] Cleared audio buffer ({buffer_size} samples)")
         
         # Reset tracking data
         self.predictions_history = []
         self.chunks_since_reset = 0
-        self.last_model_reset_time = time.time()
+        self.last_model_reset_time = current_time
         self.recent_confidences = []  # Reset detection stability tracking
         
         # Reset warm-up state - model needs re-warming after reset
@@ -872,10 +931,10 @@ class WakeWordDetector:
         
         # Re-warm the model
         if self.model:
-            self.logger.info("Re-warming model after reset...")
+            self.logger.info("[RESET] Re-warming model after reset...")
             self._warmup_model()
         
-        self.logger.debug("Model state reset completed")
+        self.logger.info("[RESET] Model state reset completed - ready for new detection cycle")
     
     def _predict_with_timeout(self, audio_chunk: np.ndarray) -> Optional[dict]:
         """
