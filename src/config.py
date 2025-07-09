@@ -38,6 +38,9 @@ class AudioConfig:
     chunk_size: int = 1200
     input_volume: float = 1.0
     output_volume: float = 1.0
+    feedback_prevention: bool = True
+    feedback_threshold: float = 0.1
+    mute_during_response: bool = True
 
 
 @dataclass
@@ -66,6 +69,8 @@ class SessionConfig:
     auto_end_silence: float = 3.0
     max_duration: int = 300
     interrupt_threshold: float = 0.5
+    auto_end_after_response: bool = True
+    response_cooldown_delay: float = 2.0
 
 
 @dataclass

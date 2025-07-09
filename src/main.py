@@ -11,6 +11,7 @@ import signal
 import sys
 from pathlib import Path
 from typing import Optional
+from enum import Enum
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -24,6 +25,15 @@ from audio.capture import AudioCapture
 from audio.playback import AudioPlayback
 from function_bridge import FunctionCallBridge
 from wake_word.detector import WakeWordDetector
+
+
+class SessionState(Enum):
+    """Session state enumeration"""
+    IDLE = "idle"
+    LISTENING = "listening"
+    PROCESSING = "processing"
+    RESPONDING = "responding"
+    COOLDOWN = "cooldown"
 
 
 class VoiceAssistant:
@@ -48,10 +58,13 @@ class VoiceAssistant:
         self.wake_word_detector: Optional[WakeWordDetector] = None
         
         # Session state
+        self.session_state = SessionState.IDLE
         self.session_active = False
         self.last_activity = asyncio.get_event_loop().time()
         self.session_start_time = None
         self.vad_timeout_task = None
+        self.response_active = False
+        self.response_end_task = None
     
     async def start(self) -> None:
         """Start the voice assistant"""
@@ -79,6 +92,14 @@ class VoiceAssistant:
         await self._cleanup_components()
         
         self.logger.info("Voice assistant stopped")
+    
+    def _transition_to_state(self, new_state: SessionState) -> None:
+        """Transition to a new session state with logging"""
+        if self.session_state != new_state:
+            old_state = self.session_state
+            self.session_state = new_state
+            self.logger.info(f"Session state: {old_state.value} -> {new_state.value}")
+            print(f"*** SESSION STATE: {old_state.value.upper()} -> {new_state.value.upper()} ***")
     
     async def _initialize_components(self) -> None:
         """Initialize all components"""
@@ -224,6 +245,9 @@ class VoiceAssistant:
         self.last_activity = asyncio.get_event_loop().time()
         self.session_start_time = asyncio.get_event_loop().time()
         
+        # Transition to listening state
+        self._transition_to_state(SessionState.LISTENING)
+        
         # Clear any existing audio queue
         if self.audio_playback:
             self.audio_playback.clear_queue()
@@ -246,11 +270,20 @@ class VoiceAssistant:
             return
             
         self.session_active = False
+        self.response_active = False
+        
+        # Transition to idle state
+        self._transition_to_state(SessionState.IDLE)
         
         # Cancel VAD timeout task if it exists
         if self.vad_timeout_task and not self.vad_timeout_task.done():
             self.vad_timeout_task.cancel()
             self.vad_timeout_task = None
+        
+        # Cancel response end task if it exists
+        if self.response_end_task and not self.response_end_task.done():
+            self.response_end_task.cancel()
+            self.response_end_task = None
         
         # Note: With server VAD enabled, manual commit_audio() calls are not needed
         # and will cause "input_audio_buffer_commit_empty" errors
@@ -277,6 +310,13 @@ class VoiceAssistant:
     
     async def _on_audio_captured_for_wake_word(self, audio_data: bytes) -> None:
         """Handle captured audio for wake word detection"""
+        # Check if we should mute audio during response playback
+        if (self.config.audio.mute_during_response and 
+            self.response_active and 
+            self.config.audio.feedback_prevention):
+            # Skip audio processing during response playback to prevent feedback
+            return
+        
         if not self.session_active:
             # Send audio to wake word detector with proper sample rate
             if self.wake_word_detector:
@@ -292,16 +332,23 @@ class VoiceAssistant:
                 if self._wake_word_debug_counter % 100 == 0:  # Every 100 chunks
                     self.logger.debug(f"Sent {self._wake_word_debug_counter} audio chunks to wake word detector")
         else:
-            # During active session, send audio to OpenAI
+            # During active session, send audio to OpenAI (if not muted)
             await self._send_audio_to_openai(audio_data)
     
     async def _on_audio_captured_direct(self, audio_data: bytes) -> None:
         """Handle captured audio directly (development mode without wake word)"""
+        # Check if we should mute audio during response playback
+        if (self.config.audio.mute_during_response and 
+            self.response_active and 
+            self.config.audio.feedback_prevention):
+            # Skip audio processing during response playback to prevent feedback
+            return
+        
         if not self.session_active:
             # Start session on any audio (development mode)
             await self._start_session()
         
-        # Send audio to OpenAI
+        # Send audio to OpenAI (if not muted)
         await self._send_audio_to_openai(audio_data)
     
     async def _send_audio_to_openai(self, audio_data: bytes) -> None:
@@ -331,6 +378,16 @@ class VoiceAssistant:
         self.logger.info(f"Received audio response from OpenAI: {len(audio_data)} bytes")
         print(f"*** AUDIO RESPONSE RECEIVED: {len(audio_data)} bytes ***")
         
+        # Mark response as active and increase VAD threshold to prevent false positives
+        if not self.response_active:
+            self.response_active = True
+            # Transition to responding state
+            self._transition_to_state(SessionState.RESPONDING)
+            # Increase VAD threshold during response playback
+            if self.openai_client:
+                await self.openai_client.update_vad_settings(threshold=0.8, silence_duration_ms=500)
+                self.logger.debug("Increased VAD threshold during response playback")
+        
         if self.audio_playback:
             self.audio_playback.play_audio(audio_data)
             self.logger.debug("Audio data sent to playback system")
@@ -343,17 +400,49 @@ class VoiceAssistant:
         """Handle completion of audio response"""
         self.logger.info("Audio response playback completed")
         print("*** AUDIO RESPONSE COMPLETED ***")
+        
+        # Mark response as no longer active and restore normal VAD threshold
+        self.response_active = False
+        
+        # Restore normal VAD threshold
+        if self.openai_client:
+            await self.openai_client.update_vad_settings(threshold=0.6, silence_duration_ms=300)
+            self.logger.debug("Restored normal VAD threshold after response completion")
+        
+        # Check if we should auto-end the session
+        if (self.config.session.auto_end_after_response and 
+            self.session_active and 
+            self.config.session.response_cooldown_delay > 0):
+            
+            # Schedule session end after cooldown delay
+            self.logger.info(f"Scheduling session end in {self.config.session.response_cooldown_delay} seconds")
+            print(f"*** SCHEDULING SESSION END IN {self.config.session.response_cooldown_delay} SECONDS ***")
+            self.response_end_task = asyncio.create_task(self._schedule_session_end())
+        elif self.config.session.auto_end_after_response:
+            # End session immediately if no cooldown delay
+            self.logger.info("Auto-ending session after response completion")
+            print("*** AUTO-ENDING SESSION AFTER RESPONSE ***")
+            await self._end_session()
     
     async def _on_speech_stopped(self, event_data) -> None:
         """Handle user speech stopped"""
         self.logger.info("User speech stopped - server VAD will automatically trigger response")
         print("*** USER STOPPED SPEAKING - SERVER VAD PROCESSING ***")
         
+        # Transition to processing state
+        self._transition_to_state(SessionState.PROCESSING)
+        
         # Cancel VAD timeout since speech was properly detected
         if self.vad_timeout_task and not self.vad_timeout_task.done():
             self.vad_timeout_task.cancel()
             self.vad_timeout_task = None
             self.logger.debug("VAD timeout cancelled - speech properly detected")
+        
+        # Cancel any pending session end task since user is speaking
+        if self.response_end_task and not self.response_end_task.done():
+            self.response_end_task.cancel()
+            self.response_end_task = None
+            self.logger.debug("Cancelled pending session end - user is speaking")
         
         # Note: With server VAD enabled, OpenAI automatically commits the audio buffer
         # when speech stops. Manual commit_audio() calls cause "input_audio_buffer_commit_empty" errors
@@ -395,6 +484,32 @@ class VoiceAssistant:
             pass
         except Exception as e:
             self.logger.error(f"Error in VAD timeout handler: {e}")
+    
+    async def _schedule_session_end(self) -> None:
+        """Schedule session end after cooldown delay"""
+        try:
+            # Transition to cooldown state
+            self._transition_to_state(SessionState.COOLDOWN)
+            
+            # Wait for cooldown period
+            await asyncio.sleep(self.config.session.response_cooldown_delay)
+            
+            # End session if still active and no response is playing
+            if self.session_active and not self.response_active:
+                self.logger.info(f"Auto-ending session after {self.config.session.response_cooldown_delay}s cooldown")
+                print(f"*** AUTO-ENDING SESSION AFTER {self.config.session.response_cooldown_delay}S COOLDOWN ***")
+                await self._end_session()
+            else:
+                self.logger.debug("Session end cancelled - session inactive or response active")
+                
+        except asyncio.CancelledError:
+            # Task was cancelled (user spoke again)
+            self.logger.debug("Session end task cancelled")
+            # If cancelled, go back to listening state
+            if self.session_active:
+                self._transition_to_state(SessionState.LISTENING)
+        except Exception as e:
+            self.logger.error(f"Error in session end scheduler: {e}")
     
     def _on_wake_word_detected(self, model_name: str, confidence: float) -> None:
         """Handle wake word detection"""

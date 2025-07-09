@@ -24,6 +24,9 @@ audio:
   chunk_size: 1200                 # Audio chunk size (50ms at 24kHz)
   input_volume: 1.0                # Input volume multiplier
   output_volume: 1.0               # Output volume multiplier
+  feedback_prevention: true        # Enable audio feedback prevention
+  feedback_threshold: 0.1          # Feedback detection threshold
+  mute_during_response: true       # Mute microphone during response playback
   
 # Wake Word Configuration
 wake_word:
@@ -52,6 +55,8 @@ session:
   auto_end_silence: 3.0          # End session after silence (seconds)
   max_duration: 300              # Maximum session duration (seconds)
   interrupt_threshold: 0.5       # Voice activity to interrupt AI
+  auto_end_after_response: true  # Auto-end session after response completion
+  response_cooldown_delay: 2.0   # Cooldown delay before ending session (seconds)
   
 # System Configuration
 system:

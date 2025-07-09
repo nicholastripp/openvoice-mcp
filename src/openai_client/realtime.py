@@ -640,6 +640,34 @@ class OpenAIRealtimeClient:
         await self._send_event(event)
         self.logger.debug("Session configuration sent")
     
+    async def update_vad_settings(self, threshold: float = None, silence_duration_ms: int = None) -> None:
+        """Update VAD settings dynamically"""
+        if self.state != ConnectionState.CONNECTED:
+            self.logger.warning("Cannot update VAD settings - not connected")
+            return
+        
+        # Update turn detection settings
+        current_config = self.session_config.get("turn_detection", {})
+        
+        if threshold is not None:
+            current_config["threshold"] = threshold
+        
+        if silence_duration_ms is not None:
+            current_config["silence_duration_ms"] = silence_duration_ms
+        
+        # Send updated session config
+        self.session_config["turn_detection"] = current_config
+        
+        event = {
+            "type": "session.update",
+            "session": {
+                "turn_detection": current_config
+            }
+        }
+        
+        await self._send_event(event)
+        self.logger.info(f"Updated VAD settings: threshold={current_config.get('threshold')}, silence_duration={current_config.get('silence_duration_ms')}ms")
+    
     async def _handle_reconnection(self) -> None:
         """Handle automatic reconnection"""
         if self.reconnect_attempts >= self.max_reconnect_attempts:
