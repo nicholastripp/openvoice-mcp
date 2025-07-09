@@ -89,10 +89,15 @@ class OpenAIRealtimeClient:
                 "model": "whisper-1"
             }
             
+            # Enhanced configuration for better audio responses
+            self.session_config["tool_choice"] = "auto"  # Allow OpenAI to choose when to use tools
+            self.session_config["max_response_output_tokens"] = "inf"  # Allow full responses
+            
             # Log audio configuration for debugging
             self.logger.info(f"Audio session config: input_format={self.session_config['input_audio_format']}, output_format={self.session_config['output_audio_format']}")
             self.logger.info(f"Server VAD enabled: threshold={self.session_config['turn_detection']['threshold']}, silence_duration={self.session_config['turn_detection']['silence_duration_ms']}ms")
             self.logger.info("⚠️  Server VAD mode: Do NOT manually call commit_audio() - server will auto-commit when speech stops")
+            self.logger.info("Enhanced session config: tool_choice=auto, max_response_output_tokens=inf for better audio responses")
         else:
             # Text-only mode: explicitly disable VAD to prevent audio buffer operations
             self.session_config["turn_detection"] = None
@@ -443,6 +448,28 @@ class OpenAIRealtimeClient:
         elif event_type == "session.updated":
             self.logger.debug("Session configuration updated")
             
+        elif event_type == "response.created":
+            # Response creation started
+            response_id = event.data.get("response", {}).get("id", "unknown")
+            self.logger.info(f"[RESPONSE CREATED] OpenAI started creating response: {response_id}")
+            print(f"*** OPENAI RESPONSE CREATION STARTED: {response_id} ***")
+            
+        elif event_type == "response.done":
+            # Response creation completed
+            response_data = event.data.get("response", {})
+            response_id = response_data.get("id", "unknown")
+            status = response_data.get("status", "unknown")
+            output_items = response_data.get("output", [])
+            self.logger.info(f"[RESPONSE DONE] OpenAI completed response: {response_id}, status: {status}, outputs: {len(output_items)}")
+            print(f"*** OPENAI RESPONSE COMPLETED: {response_id} (status: {status}, outputs: {len(output_items)}) ***")
+            
+            # Log output item types for debugging
+            for i, item in enumerate(output_items):
+                item_type = item.get("type", "unknown")
+                item_id = item.get("id", "unknown")
+                self.logger.info(f"  Output {i+1}: type={item_type}, id={item_id}")
+                print(f"*** OUTPUT {i+1}: {item_type} (id: {item_id}) ***")
+            
         elif event_type == "response.audio.delta":
             # Audio response chunk
             audio_b64 = event.data.get("delta", "")
@@ -529,6 +556,14 @@ class OpenAIRealtimeClient:
         }
         
         await self._send_event(event)
+        
+        # Request audio response after function call completion
+        # This ensures OpenAI generates audio feedback for the user
+        self.logger.info("Requesting audio response after function call completion")
+        response_event = {
+            "type": "response.create"
+        }
+        await self._send_event(response_event)
     
     async def _send_function_error(self, call_id: str, error: str) -> None:
         """Send function call error back to OpenAI"""
@@ -542,6 +577,14 @@ class OpenAIRealtimeClient:
         }
         
         await self._send_event(event)
+        
+        # Request audio response after function call error
+        # This ensures OpenAI generates audio feedback even for errors
+        self.logger.info("Requesting audio response after function call error")
+        response_event = {
+            "type": "response.create"
+        }
+        await self._send_event(response_event)
     
     async def _emit_event(self, event_type: str, data: Any) -> None:
         """Emit event to registered handlers"""
