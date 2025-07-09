@@ -45,7 +45,7 @@ class WakeWordConfig:
     """Wake word configuration"""
     enabled: bool = True
     model: str = "alexa"
-    sensitivity: float = 0.5
+    sensitivity: float = 0.0001  # Reasonable default threshold for wake word detection
     timeout: float = 5.0
     vad_enabled: bool = True
     cooldown: float = 2.0
