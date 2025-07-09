@@ -4,7 +4,7 @@ OpenWakeWord wake word detection implementation
 import asyncio
 import numpy as np
 import threading
-from typing import Callable, Optional, Any
+from typing import Callable, Optional, Any, Dict
 from queue import Queue, Empty
 import time
 import concurrent.futures
