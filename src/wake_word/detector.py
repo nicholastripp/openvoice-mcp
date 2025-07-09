@@ -615,45 +615,63 @@ class WakeWordDetector:
                     if len(self.recent_confidences) > max_history:
                         self.recent_confidences.pop(0)
                     
-                    # Log any confidence above threshold for debugging
-                    if confidence > self.sensitivity * 0.1:  # Log at 10% of sensitivity (more frequent)
-                        print(f"   DETECTOR: {model_name} confidence {confidence:.6f} (threshold: {self.sensitivity:.6f}, ratio: {confidence/self.sensitivity:.1f}x)")
+                    # DEBUG: Log all confidence levels with enhanced threshold comparison
+                    threshold_ratio = confidence / self.sensitivity if self.sensitivity > 0 else 0
+                    print(f"   DETECTOR: {model_name} confidence {confidence:.6f} (threshold: {self.sensitivity:.6f}, ratio: {threshold_ratio:.1f}x)")
                     
+                    # Enhanced threshold check with detailed logging
                     if confidence >= self.sensitivity:
                         current_time = time.time()
                         
-                        print(f"   DETECTOR: DETECTION CANDIDATE: {model_name} confidence {confidence:.3f} >= {self.sensitivity:.3f}")
+                        print(f"   DETECTOR: DETECTION CANDIDATE: {model_name} confidence {confidence:.6f} >= {self.sensitivity:.6f}")
+                        self.logger.info(f"Detection candidate: {model_name} confidence {confidence:.6f} >= threshold {self.sensitivity:.6f}")
                         
                         # Check detection stability - require consecutive chunks above threshold
                         recent_above_threshold = sum(1 for c in self.recent_confidences[-self.detection_stability_count:] if c >= self.sensitivity)
                         stable_detection = recent_above_threshold >= self.detection_stability_count
                         
+                        print(f"   DETECTOR: Stability check: {recent_above_threshold}/{self.detection_stability_count} consecutive chunks above threshold")
+                        print(f"   DETECTOR: Recent confidences: {[f'{c:.6f}' for c in self.recent_confidences[-5:]]}")  # Show last 5
+                        
                         if not stable_detection:
                             print(f"   DETECTOR: Detection not stable: {recent_above_threshold}/{self.detection_stability_count} consecutive chunks above threshold")
+                            self.logger.debug(f"Detection not stable: {recent_above_threshold}/{self.detection_stability_count} chunks above threshold")
                             continue
                         
                         print(f"   DETECTOR: STABLE DETECTION: {recent_above_threshold}/{self.detection_stability_count} consecutive chunks above threshold")
                         
                         # Check cooldown to prevent rapid re-triggers
                         time_since_last = current_time - self.last_detection_time
+                        print(f"   DETECTOR: Cooldown check: {time_since_last:.1f}s since last detection (cooldown: {self.detection_cooldown}s)")
+                        
                         if time_since_last >= self.detection_cooldown:
-                            print(f"   DETECTOR: WAKE WORD DETECTED! {model_name} (confidence: {confidence:.3f})")
-                            self.logger.info(f"Wake word detected: {model_name} (confidence: {confidence:.3f})")
+                            print(f"   DETECTOR: WAKE WORD DETECTED! {model_name} (confidence: {confidence:.6f})")
+                            self.logger.info(f"Wake word detected: {model_name} (confidence: {confidence:.6f})")
                             self.logger.debug(f"Cooldown passed: {time_since_last:.1f}s >= {self.detection_cooldown}s")
                             self.last_detection_time = current_time
                             
                             # Clear confidence history after successful detection
                             self.recent_confidences = []
                             
-                            # Call detection callbacks
-                            for callback in self.detection_callbacks:
+                            # Call detection callbacks with enhanced logging
+                            print(f"   DETECTOR: Calling {len(self.detection_callbacks)} detection callbacks...")
+                            for i, callback in enumerate(self.detection_callbacks):
                                 try:
+                                    print(f"   DETECTOR: Calling callback {i+1}/{len(self.detection_callbacks)}: {callback}")
                                     callback(model_name, confidence)
+                                    print(f"   DETECTOR: Callback {i+1} completed successfully")
                                 except Exception as e:
-                                    self.logger.error(f"Error in detection callback: {e}")
+                                    print(f"   DETECTOR: ERROR in callback {i+1}: {e}")
+                                    self.logger.error(f"Error in detection callback {i+1}: {e}")
                         else:
-                            print(f"   DETECTOR: Detection in cooldown: {model_name} (confidence: {confidence:.3f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
-                            self.logger.debug(f"Wake word detected but in cooldown: {model_name} (confidence: {confidence:.3f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
+                            print(f"   DETECTOR: Detection in cooldown: {model_name} (confidence: {confidence:.6f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
+                            self.logger.debug(f"Wake word detected but in cooldown: {model_name} (confidence: {confidence:.6f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
+                    else:
+                        # DEBUG: Log why detection didn't trigger
+                        if confidence > self.sensitivity * 0.1:  # Log if close to threshold
+                            print(f"   DETECTOR: Below threshold: {model_name} confidence {confidence:.6f} < {self.sensitivity:.6f} (need {self.sensitivity/confidence:.1f}x more)")
+                        elif chunks_processed % 50 == 0:  # Periodic logging for very low confidence
+                            print(f"   DETECTOR: Low confidence: {model_name} {confidence:.6f} (threshold: {self.sensitivity:.6f})")
                 
             except Exception as e:
                 self.logger.error(f"Error in detection loop: {e}")
