@@ -127,6 +127,12 @@ class VoiceAssistant:
             if new_state == SessionState.RESPONDING:
                 self.response_start_time = self.last_state_change
             
+            # Log multi-turn timeout task state during transitions
+            if self.multi_turn_timeout_task:
+                task_state = "running" if not self.multi_turn_timeout_task.done() else "done/cancelled"
+                self.logger.info(f"Multi-turn timeout task state during transition: {task_state}")
+                print(f"*** MULTI-TURN TIMEOUT TASK STATE: {task_state.upper()} ***")
+            
             self.logger.info(f"Session state: {old_state.value} -> {new_state.value}")
             print(f"*** SESSION STATE: {old_state.value.upper()} -> {new_state.value.upper()} ***")
     
@@ -286,6 +292,17 @@ class VoiceAssistant:
         current_time = asyncio.get_event_loop().time()
         timeout = self.config.session.timeout
         
+        # Check for stuck multi-turn listening sessions
+        if self.session_state == SessionState.MULTI_TURN_LISTENING:
+            time_in_multi_turn = current_time - self.last_state_change
+            max_multi_turn_duration = self.config.session.multi_turn_timeout * 1.5  # 1.5x the timeout
+            
+            if time_in_multi_turn > max_multi_turn_duration:
+                self.logger.error(f"Multi-turn session stuck for {time_in_multi_turn:.1f}s (max: {max_multi_turn_duration:.1f}s) - forcing session end")
+                print(f"*** MULTI-TURN SESSION STUCK FOR {time_in_multi_turn:.1f}S - FORCING SESSION END ***")
+                await self._end_session()
+                return
+        
         if current_time - self.last_activity > timeout:
             self.logger.info(f"Session timeout after {timeout}s of inactivity, ending session")
             print(f"*** SESSION TIMEOUT AFTER {timeout}S - ENDING SESSION ***")
@@ -386,7 +403,8 @@ class VoiceAssistant:
         if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
             self.multi_turn_timeout_task.cancel()
             self.multi_turn_timeout_task = None
-            self.logger.debug("Cancelled multi-turn timeout task")
+            self.logger.info("Cancelled multi-turn timeout task during session end")
+            print("*** MULTI-TURN TIMEOUT TASK CANCELLED DURING SESSION END ***")
         
         # Reset multi-turn conversation state
         self.conversation_turn_count = 0
@@ -643,6 +661,8 @@ class VoiceAssistant:
             
             # Set up timeout for multi-turn conversation
             self.multi_turn_timeout_task = asyncio.create_task(self._handle_multi_turn_timeout())
+            self.logger.info(f"Created multi-turn timeout task (timeout: {self.config.session.multi_turn_timeout}s)")
+            print(f"*** MULTI-TURN TIMEOUT TASK CREATED: {self.config.session.multi_turn_timeout}s ***")
             
             return
         
@@ -698,19 +718,30 @@ class VoiceAssistant:
     async def _handle_multi_turn_timeout(self) -> None:
         """Handle timeout for multi-turn conversations"""
         try:
+            self.logger.info(f"Multi-turn timeout task started - will wait {self.config.session.multi_turn_timeout}s")
+            print(f"*** MULTI-TURN TIMEOUT TASK STARTED: WAITING {self.config.session.multi_turn_timeout}s ***")
+            
             # Wait for multi-turn timeout
             await asyncio.sleep(self.config.session.multi_turn_timeout)
             
             # If we reach here, no follow-up question was received
+            self.logger.info(f"Multi-turn timeout task completed - checking session state")
+            print(f"*** MULTI-TURN TIMEOUT COMPLETED - SESSION STATE: {self.session_state.value} ***")
+            
             if self.session_active and self.session_state == SessionState.MULTI_TURN_LISTENING:
                 self.logger.info(f"Multi-turn conversation timeout after {self.config.session.multi_turn_timeout}s - ending session")
                 print(f"*** MULTI-TURN TIMEOUT AFTER {self.config.session.multi_turn_timeout}S - ENDING SESSION ***")
                 await self._end_session()
+            else:
+                self.logger.info(f"Multi-turn timeout completed but session not in MULTI_TURN_LISTENING state (active: {self.session_active}, state: {self.session_state.value})")
+                print(f"*** MULTI-TURN TIMEOUT COMPLETED BUT SESSION STATE CHANGED: active={self.session_active}, state={self.session_state.value} ***")
         except asyncio.CancelledError:
             # Task was cancelled (user spoke again)
-            self.logger.debug("Multi-turn timeout task cancelled - user spoke again")
+            self.logger.info("Multi-turn timeout task cancelled - user spoke again or session ended")
+            print("*** MULTI-TURN TIMEOUT TASK CANCELLED ***")
         except Exception as e:
             self.logger.error(f"Error in multi-turn timeout handler: {e}")
+            print(f"*** ERROR IN MULTI-TURN TIMEOUT HANDLER: {e} ***")
             # End session on error to prevent hanging
             if self.session_active:
                 await self._end_session()
@@ -846,7 +877,8 @@ class VoiceAssistant:
         if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
             self.multi_turn_timeout_task.cancel()
             self.multi_turn_timeout_task = None
-            self.logger.debug("Cancelled multi-turn timeout - user is speaking")
+            self.logger.info("Cancelled multi-turn timeout - user is speaking")
+            print("*** MULTI-TURN TIMEOUT TASK CANCELLED - USER IS SPEAKING ***")
         
         # Note: With server VAD enabled, OpenAI automatically commits the audio buffer
         # when speech stops. Manual commit_audio() calls cause "input_audio_buffer_commit_empty" errors
