@@ -448,12 +448,17 @@ class OpenAIRealtimeClient:
             audio_b64 = event.data.get("delta", "")
             if audio_b64:
                 audio_data = base64.b64decode(audio_b64)
-                self.logger.debug(f"🔊 Received audio response chunk: {len(audio_data)} bytes")
+                self.logger.info(f"[AUDIO DELTA] Received audio response chunk: {len(audio_data)} bytes")
+                print(f"*** OPENAI AUDIO DELTA: {len(audio_data)} bytes ***")
                 await self._emit_event("audio_response", audio_data)
+            else:
+                self.logger.warning("Received empty audio delta")
+                print("*** EMPTY AUDIO DELTA RECEIVED ***")
                 
         elif event_type == "response.audio.done":
             # Audio response complete
-            self.logger.info("🔊 Audio response completed")
+            self.logger.info("[AUDIO DONE] Audio response completed")
+            print("*** OPENAI AUDIO RESPONSE COMPLETE ***")
             await self._emit_event("audio_response_done", None)
             
         elif event_type == "response.text.delta":
@@ -479,7 +484,8 @@ class OpenAIRealtimeClient:
                 
         elif event_type == "input_audio_buffer.speech_stopped":
             # User stopped speaking - server VAD detected end of speech
-            self.logger.info("🎤 Server VAD detected speech ended - audio buffer will be automatically committed")
+            self.logger.info("[SPEECH STOPPED] Server VAD detected speech ended - audio buffer automatically committed")
+            print("*** SERVER VAD: SPEECH STOPPED - BUFFER COMMITTED ***")
             await self._emit_event("speech_stopped", None)
             
         elif event_type == "error":

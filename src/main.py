@@ -212,6 +212,7 @@ class VoiceAssistant:
     async def _start_session(self) -> None:
         """Start a voice session"""
         if self.session_active:
+            self.logger.warning("Attempted to start session but already active")
             return
             
         self.session_active = True
@@ -220,12 +221,15 @@ class VoiceAssistant:
         # Clear any existing audio queue
         if self.audio_playback:
             self.audio_playback.clear_queue()
+            self.logger.debug("Cleared audio playback queue")
         
         # Reset conversation context
         if self.function_bridge:
             self.function_bridge.reset_conversation()
+            self.logger.debug("Reset conversation context")
         
-        self.logger.info("Voice session started")
+        self.logger.info("Voice session started - ready to receive audio input")
+        print("*** VOICE SESSION ACTIVE - SPEAK YOUR QUESTION ***")
     
     async def _end_session(self) -> None:
         """End the current voice session"""
@@ -299,26 +303,46 @@ class VoiceAssistant:
                 self._openai_audio_counter += 1
             else:
                 self._openai_audio_counter = 1
+                self.logger.info("Started sending audio to OpenAI")
+                print("*** STARTED SENDING AUDIO TO OPENAI ***")
                 
             if self._openai_audio_counter % 50 == 0:  # Every 50 chunks
                 self.logger.debug(f"Sent {self._openai_audio_counter} audio chunks to OpenAI")
+        else:
+            self.logger.error("No OpenAI client available to send audio!")
+            print("*** ERROR: NO OPENAI CLIENT FOR AUDIO ***")
     
     async def _on_audio_response(self, audio_data: bytes) -> None:
         """Handle audio response from OpenAI"""
+        self.logger.info(f"Received audio response from OpenAI: {len(audio_data)} bytes")
+        print(f"*** AUDIO RESPONSE RECEIVED: {len(audio_data)} bytes ***")
+        
         if self.audio_playback:
             self.audio_playback.play_audio(audio_data)
+            self.logger.debug("Audio data sent to playback system")
+            print("*** AUDIO SENT TO PLAYBACK - LISTEN FOR RESPONSE ***")
+        else:
+            self.logger.error("No audio playback system available!")
+            print("*** ERROR: NO AUDIO PLAYBACK SYSTEM ***")
     
     async def _on_audio_response_done(self, _) -> None:
         """Handle completion of audio response"""
-        self.logger.debug("Audio response complete")
+        self.logger.info("Audio response playback completed")
+        print("*** AUDIO RESPONSE COMPLETED ***")
     
     async def _on_speech_stopped(self, _) -> None:
         """Handle user speech stopped"""
-        self.logger.debug("User speech stopped")
+        self.logger.info("User speech stopped - triggering OpenAI response")
+        print("*** USER STOPPED SPEAKING - PROCESSING RESPONSE ***")
         
         # Commit audio buffer to trigger OpenAI response (only in audio mode)
         if self.openai_client and not self.openai_client.text_only:
             await self.openai_client.commit_audio()
+            self.logger.debug("Audio buffer committed to OpenAI")
+            print("*** AUDIO COMMITTED TO OPENAI - WAITING FOR RESPONSE ***")
+        else:
+            self.logger.warning("Cannot commit audio - OpenAI client unavailable or in text mode")
+            print("*** ERROR: CANNOT COMMIT AUDIO TO OPENAI ***")
     
     async def _on_openai_error(self, error_data: dict) -> None:
         """Handle OpenAI errors"""
@@ -329,15 +353,28 @@ class VoiceAssistant:
     
     def _on_wake_word_detected(self, model_name: str, confidence: float) -> None:
         """Handle wake word detection"""
-        self.logger.info(f"Wake word '{model_name}' detected with confidence {confidence:.3f}")
-        print(f"*** WAKE WORD DETECTED: {model_name} (confidence: {confidence:.3f}) ***")
+        self.logger.info(f"Wake word '{model_name}' detected with confidence {confidence:.6f}")
+        print(f"*** WAKE WORD DETECTED: {model_name} (confidence: {confidence:.6f}) ***")
+        print(f"*** STARTING VOICE SESSION - LISTEN FOR RESPONSE ***")
+        
+        # Check current session state
+        if self.session_active:
+            self.logger.warning("Wake word detected but session already active - ignoring")
+            print("*** SESSION ALREADY ACTIVE - IGNORING WAKE WORD ***")
+            return
         
         # Ensure OpenAI connection
         if not self.openai_client or self.openai_client.state.value != "connected":
             self.logger.warning("OpenAI client not connected, attempting connection...")
+            print("*** OPENAI NOT CONNECTED - ATTEMPTING CONNECTION ***")
             asyncio.create_task(self._ensure_openai_connection())
+        else:
+            self.logger.info(f"OpenAI client connected, state: {self.openai_client.state.value}")
+            print(f"*** OPENAI CONNECTED (state: {self.openai_client.state.value}) ***")
         
         # Start voice session
+        self.logger.info("Starting voice session from wake word detection")
+        print("*** STARTING VOICE SESSION ***")
         asyncio.create_task(self._start_session())
         
         # Optional: Play acknowledgment sound or provide visual feedback
