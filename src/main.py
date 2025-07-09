@@ -369,6 +369,8 @@ class VoiceAssistant:
         
         # Start VAD timeout fallback
         self.vad_timeout_task = asyncio.create_task(self._vad_timeout_handler())
+        self.logger.info("Started VAD timeout task (5s) to handle cases where no speech is detected")
+        print("*** VAD TIMEOUT TASK STARTED - WILL END SESSION IF NO SPEECH ***")
         
         self.logger.info("Voice session started - ready to receive audio input")
         print("*** VOICE SESSION ACTIVE - SPEAK YOUR QUESTION ***")
@@ -391,7 +393,8 @@ class VoiceAssistant:
         if self.vad_timeout_task and not self.vad_timeout_task.done():
             self.vad_timeout_task.cancel()
             self.vad_timeout_task = None
-            self.logger.debug("Cancelled VAD timeout task")
+            self.logger.info("Cancelled VAD timeout task during session end")
+            print("*** VAD TIMEOUT TASK CANCELLED DURING SESSION END ***")
         
         # Cancel response end task if it exists
         if self.response_end_task and not self.response_end_task.done():
@@ -887,7 +890,8 @@ class VoiceAssistant:
         if self.vad_timeout_task and not self.vad_timeout_task.done():
             self.vad_timeout_task.cancel()
             self.vad_timeout_task = None
-            self.logger.debug("VAD timeout cancelled - speech properly detected")
+            self.logger.info("VAD timeout cancelled - speech properly detected")
+            print("*** VAD TIMEOUT CANCELLED - SPEECH DETECTED ***")
         
         # Cancel any pending session end task since user is speaking
         if self.response_end_task and not self.response_end_task.done():
@@ -933,36 +937,27 @@ class VoiceAssistant:
         await self._end_session()
     
     async def _vad_timeout_handler(self) -> None:
-        """Handle VAD timeout - force response if speech_stopped never fires"""
+        """Handle VAD timeout - end session gracefully if no speech detected"""
         try:
             # Wait for VAD timeout (5 seconds after session start - increased for reliability)
             await asyncio.sleep(5.0)
             
             if self.session_active:
-                self.logger.warning("VAD timeout - forcing response generation (speech_stopped never received)")
-                print("*** VAD TIMEOUT - FORCING RESPONSE GENERATION ***")
+                self.logger.warning("VAD timeout - no speech detected, ending session gracefully")
+                print("*** VAD TIMEOUT - NO SPEECH DETECTED, ENDING SESSION ***")
                 
-                # Force OpenAI to generate a response
-                if self.openai_client:
-                    try:
-                        # Create a response request to trigger OpenAI
-                        response_event = {
-                            "type": "response.create"
-                        }
-                        await self.openai_client._send_event(response_event)
-                        self.logger.info("Forced response creation due to VAD timeout")
-                        # Transition to processing state
-                        self._transition_to_state(SessionState.PROCESSING)
-                    except Exception as e:
-                        self.logger.error(f"Error forcing response after VAD timeout: {e}")
-                        # End session on error to prevent hanging
-                        await self._end_session()
+                # End session gracefully instead of forcing a response
+                # This prevents unwanted AI responses when no speech was actually detected
+                await self._end_session()
                         
         except asyncio.CancelledError:
             # Task was cancelled because speech was properly detected
-            pass
+            self.logger.debug("VAD timeout cancelled - speech was properly detected")
         except Exception as e:
             self.logger.error(f"Error in VAD timeout handler: {e}")
+            # End session on error to prevent hanging
+            if self.session_active:
+                await self._end_session()
     
     async def _schedule_session_end(self) -> None:
         """Schedule session end after cooldown delay"""
