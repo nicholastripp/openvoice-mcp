@@ -133,8 +133,20 @@ class VoiceAssistant:
                 self.logger.info(f"Multi-turn timeout task state during transition: {task_state}")
                 print(f"*** MULTI-TURN TIMEOUT TASK STATE: {task_state.upper()} ***")
             
-            self.logger.info(f"Session state: {old_state.value} -> {new_state.value}")
-            print(f"*** SESSION STATE: {old_state.value.upper()} -> {new_state.value.upper()} ***")
+            # Enhanced logging with more context
+            self.logger.info(f"Session state: {old_state.value} -> {new_state.value} (session_active: {self.session_active}, response_active: {self.response_active})")
+            print(f"*** SESSION STATE: {old_state.value.upper()} -> {new_state.value.upper()} (session_active: {self.session_active}, response_active: {self.response_active}) ***")
+            
+            # Log additional context for specific transitions
+            if new_state == SessionState.IDLE:
+                self.logger.info(f"Session entering IDLE state - audio streaming should be blocked")
+                print("*** SESSION ENTERING IDLE STATE - AUDIO STREAMING SHOULD BE BLOCKED ***")
+            elif new_state == SessionState.LISTENING:
+                self.logger.info(f"Session entering LISTENING state - audio streaming enabled")
+                print("*** SESSION ENTERING LISTENING STATE - AUDIO STREAMING ENABLED ***")
+            elif new_state == SessionState.RESPONDING:
+                self.logger.info(f"Session entering RESPONDING state - audio streaming will be blocked")
+                print("*** SESSION ENTERING RESPONDING STATE - AUDIO STREAMING WILL BE BLOCKED ***")
     
     async def _initialize_components(self) -> None:
         """Initialize all components"""
@@ -374,6 +386,29 @@ class VoiceAssistant:
         
         self.logger.info("Voice session started - ready to receive audio input")
         print("*** VOICE SESSION ACTIVE - SPEAK YOUR QUESTION ***")
+        
+    async def _start_session_with_greeting(self) -> None:
+        """Start a voice session with an initial greeting"""
+        # First start the regular session
+        await self._start_session()
+        
+        # Send a greeting message to OpenAI to generate an initial response
+        if self.openai_client and self.openai_client.state.value == "connected":
+            greeting_message = "Hello! I'm ready to help you with your smart home. What can I do for you?"
+            
+            try:
+                # Send the greeting as a system message to trigger an audio response
+                await self.openai_client.send_text(greeting_message)
+                
+                # Request an audio response
+                await self.openai_client._send_event({"type": "response.create"})
+                
+                self.logger.info("Sent initial greeting to OpenAI")
+                print("*** INITIAL GREETING SENT TO OPENAI ***")
+                
+            except Exception as e:
+                self.logger.error(f"Failed to send initial greeting: {e}")
+                print(f"*** ERROR SENDING INITIAL GREETING: {e} ***")
     
     async def _end_session(self) -> None:
         """End the current voice session with comprehensive cleanup"""
@@ -436,6 +471,8 @@ class VoiceAssistant:
             self._mute_debug_counter = 0
         if hasattr(self, '_mute_debug_counter_direct'):
             self._mute_debug_counter_direct = 0
+        if hasattr(self, '_response_blocked_counter'):
+            self._response_blocked_counter = 0
         
         # Note: With server VAD enabled, manual commit_audio() calls are not needed
         # and will cause "input_audio_buffer_commit_empty" errors
@@ -550,13 +587,33 @@ class VoiceAssistant:
                 self.logger.debug(f"Blocked {self._blocked_audio_counter} audio chunks from OpenAI (session_active: {self.session_active}, state: {self.session_state.value})")
             return
         
-        # ADDITIONAL SAFETY CHECK: Don't send audio during response or cooldown
+        # ENHANCED SAFETY CHECK: Don't send audio during response, cooldown, or processing
+        blocked_states = [
+            SessionState.RESPONDING,
+            SessionState.AUDIO_PLAYING,
+            SessionState.COOLDOWN,
+            SessionState.PROCESSING
+        ]
+        
         if (self.config.audio.feedback_prevention and
-            (self.session_state == SessionState.RESPONDING or 
-             self.session_state == SessionState.AUDIO_PLAYING or 
-             self.session_state == SessionState.COOLDOWN)):
-            self.logger.warning(f"[BLOCKED] Attempted to send audio to OpenAI during {self.session_state.value} state")
-            print(f"*** [BLOCKED] AUDIO TO OPENAI DURING {self.session_state.value.upper()} STATE ***")
+            (self.session_state in blocked_states or self.response_active)):
+            
+            # Track blocked audio chunks during response states
+            if hasattr(self, '_response_blocked_counter'):
+                self._response_blocked_counter += 1
+            else:
+                self._response_blocked_counter = 1
+                self.logger.warning(f"[BLOCKED] Started blocking audio during {self.session_state.value} state (response_active: {self.response_active})")
+                print(f"*** [BLOCKED] AUDIO TO OPENAI DURING {self.session_state.value.upper()} STATE ***")
+            
+            if self._response_blocked_counter % 50 == 0:  # Every 50 blocked chunks
+                self.logger.debug(f"Blocked {self._response_blocked_counter} audio chunks during response (state: {self.session_state.value}, response_active: {self.response_active})")
+            return
+        
+        # ADDITIONAL VALIDATION: Check OpenAI client state
+        if not self.openai_client or self.openai_client.state.value != "connected":
+            self.logger.warning(f"[BLOCKED] OpenAI client not connected - cannot send audio (state: {self.openai_client.state.value if self.openai_client else 'None'})")
+            print("*** [BLOCKED] OPENAI CLIENT NOT CONNECTED ***")
             return
         
         # Update activity timestamp
@@ -662,9 +719,9 @@ class VoiceAssistant:
         if self.config.session.conversation_mode == "multi_turn" and self.session_active:
             # Check if the last response contained conversation end phrases
             if self.last_user_input and self._contains_end_phrases(self.last_user_input):
-                self.logger.info("Conversation end phrase detected - ending session")
-                print("*** CONVERSATION END PHRASE DETECTED - ENDING SESSION ***")
-                await self._end_session()
+                self.logger.info("Conversation end phrase detected - sending goodbye and ending session")
+                print("*** CONVERSATION END PHRASE DETECTED - SENDING GOODBYE AND ENDING SESSION ***")
+                await self._send_goodbye_and_end_session()
                 return
             
             # Increment conversation turn count
@@ -781,9 +838,61 @@ class VoiceAssistant:
         # Check configured end phrases
         for phrase in self.config.session.multi_turn_end_phrases:
             if phrase.lower() in text_lower:
+                self.logger.info(f"End phrase detected: '{phrase}' in '{text}'")
+                print(f"*** END PHRASE DETECTED: '{phrase}' in '{text}' ***")
+                return True
+        
+        # Additional flexible matching for common end patterns
+        end_patterns = [
+            "nothing else",
+            "that's all",
+            "that'll be all",
+            "that will be all",
+            "i'm done",
+            "we're done",
+            "that's it",
+            "that's everything",
+            "no more",
+            "finished",
+            "done",
+            "end session",
+            "exit",
+            "quit"
+        ]
+        
+        for pattern in end_patterns:
+            if pattern in text_lower:
+                self.logger.info(f"End pattern detected: '{pattern}' in '{text}'")
+                print(f"*** END PATTERN DETECTED: '{pattern}' in '{text}' ***")
                 return True
         
         return False
+    
+    async def _send_goodbye_and_end_session(self) -> None:
+        """Send a goodbye message and end the session gracefully"""
+        try:
+            if self.openai_client and self.openai_client.state.value == "connected":
+                goodbye_message = "You're welcome! Have a great day!"
+                
+                # Send the goodbye message
+                await self.openai_client.send_text(goodbye_message)
+                
+                # Request an audio response
+                await self.openai_client._send_event({"type": "response.create"})
+                
+                self.logger.info("Sent goodbye message before ending session")
+                print("*** GOODBYE MESSAGE SENT ***")
+                
+                # Give a moment for the goodbye to be processed
+                await asyncio.sleep(0.5)
+                
+            # End the session
+            await self._end_session()
+            
+        except Exception as e:
+            self.logger.error(f"Error sending goodbye message: {e}")
+            # Still end the session even if goodbye fails
+            await self._end_session()
     
     async def _periodic_cleanup(self) -> None:
         """Periodic cleanup task to prevent hanging sessions"""
@@ -1006,13 +1115,10 @@ class VoiceAssistant:
             self.logger.info(f"OpenAI client connected, state: {self.openai_client.state.value}")
             print(f"*** OPENAI CONNECTED (state: {self.openai_client.state.value}) ***")
         
-        # Start voice session
+        # Start voice session with greeting
         self.logger.info("Starting voice session from wake word detection")
         print("*** STARTING VOICE SESSION ***")
-        asyncio.run_coroutine_threadsafe(self._start_session(), self.loop)
-        
-        # Optional: Play acknowledgment sound or provide visual feedback
-        # This could be implemented later
+        asyncio.run_coroutine_threadsafe(self._start_session_with_greeting(), self.loop)
     
     async def _ensure_openai_connection(self) -> None:
         """Ensure OpenAI client is connected"""

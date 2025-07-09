@@ -259,28 +259,34 @@ def main():
     # Check if config file exists
     config_path = Path(args.config)
     if not config_path.exists():
-        logger.error(f"[ERROR] Configuration file not found: {args.config}")
-        logger.error("Please create the configuration file:")
-        logger.error(f"  cp {args.config}.example {args.config}")
-        logger.error("Then edit it with your Home Assistant settings.")
-        return
+        # Try looking in the parent directory (since we're in examples/)
+        parent_config_path = Path("../config/config.yaml")
+        if parent_config_path.exists():
+            config_path = parent_config_path
+            logger.info(f"Using config file: {config_path.absolute()}")
+        else:
+            logger.error(f"[ERROR] Configuration file not found: {args.config}")
+            logger.error("Please create the configuration file:")
+            logger.error(f"  cp {args.config}.example {args.config}")
+            logger.error("Then edit it with your Home Assistant settings.")
+            return
     
     async def run_tests():
         try:
             if args.entities:
                 print("DEBUG: Running entities test", flush=True)
-                await test_entities(args.config)
+                await test_entities(str(config_path))
             elif args.conversation:
                 print("DEBUG: Running conversation test", flush=True)
-                await test_connection(args.config)
+                await test_connection(str(config_path))
             else:
                 # Run both tests
                 print("DEBUG: Running connection test", flush=True)
-                success1 = await test_connection(args.config)
+                success1 = await test_connection(str(config_path))
                 print(f"DEBUG: Connection test result: {success1}", flush=True)
                 if success1:
                     print("DEBUG: Running entities test", flush=True)
-                    await test_entities(args.config)
+                    await test_entities(str(config_path))
         except Exception as e:
             print(f"DEBUG: Exception in run_tests: {e}", flush=True)
             logger.error(f"[ERROR] Test failed with unexpected error: {e}")

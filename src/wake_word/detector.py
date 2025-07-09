@@ -668,7 +668,7 @@ class WakeWordDetector:
                         self.logger.info(f"Detection candidate: {model_name} confidence {confidence:.6f} >= threshold {self.sensitivity:.6f}")
                         
                         # Additional validation: require minimum confidence level for reliability
-                        min_reliable_confidence = self.sensitivity * 1.5  # 1.5x threshold for reliability
+                        min_reliable_confidence = self.sensitivity * 1.2  # 1.2x threshold for reliability
                         if confidence < min_reliable_confidence:
                             print(f"   DETECTOR: CONFIDENCE TOO LOW: {confidence:.6f} < {min_reliable_confidence:.6f} (need {min_reliable_confidence/confidence:.1f}x more for reliability)")
                             self.logger.debug(f"Wake word confidence too low for reliability: {confidence:.6f} < {min_reliable_confidence:.6f}")
