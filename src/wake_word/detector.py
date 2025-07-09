@@ -12,6 +12,7 @@ import signal
 
 from config import WakeWordConfig
 from utils.logger import get_logger
+from utils.audio_diagnostics import AudioDiagnostics
 
 try:
     import openwakeword
@@ -100,6 +101,19 @@ class WakeWordDetector:
             return
         
         try:
+            # Run audio system diagnostics
+            self.logger.info("Running audio system diagnostics...")
+            diagnostics = AudioDiagnostics()
+            diagnostic_results = diagnostics.validate_system_audio_config()
+            
+            # Log critical audio configuration issues
+            if diagnostic_results['recommendations']:
+                self.logger.warning("Audio configuration issues detected:")
+                for rec in diagnostic_results['recommendations']:
+                    self.logger.warning(f"  - {rec}")
+            else:
+                self.logger.info("Audio configuration validation passed")
+            
             # Initialize OpenWakeWord model
             self.logger.info(f"Loading wake word model: {self.model_name}")
             self._load_model()
@@ -206,13 +220,19 @@ class WakeWordDetector:
                 
                 self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {len(audio_array)} -> {len(audio_float)} samples (level: {audio_level:.3f})")
             
+            # Enhanced audio quality analysis before amplification
+            pre_amp_metrics = self._analyze_audio_quality(audio_float, "pre-amp")
+            
             # Apply audio normalization fix based on test results
             # The amplify_50x method produced the best results in testing
             pre_amp_level = np.max(np.abs(audio_float))
             audio_float = np.clip(audio_float * 50.0, -1.0, 1.0).astype(np.float32)
             post_amp_level = np.max(np.abs(audio_float))
             
-            # Debug logging for amplification (periodic to avoid spam)
+            # Enhanced audio quality analysis after amplification
+            post_amp_metrics = self._analyze_audio_quality(audio_float, "post-amp")
+            
+            # Debug logging for amplification with enhanced metrics
             if hasattr(self, '_amp_debug_counter'):
                 self._amp_debug_counter += 1
             else:
@@ -220,7 +240,11 @@ class WakeWordDetector:
                 
             if self._amp_debug_counter % 500 == 0:  # Every 500 chunks (reduced for production)
                 self.logger.debug(f"Audio amplification: {pre_amp_level:.4f} -> {post_amp_level:.4f} (50x gain)")
+                self.logger.debug(f"Pre-amp metrics: {pre_amp_metrics}")
+                self.logger.debug(f"Post-amp metrics: {post_amp_metrics}")
                 print(f"   DETECTOR: AMPLIFICATION: {pre_amp_level:.4f} -> {post_amp_level:.4f} (50x gain)")
+                print(f"   DETECTOR: PRE-AMP QUALITY: RMS={pre_amp_metrics['rms']:.6f}, SNR={pre_amp_metrics['snr']:.1f}dB, Peak={pre_amp_metrics['peak']:.4f}")
+                print(f"   DETECTOR: POST-AMP QUALITY: RMS={post_amp_metrics['rms']:.6f}, SNR={post_amp_metrics['snr']:.1f}dB, Peak={post_amp_metrics['peak']:.4f}")
             
             # Immediate debug feedback (not just debug logs)
             print(f"   DETECTOR: audio_level={audio_level:.3f}, samples={len(audio_float)}")
@@ -919,6 +943,58 @@ class WakeWordDetector:
         if len(self.confidence_history) >= self.confidence_window_size and len(self.confidence_history) % 25 == 0:
             recent_high_confidence = sum(1 for c in self.confidence_history[-10:] if c > 0.01)
             self.logger.debug(f"Confidence stats: avg={self.avg_confidence:.6f}, peak={self.peak_confidence:.6f}, recent_high={recent_high_confidence}/10")
+    
+    def _analyze_audio_quality(self, audio_data: np.ndarray, stage: str) -> Dict[str, float]:
+        """
+        Analyze audio quality metrics for debugging
+        
+        Args:
+            audio_data: Audio samples as numpy array
+            stage: Description of processing stage (e.g., "pre-amp", "post-amp")
+            
+        Returns:
+            Dictionary with quality metrics
+        """
+        try:
+            # Basic metrics
+            rms = np.sqrt(np.mean(audio_data ** 2))
+            peak = np.max(np.abs(audio_data))
+            mean_abs = np.mean(np.abs(audio_data))
+            
+            # Signal-to-noise ratio estimation
+            # Use a simple noise floor estimation based on quietest 10% of samples
+            sorted_abs = np.sort(np.abs(audio_data))
+            noise_floor = np.mean(sorted_abs[:len(sorted_abs)//10]) if len(sorted_abs) > 10 else 0.0
+            snr = 20 * np.log10(rms / max(noise_floor, 1e-10))  # Avoid division by zero
+            
+            # Dynamic range
+            dynamic_range = 20 * np.log10(peak / max(rms, 1e-10))
+            
+            # Zero crossing rate (measure of signal complexity)
+            zero_crossings = np.sum(np.diff(np.signbit(audio_data)))
+            zcr = zero_crossings / len(audio_data)
+            
+            # Clipping detection
+            clipping_ratio = np.sum(np.abs(audio_data) >= 0.99) / len(audio_data)
+            
+            return {
+                'rms': rms,
+                'peak': peak,
+                'mean_abs': mean_abs,
+                'snr': snr,
+                'dynamic_range': dynamic_range,
+                'zero_crossing_rate': zcr,
+                'clipping_ratio': clipping_ratio,
+                'noise_floor': noise_floor
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing audio quality at {stage}: {e}")
+            return {
+                'rms': 0.0, 'peak': 0.0, 'mean_abs': 0.0, 'snr': 0.0,
+                'dynamic_range': 0.0, 'zero_crossing_rate': 0.0,
+                'clipping_ratio': 0.0, 'noise_floor': 0.0
+            }
     
     def _reset_model_state(self, reset_reason: str = "unknown") -> None:
         """
