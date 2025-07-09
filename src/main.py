@@ -36,6 +36,9 @@ class VoiceAssistant:
         self.running = False
         self._shutdown_event = asyncio.Event()
         
+        # Store reference to event loop for thread-safe async calls
+        self.loop = asyncio.get_event_loop()
+        
         # Components (will be initialized later)
         self.openai_client: Optional[OpenAIRealtimeClient] = None
         self.ha_client: Optional[HomeAssistantConversationClient] = None
@@ -367,7 +370,7 @@ class VoiceAssistant:
         if not self.openai_client or self.openai_client.state.value != "connected":
             self.logger.warning("OpenAI client not connected, attempting connection...")
             print("*** OPENAI NOT CONNECTED - ATTEMPTING CONNECTION ***")
-            asyncio.create_task(self._ensure_openai_connection())
+            asyncio.run_coroutine_threadsafe(self._ensure_openai_connection(), self.loop)
         else:
             self.logger.info(f"OpenAI client connected, state: {self.openai_client.state.value}")
             print(f"*** OPENAI CONNECTED (state: {self.openai_client.state.value}) ***")
@@ -375,7 +378,7 @@ class VoiceAssistant:
         # Start voice session
         self.logger.info("Starting voice session from wake word detection")
         print("*** STARTING VOICE SESSION ***")
-        asyncio.create_task(self._start_session())
+        asyncio.run_coroutine_threadsafe(self._start_session(), self.loop)
         
         # Optional: Play acknowledgment sound or provide visual feedback
         # This could be implemented later
