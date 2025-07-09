@@ -995,15 +995,15 @@ class OpenAIRealtimeClient:
                 self.logger.debug(f"Filtering out very quiet audio (max_amplitude: {max_amplitude})")
                 return None
             
-            # Gentle audio normalization for better VAD performance
-            # Target RMS level around 2000 (more conservative)
+            # Enhanced audio normalization for better VAD performance
+            # Target RMS level around 3000 for better VAD detection
             rms = np.sqrt(np.mean(audio_array ** 2))
-            if rms > 0 and rms < 500:  # Only normalize very quiet audio
-                target_rms = 2000.0
+            if rms > 0 and rms < 2000:  # Normalize all audio below 2000 RMS
+                target_rms = 3000.0  # Higher target for better VAD detection
                 gain = target_rms / rms
                 
                 # Limit gain to prevent excessive amplification
-                gain = min(gain, 3.0)  # Max 3x amplification (reduced)
+                gain = min(gain, 6.0)  # Allow up to 6x amplification for very quiet audio
                 
                 # Apply gain
                 audio_array *= gain
@@ -1012,6 +1012,13 @@ class OpenAIRealtimeClient:
                 audio_array = np.clip(audio_array, -32767.0, 32767.0)
                 
                 self.logger.debug(f"Audio normalized: original_rms={rms:.1f}, gain={gain:.2f}, new_rms={np.sqrt(np.mean(audio_array ** 2)):.1f}")
+            elif rms > 0:
+                # Even for louder audio, apply a small boost if it's still relatively quiet
+                if rms < 5000:
+                    gain = 1.5  # Small boost for better VAD detection
+                    audio_array *= gain
+                    audio_array = np.clip(audio_array, -32767.0, 32767.0)
+                    self.logger.debug(f"Audio boosted: original_rms={rms:.1f}, gain={gain:.2f}, new_rms={np.sqrt(np.mean(audio_array ** 2)):.1f}")
             
             # Convert back to bytes
             processed_samples = audio_array.astype(np.int16)

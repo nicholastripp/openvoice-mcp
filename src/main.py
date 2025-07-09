@@ -148,6 +148,70 @@ class VoiceAssistant:
                 self.logger.info(f"Session entering RESPONDING state - audio streaming will be blocked")
                 print("*** SESSION ENTERING RESPONDING STATE - AUDIO STREAMING WILL BE BLOCKED ***")
     
+    async def _generate_device_aware_personality(self) -> str:
+        """Generate personality prompt with device information"""
+        # Start with base personality
+        base_prompt = self.personality.generate_prompt()
+        
+        try:
+            # Get device information from Home Assistant
+            self.logger.info("Fetching device information from Home Assistant...")
+            states = await self.ha_client.rest_client.get_states()
+            
+            # Group devices by domain for better organization
+            device_groups = {}
+            for state in states:
+                entity_id = state.get("entity_id", "")
+                domain = entity_id.split(".")[0] if "." in entity_id else "unknown"
+                
+                if domain not in device_groups:
+                    device_groups[domain] = []
+                
+                # Include entity with friendly name if available
+                friendly_name = state.get("attributes", {}).get("friendly_name", entity_id)
+                device_groups[domain].append({
+                    "entity_id": entity_id,
+                    "name": friendly_name,
+                    "state": state.get("state", "unknown")
+                })
+            
+            # Create device context
+            device_context = "\n\nAvailable devices in your smart home:\n"
+            
+            # Prioritize common device types
+            priority_domains = ["light", "switch", "climate", "media_player", "cover", "lock", "sensor"]
+            
+            for domain in priority_domains:
+                if domain in device_groups:
+                    devices = device_groups[domain][:10]  # Limit to 10 devices per domain
+                    device_context += f"\n{domain.title()}s ({len(devices)} available):\n"
+                    for device in devices:
+                        device_context += f"  - {device['name']} ({device['entity_id']}) - {device['state']}\n"
+            
+            # Add other domains (limited)
+            other_domains = [d for d in device_groups.keys() if d not in priority_domains and d != "unknown"]
+            for domain in other_domains[:5]:  # Limit to 5 other domains
+                devices = device_groups[domain][:5]  # Limit to 5 devices per domain
+                device_context += f"\n{domain.title()}s ({len(devices)} available):\n"
+                for device in devices:
+                    device_context += f"  - {device['name']} ({device['entity_id']}) - {device['state']}\n"
+            
+            # Add helpful instructions
+            device_context += "\nWhen users ask about controlling devices, you can help them by using the control_home_assistant function with natural language commands."
+            
+            # Combine base prompt with device context
+            enhanced_prompt = base_prompt + device_context
+            
+            self.logger.info(f"Generated device-aware personality with {len(states)} total entities across {len(device_groups)} domains")
+            self.logger.debug(f"Device context preview: {device_context[:200]}...")
+            
+            return enhanced_prompt
+            
+        except Exception as e:
+            self.logger.error(f"Failed to fetch device information: {e}")
+            # Fall back to base personality if device fetch fails
+            return base_prompt
+    
     async def _initialize_components(self) -> None:
         """Initialize all components"""
         self.logger.info("Initializing components...")
@@ -160,9 +224,9 @@ class VoiceAssistant:
         # Initialize function bridge
         self.function_bridge = FunctionCallBridge(self.ha_client)
         
-        # Initialize OpenAI client
+        # Initialize OpenAI client with device-aware personality
         self.logger.info("Initializing OpenAI client...")
-        personality_prompt = self.personality.generate_prompt()
+        personality_prompt = await self._generate_device_aware_personality()
         self.openai_client = OpenAIRealtimeClient(self.config.openai, personality_prompt)
         
         # Register function handlers
