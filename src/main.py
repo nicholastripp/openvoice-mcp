@@ -66,6 +66,15 @@ class VoiceAssistant:
         self.vad_timeout_task = None
         self.response_active = False
         self.response_end_task = None
+        
+        # Session watchdog for stuck session detection
+        self.last_state_change = asyncio.get_event_loop().time()
+        self.max_state_duration = 60.0  # 60 seconds max in any state
+        self.response_start_time = None
+        
+        # Periodic cleanup task
+        self.cleanup_task = None
+        self.cleanup_interval = 30.0  # Check every 30 seconds
     
     async def start(self) -> None:
         """Start the voice assistant"""
@@ -74,6 +83,9 @@ class VoiceAssistant:
         try:
             # Initialize components
             await self._initialize_components()
+            
+            # Start periodic cleanup task
+            self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
             
             # Start main loop
             self.running = True
@@ -89,16 +101,26 @@ class VoiceAssistant:
         self.running = False
         self._shutdown_event.set()
         
+        # Cancel cleanup task
+        if self.cleanup_task and not self.cleanup_task.done():
+            self.cleanup_task.cancel()
+        
         # Cleanup components
         await self._cleanup_components()
         
         self.logger.info("Voice assistant stopped")
     
     def _transition_to_state(self, new_state: SessionState) -> None:
-        """Transition to a new session state with logging"""
+        """Transition to a new session state with logging and watchdog tracking"""
         if self.session_state != new_state:
             old_state = self.session_state
             self.session_state = new_state
+            self.last_state_change = asyncio.get_event_loop().time()
+            
+            # Track response timing
+            if new_state == SessionState.RESPONDING:
+                self.response_start_time = self.last_state_change
+            
             self.logger.info(f"Session state: {old_state.value} -> {new_state.value}")
             print(f"*** SESSION STATE: {old_state.value.upper()} -> {new_state.value.upper()} ***")
     
@@ -218,6 +240,17 @@ class VoiceAssistant:
                     except:
                         pass
                 
+                # Check for stuck sessions (watchdog)
+                try:
+                    await self._check_stuck_session()
+                except Exception as e:
+                    self.logger.error(f"Error checking stuck session: {e}")
+                    # Try to recover by ending the session
+                    try:
+                        await self._end_session()
+                    except:
+                        pass
+                
                 # TODO: Handle wake word detection
                 # For now, we'll assume always listening (for development)
                 
@@ -251,6 +284,42 @@ class VoiceAssistant:
             self.logger.info(f"Session timeout after {timeout}s of inactivity, ending session")
             print(f"*** SESSION TIMEOUT AFTER {timeout}S - ENDING SESSION ***")
             await self._end_session()
+    
+    async def _check_stuck_session(self) -> None:
+        """Check for stuck sessions and force recovery"""
+        if not self.session_active:
+            return
+            
+        current_time = asyncio.get_event_loop().time()
+        time_in_state = current_time - self.last_state_change
+        
+        # Check if we've been in the same state too long
+        if time_in_state > self.max_state_duration:
+            self.logger.error(f"Session stuck in {self.session_state.value} state for {time_in_state:.1f}s - forcing recovery")
+            print(f"*** SESSION STUCK IN {self.session_state.value.upper()} STATE FOR {time_in_state:.1f}S - FORCING RECOVERY ***")
+            
+            # Force session end
+            await self._end_session()
+            return
+        
+        # Special check for audio responses
+        if (self.session_state == SessionState.RESPONDING or 
+            self.session_state == SessionState.AUDIO_PLAYING) and \
+           self.response_start_time:
+            
+            response_duration = current_time - self.response_start_time
+            max_response_time = 45.0  # 45 seconds max response time
+            
+            if response_duration > max_response_time:
+                self.logger.error(f"Audio response stuck for {response_duration:.1f}s - forcing completion")
+                print(f"*** AUDIO RESPONSE STUCK FOR {response_duration:.1f}S - FORCING COMPLETION ***")
+                
+                # Force audio completion
+                if self.audio_playback and self.audio_playback.is_response_active:
+                    self.audio_playback._notify_completion()
+                else:
+                    # Fallback: end session directly
+                    await self._fallback_session_end()
     
     async def _start_session(self) -> None:
         """Start a voice session"""
@@ -494,13 +563,31 @@ class VoiceAssistant:
         self._transition_to_state(SessionState.AUDIO_PLAYING)
     
     def _on_audio_playback_complete(self) -> None:
-        """Handle actual audio playback completion"""
+        """Handle actual audio playback completion with thread safety"""
         self.logger.info("Audio playback actually completed")
         print("*** AUDIO PLAYBACK ACTUALLY COMPLETED ***")
         
-        # Run async session ending in the main event loop
+        # Run async session ending in the main event loop with error handling
         if self.loop:
-            asyncio.run_coroutine_threadsafe(self._handle_audio_completion(), self.loop)
+            try:
+                future = asyncio.run_coroutine_threadsafe(self._handle_audio_completion(), self.loop)
+                
+                # Add timeout to prevent hanging
+                try:
+                    future.result(timeout=5.0)  # 5 second timeout
+                except Exception as e:
+                    self.logger.error(f"Error in audio completion handler: {e}")
+                    # Fallback: force session end
+                    self._schedule_fallback_session_end()
+                    
+            except Exception as e:
+                self.logger.error(f"Error scheduling audio completion handler: {e}")
+                # Fallback: force session end
+                self._schedule_fallback_session_end()
+        else:
+            self.logger.error("No event loop available for audio completion")
+            # Fallback: force session end
+            self._schedule_fallback_session_end()
     
     async def _handle_audio_completion(self) -> None:
         """Handle audio completion in async context"""
@@ -526,6 +613,87 @@ class VoiceAssistant:
             self.logger.info("Auto-ending session after actual playback completion")
             print("*** AUTO-ENDING SESSION AFTER ACTUAL PLAYBACK COMPLETION ***")
             await self._end_session()
+    
+    def _schedule_fallback_session_end(self) -> None:
+        """Schedule fallback session end from thread context"""
+        if self.loop:
+            try:
+                self.logger.warning("Scheduling fallback session end due to audio completion failure")
+                future = asyncio.run_coroutine_threadsafe(self._fallback_session_end(), self.loop)
+                # Don't wait for result to avoid blocking
+            except Exception as e:
+                self.logger.error(f"Error scheduling fallback session end: {e}")
+    
+    async def _fallback_session_end(self) -> None:
+        """Fallback session end when audio completion fails"""
+        try:
+            self.logger.warning("Executing fallback session end")
+            print("*** FALLBACK SESSION END - RECOVERING FROM AUDIO COMPLETION FAILURE ***")
+            
+            # Force response to inactive
+            self.response_active = False
+            
+            # Restore VAD threshold
+            if self.openai_client:
+                await self.openai_client.update_vad_settings(threshold=0.6, silence_duration_ms=300)
+            
+            # End session
+            await self._end_session()
+            
+        except Exception as e:
+            self.logger.error(f"Error in fallback session end: {e}")
+            # Last resort - force session cleanup
+            self.session_active = False
+            self.response_active = False
+            self._transition_to_state(SessionState.IDLE)
+    
+    async def _periodic_cleanup(self) -> None:
+        """Periodic cleanup task to prevent hanging sessions"""
+        while self.running:
+            try:
+                await asyncio.sleep(self.cleanup_interval)
+                
+                if not self.running:
+                    break
+                    
+                # Check for orphaned sessions
+                current_time = asyncio.get_event_loop().time()
+                
+                # If we have a session that's been active too long, clean it up
+                if (self.session_active and 
+                    current_time - self.last_activity > self.cleanup_interval * 2):
+                    
+                    self.logger.warning(f"Orphaned session detected, cleaning up (inactive for {current_time - self.last_activity:.1f}s)")
+                    print(f"*** ORPHANED SESSION CLEANUP AFTER {current_time - self.last_activity:.1f}S ***")
+                    
+                    try:
+                        await self._end_session()
+                    except Exception as e:
+                        self.logger.error(f"Error during orphaned session cleanup: {e}")
+                        # Force cleanup
+                        self.session_active = False
+                        self.response_active = False
+                        self._transition_to_state(SessionState.IDLE)
+                
+                # Check for stuck audio playback
+                if (self.audio_playback and 
+                    self.audio_playback.is_response_active and 
+                    current_time - self.last_activity > self.cleanup_interval):
+                    
+                    self.logger.warning("Stuck audio playback detected, forcing completion")
+                    print("*** STUCK AUDIO PLAYBACK CLEANUP ***")
+                    
+                    try:
+                        self.audio_playback._notify_completion()
+                    except Exception as e:
+                        self.logger.error(f"Error during audio playback cleanup: {e}")
+                        
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error in periodic cleanup: {e}")
+                # Continue cleanup loop even on error
+                await asyncio.sleep(5.0)
     
     async def _on_speech_stopped(self, event_data) -> None:
         """Handle user speech stopped"""

@@ -66,6 +66,8 @@ class AudioPlayback:
         self.silence_threshold = int(self.device_sample_rate * 0.1)  # 100ms of silence
         self.last_audio_time = 0
         self.completion_timeout = 3.0  # 3 seconds timeout for completion detection
+        self.completion_timeout_task = None
+        self.max_response_duration = 30.0  # 30 seconds maximum response duration
     
     async def start(self) -> None:
         """Start audio playback system"""
@@ -229,7 +231,11 @@ class AudioPlayback:
         self.silence_frames_count = 0
         import time
         self.last_audio_time = time.time()
-        self.logger.debug("Started response audio tracking")
+        
+        # Start timeout task
+        self._start_completion_timeout()
+        
+        self.logger.debug("Started response audio tracking with timeout protection")
     
     def end_response(self) -> None:
         """Mark the end of a response (OpenAI finished sending)"""
@@ -242,12 +248,19 @@ class AudioPlayback:
             self.logger.info("Audio playback completed - notifying callbacks")
             self.is_response_active = False
             
-            # Notify all callbacks
-            for callback in self.completion_callbacks:
+            # Cancel timeout task
+            self._cancel_completion_timeout()
+            
+            # Notify all callbacks with comprehensive error handling
+            for i, callback in enumerate(self.completion_callbacks):
                 try:
+                    self.logger.debug(f"Calling completion callback #{i+1}")
                     callback()
+                    self.logger.debug(f"Completion callback #{i+1} completed successfully")
                 except Exception as e:
-                    self.logger.error(f"Error in completion callback: {e}")
+                    self.logger.error(f"Error in completion callback #{i+1}: {e}")
+                    # Continue with other callbacks even if one fails
+                    continue
     
     def clear_queue(self) -> None:
         """Clear the audio playback queue and buffer"""
@@ -264,6 +277,7 @@ class AudioPlayback:
         if self.is_response_active:
             self.is_response_active = False
             self.silence_frames_count = 0
+            self._cancel_completion_timeout()
     
     def is_queue_empty(self) -> bool:
         """Check if playback queue is empty"""
@@ -416,6 +430,82 @@ class AudioPlayback:
         except Exception as e:
             self.logger.warning(f"Could not get device info: {e}")
             return None
+    
+    def _start_completion_timeout(self) -> None:
+        """Start timeout task for audio completion detection"""
+        import asyncio
+        
+        try:
+            # Cancel any existing timeout task
+            self._cancel_completion_timeout()
+            
+            # Create new timeout task
+            loop = asyncio.get_event_loop()
+            self.completion_timeout_task = loop.create_task(self._completion_timeout_handler())
+            
+        except Exception as e:
+            self.logger.error(f"Error starting completion timeout: {e}")
+    
+    def _cancel_completion_timeout(self) -> None:
+        """Cancel the completion timeout task"""
+        if self.completion_timeout_task and not self.completion_timeout_task.done():
+            self.completion_timeout_task.cancel()
+            self.completion_timeout_task = None
+    
+    async def _completion_timeout_handler(self) -> None:
+        """Handle timeout for audio completion detection"""
+        try:
+            await asyncio.sleep(self.max_response_duration)
+            
+            # If we reach here, audio completion was not detected within timeout
+            if self.is_response_active:
+                self.logger.error(f"Audio completion timeout after {self.max_response_duration}s - forcing completion")
+                print(f"*** AUDIO COMPLETION TIMEOUT AFTER {self.max_response_duration}S - FORCING COMPLETION ***")
+                
+                # Force completion
+                self._notify_completion()
+                
+        except asyncio.CancelledError:
+            # Task was cancelled (normal completion)
+            pass
+        except Exception as e:
+            self.logger.error(f"Error in completion timeout handler: {e}")
+    
+    def _check_completion(self) -> None:
+        """Check if audio playback has completed with comprehensive error handling"""
+        if not self.is_response_active:
+            return
+        
+        try:
+            # Check if we have enough silence to consider playback complete
+            if (self.silence_frames_count >= self.silence_threshold and 
+                self.audio_queue.empty() and 
+                len(self.audio_buffer) == 0):
+                self.logger.debug(f"Audio completion detected via silence ({self.silence_frames_count} frames)")
+                self._notify_completion()
+                return
+                
+            # Timeout-based completion detection as fallback
+            import time
+            current_time = time.time()
+            if (current_time - self.last_audio_time > self.completion_timeout and 
+                self.audio_queue.empty() and 
+                len(self.audio_buffer) == 0):
+                self.logger.debug(f"Audio completion detected via timeout ({self.completion_timeout}s)")
+                self._notify_completion()
+                return
+            
+            # Check for stuck state (no audio activity for too long)
+            if current_time - self.last_audio_time > self.max_response_duration * 0.5:
+                self.logger.warning(f"No audio activity for {current_time - self.last_audio_time:.1f}s - may be stuck")
+                
+        except Exception as e:
+            self.logger.error(f"Error in completion check: {e}")
+            # Force completion on error to prevent hanging
+            try:
+                self._notify_completion()
+            except:
+                pass
     
     @staticmethod
     def list_devices() -> list:
