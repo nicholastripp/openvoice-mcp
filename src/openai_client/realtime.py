@@ -81,9 +81,9 @@ class OpenAIRealtimeClient:
             self.session_config["output_audio_format"] = "pcm16"
             self.session_config["turn_detection"] = {
                 "type": "server_vad",
-                "threshold": 0.5,
+                "threshold": 0.3,  # Lower threshold for better sensitivity with quiet audio
                 "prefix_padding_ms": 300,
-                "silence_duration_ms": 200
+                "silence_duration_ms": 500  # Longer silence duration for natural speech patterns
             }
             self.session_config["input_audio_transcription"] = {
                 "model": "whisper-1"
@@ -244,9 +244,15 @@ class OpenAIRealtimeClient:
                 self.logger.error("Audio format validation failed - skipping audio data")
                 return
             
+            # Improve audio quality for better VAD detection
+            processed_audio = self._improve_audio_for_vad(audio_data)
+            if processed_audio is None:
+                self.logger.debug("Audio chunk filtered out due to low quality")
+                return
+            
             # Track audio buffer duration (PCM16 at 24kHz, mono)
             # Each sample is 2 bytes (16-bit), so duration = bytes / 2 / 24000 * 1000 (ms)
-            duration_ms = len(audio_data) / 2 / 24000 * 1000
+            duration_ms = len(processed_audio) / 2 / 24000 * 1000
             self.audio_buffer_duration_ms += duration_ms
             self.audio_chunks_sent += 1
             
@@ -257,18 +263,18 @@ class OpenAIRealtimeClient:
                 self.logger.debug(f"Time since last chunk: {time_since_last:.1f}ms")
             self.last_audio_send_time = current_time
             
-            self.logger.info(f"AUDIO DEBUG: Chunk {self.audio_chunks_sent}: {len(audio_data)} bytes, {duration_ms:.1f}ms, total buffer: {self.audio_buffer_duration_ms:.1f}ms")
+            self.logger.info(f"AUDIO DEBUG: Chunk {self.audio_chunks_sent}: {len(processed_audio)} bytes, {duration_ms:.1f}ms, total buffer: {self.audio_buffer_duration_ms:.1f}ms")
             
             # Convert to base64
-            audio_b64 = base64.b64encode(audio_data).decode()
+            audio_b64 = base64.b64encode(processed_audio).decode()
             
             # Validate base64 encoding
-            if not self._validate_base64_audio(audio_b64, len(audio_data)):
+            if not self._validate_base64_audio(audio_b64, len(processed_audio)):
                 self.logger.error("Base64 audio validation failed - skipping audio data")
                 return
             
             # Test base64 roundtrip integrity
-            if not self._test_base64_roundtrip(audio_data, audio_b64):
+            if not self._test_base64_roundtrip(processed_audio, audio_b64):
                 self.logger.error("Base64 roundtrip test failed - skipping audio data")
                 return
             
@@ -509,11 +515,19 @@ class OpenAIRealtimeClient:
             except json.JSONDecodeError as e:
                 self.logger.error(f"Invalid function arguments: {e}")
                 
+        elif event_type == "input_audio_buffer.speech_started":
+            # User started speaking - server VAD detected speech start
+            audio_start_ms = event.data.get("audio_start_ms", 0)
+            self.logger.info(f"[SPEECH STARTED] Server VAD detected speech started at {audio_start_ms}ms")
+            print(f"*** SERVER VAD: SPEECH STARTED (at {audio_start_ms}ms) ***")
+            await self._emit_event("speech_started", event.data)
+            
         elif event_type == "input_audio_buffer.speech_stopped":
             # User stopped speaking - server VAD detected end of speech
-            self.logger.info("[SPEECH STOPPED] Server VAD detected speech ended - audio buffer automatically committed")
-            print("*** SERVER VAD: SPEECH STOPPED - BUFFER COMMITTED ***")
-            await self._emit_event("speech_stopped", None)
+            audio_end_ms = event.data.get("audio_end_ms", 0)
+            self.logger.info(f"[SPEECH STOPPED] Server VAD detected speech ended at {audio_end_ms}ms - audio buffer automatically committed")
+            print(f"*** SERVER VAD: SPEECH STOPPED (at {audio_end_ms}ms) - BUFFER COMMITTED ***")
+            await self._emit_event("speech_stopped", event.data)
             
         elif event_type == "error":
             # Error from OpenAI
@@ -912,3 +926,59 @@ class OpenAIRealtimeClient:
         except Exception as e:
             self.logger.error(f"Base64 string validation error: {e}")
             return False
+    
+    def _improve_audio_for_vad(self, audio_data: bytes) -> Optional[bytes]:
+        """
+        Improve audio quality for better VAD detection
+        
+        Args:
+            audio_data: Raw PCM16 audio data
+            
+        Returns:
+            Processed audio data or None if should be filtered out
+        """
+        try:
+            import struct
+            import numpy as np
+            
+            # Convert to numpy array for processing
+            sample_count = len(audio_data) // 2
+            if sample_count == 0:
+                return None
+                
+            samples = struct.unpack(f'<{sample_count}h', audio_data)
+            audio_array = np.array(samples, dtype=np.float32)
+            
+            # Check if audio is too quiet (likely silence or noise)
+            max_amplitude = np.max(np.abs(audio_array))
+            if max_amplitude < 100:  # Very quiet audio
+                self.logger.debug(f"Filtering out very quiet audio (max_amplitude: {max_amplitude})")
+                return None
+            
+            # Normalize audio level for consistent VAD performance
+            # Target RMS level around 3000 (out of 32767 max)
+            rms = np.sqrt(np.mean(audio_array ** 2))
+            if rms > 0:
+                target_rms = 3000.0
+                gain = target_rms / rms
+                
+                # Limit gain to prevent excessive amplification
+                gain = min(gain, 5.0)  # Max 5x amplification
+                
+                # Apply gain
+                audio_array *= gain
+                
+                # Clip to prevent overflow
+                audio_array = np.clip(audio_array, -32767.0, 32767.0)
+                
+                self.logger.debug(f"Audio normalized: original_rms={rms:.1f}, gain={gain:.2f}, new_rms={np.sqrt(np.mean(audio_array ** 2)):.1f}")
+            
+            # Convert back to bytes
+            processed_samples = audio_array.astype(np.int16)
+            processed_audio = struct.pack(f'<{len(processed_samples)}h', *processed_samples)
+            
+            return processed_audio
+            
+        except Exception as e:
+            self.logger.error(f"Error improving audio for VAD: {e}")
+            return audio_data  # Return original if processing fails

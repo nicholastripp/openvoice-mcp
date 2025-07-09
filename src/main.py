@@ -50,6 +50,8 @@ class VoiceAssistant:
         # Session state
         self.session_active = False
         self.last_activity = asyncio.get_event_loop().time()
+        self.session_start_time = None
+        self.vad_timeout_task = None
     
     async def start(self) -> None:
         """Start the voice assistant"""
@@ -220,6 +222,7 @@ class VoiceAssistant:
             
         self.session_active = True
         self.last_activity = asyncio.get_event_loop().time()
+        self.session_start_time = asyncio.get_event_loop().time()
         
         # Clear any existing audio queue
         if self.audio_playback:
@@ -231,6 +234,9 @@ class VoiceAssistant:
             self.function_bridge.reset_conversation()
             self.logger.debug("Reset conversation context")
         
+        # Start VAD timeout fallback
+        self.vad_timeout_task = asyncio.create_task(self._vad_timeout_handler())
+        
         self.logger.info("Voice session started - ready to receive audio input")
         print("*** VOICE SESSION ACTIVE - SPEAK YOUR QUESTION ***")
     
@@ -240,6 +246,11 @@ class VoiceAssistant:
             return
             
         self.session_active = False
+        
+        # Cancel VAD timeout task if it exists
+        if self.vad_timeout_task and not self.vad_timeout_task.done():
+            self.vad_timeout_task.cancel()
+            self.vad_timeout_task = None
         
         # Note: With server VAD enabled, manual commit_audio() calls are not needed
         # and will cause "input_audio_buffer_commit_empty" errors
@@ -333,10 +344,16 @@ class VoiceAssistant:
         self.logger.info("Audio response playback completed")
         print("*** AUDIO RESPONSE COMPLETED ***")
     
-    async def _on_speech_stopped(self, _) -> None:
+    async def _on_speech_stopped(self, event_data) -> None:
         """Handle user speech stopped"""
         self.logger.info("User speech stopped - server VAD will automatically trigger response")
         print("*** USER STOPPED SPEAKING - SERVER VAD PROCESSING ***")
+        
+        # Cancel VAD timeout since speech was properly detected
+        if self.vad_timeout_task and not self.vad_timeout_task.done():
+            self.vad_timeout_task.cancel()
+            self.vad_timeout_task = None
+            self.logger.debug("VAD timeout cancelled - speech properly detected")
         
         # Note: With server VAD enabled, OpenAI automatically commits the audio buffer
         # when speech stops. Manual commit_audio() calls cause "input_audio_buffer_commit_empty" errors
@@ -350,6 +367,34 @@ class VoiceAssistant:
         
         # End session on error
         await self._end_session()
+    
+    async def _vad_timeout_handler(self) -> None:
+        """Handle VAD timeout - force response if speech_stopped never fires"""
+        try:
+            # Wait for VAD timeout (10 seconds after session start)
+            await asyncio.sleep(10.0)
+            
+            if self.session_active:
+                self.logger.warning("VAD timeout - forcing response generation (speech_stopped never received)")
+                print("*** VAD TIMEOUT - FORCING RESPONSE GENERATION ***")
+                
+                # Force OpenAI to generate a response
+                if self.openai_client:
+                    try:
+                        # Create a response request to trigger OpenAI
+                        response_event = {
+                            "type": "response.create"
+                        }
+                        await self.openai_client._send_event(response_event)
+                        self.logger.info("Forced response creation due to VAD timeout")
+                    except Exception as e:
+                        self.logger.error(f"Error forcing response after VAD timeout: {e}")
+                        
+        except asyncio.CancelledError:
+            # Task was cancelled because speech was properly detected
+            pass
+        except Exception as e:
+            self.logger.error(f"Error in VAD timeout handler: {e}")
     
     def _on_wake_word_detected(self, model_name: str, confidence: float) -> None:
         """Handle wake word detection"""
