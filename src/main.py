@@ -241,9 +241,9 @@ class VoiceAssistant:
             
         self.session_active = False
         
-        # Commit any pending audio to OpenAI (only in audio mode)
-        if self.openai_client and not self.openai_client.text_only:
-            await self.openai_client.commit_audio()
+        # Note: With server VAD enabled, manual commit_audio() calls are not needed
+        # and will cause "input_audio_buffer_commit_empty" errors
+        self.logger.debug("Session ended - server VAD handles audio buffer automatically")
         
         self.logger.info("Voice session ended")
     
@@ -335,17 +335,14 @@ class VoiceAssistant:
     
     async def _on_speech_stopped(self, _) -> None:
         """Handle user speech stopped"""
-        self.logger.info("User speech stopped - triggering OpenAI response")
-        print("*** USER STOPPED SPEAKING - PROCESSING RESPONSE ***")
+        self.logger.info("User speech stopped - server VAD will automatically trigger response")
+        print("*** USER STOPPED SPEAKING - SERVER VAD PROCESSING ***")
         
-        # Commit audio buffer to trigger OpenAI response (only in audio mode)
-        if self.openai_client and not self.openai_client.text_only:
-            await self.openai_client.commit_audio()
-            self.logger.debug("Audio buffer committed to OpenAI")
-            print("*** AUDIO COMMITTED TO OPENAI - WAITING FOR RESPONSE ***")
-        else:
-            self.logger.warning("Cannot commit audio - OpenAI client unavailable or in text mode")
-            print("*** ERROR: CANNOT COMMIT AUDIO TO OPENAI ***")
+        # Note: With server VAD enabled, OpenAI automatically commits the audio buffer
+        # when speech stops. Manual commit_audio() calls cause "input_audio_buffer_commit_empty" errors
+        # because the server has already processed and committed the buffer.
+        self.logger.debug("Server VAD handling audio commit automatically - no manual commit needed")
+        print("*** SERVER VAD WILL HANDLE RESPONSE - WAITING FOR OPENAI ***")
     
     async def _on_openai_error(self, error_data: dict) -> None:
         """Handle OpenAI errors"""

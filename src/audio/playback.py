@@ -34,7 +34,12 @@ class AudioPlayback:
         # State
         self.is_playing = False
         self.stream: Optional[sd.OutputStream] = None
-        self.audio_queue = Queue()
+        self.audio_queue = Queue(maxsize=50)  # Limit queue size to prevent memory issues
+        
+        # Buffering for smooth playback
+        self.audio_buffer = np.array([], dtype=np.float32)
+        self.min_buffer_size = int(self.device_sample_rate * 0.1)  # 100ms buffer minimum
+        self.target_buffer_size = int(self.device_sample_rate * 0.2)  # 200ms target buffer
         
         # Resampling
         self.need_resampling = self.device_sample_rate != self.source_sample_rate
@@ -48,6 +53,10 @@ class AudioPlayback:
         
         # Interruption support
         self.interrupt_requested = False
+        
+        # Playback smoothing
+        self.underrun_count = 0
+        self.last_underrun_warning = 0
     
     async def start(self) -> None:
         """Start audio playback system"""
@@ -142,12 +151,15 @@ class AudioPlayback:
         self.logger.debug("Audio playback interrupted")
     
     def clear_queue(self) -> None:
-        """Clear the audio playback queue"""
+        """Clear the audio playback queue and buffer"""
         while not self.audio_queue.empty():
             try:
                 self.audio_queue.get_nowait()
             except Empty:
                 break
+        # Also clear the internal buffer for clean start
+        self.audio_buffer = np.array([], dtype=np.float32)
+        self.underrun_count = 0
     
     def is_queue_empty(self) -> bool:
         """Check if playback queue is empty"""
@@ -179,27 +191,36 @@ class AudioPlayback:
         # Check for interruption
         if self.interrupt_requested:
             self.interrupt_requested = False
+            self.audio_buffer = np.array([], dtype=np.float32)  # Clear buffer on interrupt
             return
         
         try:
-            # Try to get audio data from queue
-            try:
-                audio_chunk = self.audio_queue.get_nowait()
-            except Empty:
-                # No audio available, output silence
-                return
+            # Fill buffer from queue if needed
+            self._fill_buffer_from_queue()
             
-            # Copy to output buffer
-            if len(audio_chunk) <= len(outdata):
-                # Chunk fits in buffer
-                outdata[:len(audio_chunk)] = audio_chunk.reshape(-1, 1) if self.channels == 1 else audio_chunk
-            else:
-                # Chunk is larger than buffer, take what we can
-                outdata[:] = audio_chunk[:len(outdata)].reshape(-1, 1) if self.channels == 1 else audio_chunk[:len(outdata)]
+            # Check if we have enough buffered audio
+            if len(self.audio_buffer) >= frames:
+                # Use buffered audio
+                outdata[:, 0] = self.audio_buffer[:frames]
+                self.audio_buffer = self.audio_buffer[frames:]
+            elif len(self.audio_buffer) > 0:
+                # Use what we have and pad with silence
+                available_frames = len(self.audio_buffer)
+                outdata[:available_frames, 0] = self.audio_buffer
+                outdata[available_frames:, 0] = 0  # Silence for remaining frames
+                self.audio_buffer = np.array([], dtype=np.float32)
                 
-                # Put remainder back in queue
-                remainder = audio_chunk[len(outdata):]
-                self.audio_queue.put(remainder, block=False)
+                # Track underruns for debugging
+                self.underrun_count += 1
+                import time
+                current_time = time.time()
+                if current_time - self.last_underrun_warning > 5.0:  # Log every 5 seconds max
+                    self.logger.warning(f"Audio underrun #{self.underrun_count}: needed {frames}, had {available_frames}")
+                    self.last_underrun_warning = current_time
+            else:
+                # No audio available - output silence
+                # This is normal when audio stream first starts or between utterances
+                pass
             
         except Exception as e:
             self.logger.error(f"Error in audio callback: {e}")
@@ -220,6 +241,19 @@ class AudioPlayback:
                 self.logger.error(f"Error in playback loop: {e}")
         
         self.logger.debug("Audio playback thread stopped")
+    
+    def _fill_buffer_from_queue(self) -> None:
+        """Fill the audio buffer from the queue for smooth playback"""
+        try:
+            # Fill buffer up to target size if possible
+            while len(self.audio_buffer) < self.target_buffer_size and not self.audio_queue.empty():
+                try:
+                    audio_chunk = self.audio_queue.get_nowait()
+                    self.audio_buffer = np.concatenate([self.audio_buffer, audio_chunk])
+                except Empty:
+                    break
+        except Exception as e:
+            self.logger.error(f"Error filling buffer from queue: {e}")
     
     def _process_audio_chunk(self, audio_data: np.ndarray) -> np.ndarray:
         """
