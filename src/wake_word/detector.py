@@ -81,6 +81,12 @@ class WakeWordDetector:
         self.reset_on_stuck = True  # Enable automatic reset when stuck state detected
         self.stuck_confidence_threshold = 0.001  # Only check for stuck state above this confidence (NEW)
         
+        # Confidence monitoring for reliability analysis
+        self.confidence_history = []
+        self.confidence_window_size = 50  # Track last 50 predictions
+        self.avg_confidence = 0.0
+        self.peak_confidence = 0.0
+        
         # Prediction timeout configuration
         self.prediction_timeout = 5.0  # 5 seconds timeout for model.predict() (increased from 2s)
         self.prediction_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="WakeWordPredict")
@@ -601,6 +607,9 @@ class WakeWordDetector:
                     self._track_prediction(predictions)
                     self.chunks_since_reset += 1
                     
+                    # Track confidence for monitoring
+                    self._track_confidence(predictions)
+                    
                 except Exception as e:
                     print(f"   DETECTOR: ERROR in model.predict(): {e}")
                     self.logger.error(f"OpenWakeWord prediction error: {e}")
@@ -885,6 +894,31 @@ class WakeWordDetector:
         
         if len(self.predictions_history) > max_history:
             self.predictions_history.pop(0)
+    
+    def _track_confidence(self, predictions: Dict[str, float]) -> None:
+        """Track confidence levels for monitoring and analysis"""
+        if not predictions:
+            return
+        
+        # Get the maximum confidence value
+        max_confidence = max(predictions.values())
+        
+        # Add to confidence history
+        self.confidence_history.append(max_confidence)
+        
+        # Keep only recent predictions
+        if len(self.confidence_history) > self.confidence_window_size:
+            self.confidence_history.pop(0)
+        
+        # Update statistics
+        if self.confidence_history:
+            self.avg_confidence = sum(self.confidence_history) / len(self.confidence_history)
+            self.peak_confidence = max(self.confidence_history)
+        
+        # Log confidence statistics periodically
+        if len(self.confidence_history) >= self.confidence_window_size and len(self.confidence_history) % 25 == 0:
+            recent_high_confidence = sum(1 for c in self.confidence_history[-10:] if c > 0.01)
+            self.logger.debug(f"Confidence stats: avg={self.avg_confidence:.6f}, peak={self.peak_confidence:.6f}, recent_high={recent_high_confidence}/10")
     
     def _reset_model_state(self, reset_reason: str = "unknown") -> None:
         """

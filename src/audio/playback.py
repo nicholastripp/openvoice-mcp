@@ -36,17 +36,18 @@ class AudioPlayback:
         self.stream: Optional[sd.OutputStream] = None
         self.audio_queue = Queue(maxsize=150)  # Large queue for Pi stability
         
-        # Buffering for smooth playback - optimized for Raspberry Pi hardware
+        # Enhanced buffering for smooth playback - optimized for Raspberry Pi hardware
         self.audio_buffer = np.array([], dtype=np.float32)
-        self.min_buffer_size = int(self.device_sample_rate * 0.15)  # 150ms buffer minimum
-        self.target_buffer_size = int(self.device_sample_rate * 0.35)  # 350ms target buffer
+        self.min_buffer_size = int(self.device_sample_rate * 0.20)  # 200ms buffer minimum (increased)
+        self.target_buffer_size = int(self.device_sample_rate * 0.50)  # 500ms target buffer (increased)
+        self.max_buffer_size = int(self.device_sample_rate * 1.0)  # 1s maximum buffer to prevent memory issues
         
         # Resampling
         self.need_resampling = self.device_sample_rate != self.source_sample_rate
         if self.need_resampling:
             self.resampling_ratio = self.device_sample_rate / self.source_sample_rate
             self.logger.info(f"Will resample from {self.source_sample_rate}Hz to {self.device_sample_rate}Hz")
-        self.logger.info(f"Raspberry Pi buffer configuration: min={self.min_buffer_size} samples ({self.min_buffer_size/self.device_sample_rate*1000:.0f}ms), target={self.target_buffer_size} samples ({self.target_buffer_size/self.device_sample_rate*1000:.0f}ms)")
+        self.logger.info(f"Enhanced Pi buffer configuration: min={self.min_buffer_size} samples ({self.min_buffer_size/self.device_sample_rate*1000:.0f}ms), target={self.target_buffer_size} samples ({self.target_buffer_size/self.device_sample_rate*1000:.0f}ms), max={self.max_buffer_size} samples ({self.max_buffer_size/self.device_sample_rate*1000:.0f}ms)")
         
         # Threading
         self.playback_thread: Optional[threading.Thread] = None
@@ -401,20 +402,36 @@ class AudioPlayback:
         self.logger.debug("Audio playback thread stopped")
     
     def _fill_buffer_from_queue(self) -> None:
-        """Fill the audio buffer from the queue for smooth playback"""
+        """Fill the audio buffer from the queue for smooth playback with enhanced underrun prevention"""
         try:
-            # More aggressive buffer filling for variable chunk sizes
-            # Always try to fill to target size when possible
+            # Enhanced buffer filling strategy
             buffer_threshold = self.target_buffer_size
             
             # If buffer is critically low, be more aggressive
             if len(self.audio_buffer) < self.min_buffer_size:
-                buffer_threshold = self.target_buffer_size * 2  # Double target when low
+                buffer_threshold = self.target_buffer_size * 1.5  # 1.5x target when low
+            
+            # Check if we're approaching buffer overflow
+            if len(self.audio_buffer) >= self.max_buffer_size:
+                self.logger.warning(f"Audio buffer approaching maximum size ({len(self.audio_buffer)}/{self.max_buffer_size})")
+                # Don't add more if we're at maximum to prevent memory issues
+                return
             
             chunks_added = 0
             while len(self.audio_buffer) < buffer_threshold and not self.audio_queue.empty():
                 try:
                     audio_chunk = self.audio_queue.get_nowait()
+                    
+                    # Check if adding this chunk would exceed maximum buffer size
+                    if len(self.audio_buffer) + len(audio_chunk) > self.max_buffer_size:
+                        # Only add part of the chunk to stay within limits
+                        remaining_space = self.max_buffer_size - len(self.audio_buffer)
+                        if remaining_space > 0:
+                            audio_chunk = audio_chunk[:remaining_space]
+                            self.audio_buffer = np.concatenate([self.audio_buffer, audio_chunk])
+                            self.logger.warning(f"Truncated audio chunk to fit buffer limit (remaining space: {remaining_space})")
+                        break
+                    
                     self.audio_buffer = np.concatenate([self.audio_buffer, audio_chunk])
                     chunks_added += 1
                     
@@ -430,9 +447,11 @@ class AudioPlayback:
                 except Empty:
                     break
                     
-            # Log buffer status when critically low
+            # Enhanced logging for buffer status
             if len(self.audio_buffer) < self.min_buffer_size and chunks_added == 0:
-                self.logger.debug(f"Buffer critically low: {len(self.audio_buffer)} samples, queue empty: {self.audio_queue.empty()}")
+                self.logger.debug(f"Buffer critically low: {len(self.audio_buffer)} samples ({len(self.audio_buffer)/self.device_sample_rate*1000:.1f}ms), queue empty: {self.audio_queue.empty()}")
+            elif chunks_added > 0:
+                self.logger.debug(f"Added {chunks_added} chunks, buffer now: {len(self.audio_buffer)} samples ({len(self.audio_buffer)/self.device_sample_rate*1000:.1f}ms)")
                 
         except Exception as e:
             self.logger.error(f"Error filling buffer from queue: {e}")

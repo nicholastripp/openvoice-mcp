@@ -117,9 +117,15 @@ class VoiceAssistant:
         self.logger.info("Voice assistant stopped")
     
     def _transition_to_state(self, new_state: SessionState) -> None:
-        """Transition to a new session state with logging and watchdog tracking"""
+        """Transition to a new session state with validation and logging"""
         if self.session_state != new_state:
             old_state = self.session_state
+            
+            # Validate state transition
+            if not self._validate_state_transition(old_state, new_state):
+                self.logger.warning(f"Invalid state transition: {old_state.value} -> {new_state.value}")
+                return
+            
             self.session_state = new_state
             self.last_state_change = asyncio.get_event_loop().time()
             
@@ -147,6 +153,27 @@ class VoiceAssistant:
             elif new_state == SessionState.RESPONDING:
                 self.logger.info(f"Session entering RESPONDING state - audio streaming will be blocked")
                 print("*** SESSION ENTERING RESPONDING STATE - AUDIO STREAMING WILL BE BLOCKED ***")
+    
+    def _validate_state_transition(self, old_state: SessionState, new_state: SessionState) -> bool:
+        """Validate that a state transition is allowed"""
+        # Define valid transitions
+        valid_transitions = {
+            SessionState.IDLE: [SessionState.LISTENING, SessionState.COOLDOWN],
+            SessionState.LISTENING: [SessionState.PROCESSING, SessionState.IDLE, SessionState.MULTI_TURN_LISTENING],
+            SessionState.PROCESSING: [SessionState.RESPONDING, SessionState.IDLE, SessionState.LISTENING],
+            SessionState.RESPONDING: [SessionState.AUDIO_PLAYING, SessionState.IDLE, SessionState.MULTI_TURN_LISTENING],
+            SessionState.AUDIO_PLAYING: [SessionState.IDLE, SessionState.MULTI_TURN_LISTENING, SessionState.COOLDOWN],
+            SessionState.MULTI_TURN_LISTENING: [SessionState.PROCESSING, SessionState.IDLE, SessionState.LISTENING],
+            SessionState.COOLDOWN: [SessionState.IDLE, SessionState.LISTENING]
+        }
+        
+        allowed_transitions = valid_transitions.get(old_state, [])
+        is_valid = new_state in allowed_transitions
+        
+        if not is_valid:
+            self.logger.debug(f"Invalid transition from {old_state.value} to {new_state.value}. Allowed: {[s.value for s in allowed_transitions]}")
+        
+        return is_valid
     
     async def _generate_device_aware_personality(self) -> str:
         """Generate personality prompt with device information"""
@@ -505,6 +532,23 @@ class VoiceAssistant:
                 self.logger.debug("Cleared audio playback queue")
             except Exception as e:
                 self.logger.warning(f"Error clearing audio queue: {e}")
+        
+        # Reset wake word detector state for clean next detection
+        if self.wake_word_detector:
+            try:
+                # Reset any stuck states in wake word detection
+                await self.wake_word_detector._reset_model()
+                self.logger.debug("Wake word detector reset during session cleanup")
+            except Exception as e:
+                self.logger.warning(f"Error resetting wake word detector: {e}")
+        
+        # Reset OpenAI VAD settings to default
+        if self.openai_client:
+            try:
+                await self.openai_client.update_vad_settings(threshold=0.5, silence_duration_ms=500)
+                self.logger.debug("OpenAI VAD settings reset to default")
+            except Exception as e:
+                self.logger.warning(f"Error resetting OpenAI VAD settings: {e}")
         
         # Reset audio counters
         if hasattr(self, '_openai_audio_counter'):
