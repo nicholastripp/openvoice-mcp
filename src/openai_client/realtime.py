@@ -674,11 +674,11 @@ class OpenAIRealtimeClient:
         
         try:
             await self._send_event(event)
-            self.logger.info(f"✅ VAD settings updated successfully: threshold={current_config.get('threshold')}, silence_duration={current_config.get('silence_duration_ms')}ms")
-            print(f"*** ✅ VAD SETTINGS UPDATED: threshold={current_config.get('threshold')}, silence_duration={current_config.get('silence_duration_ms')}ms ***")
+            self.logger.info(f"[SUCCESS] VAD settings updated successfully: threshold={current_config.get('threshold')}, silence_duration={current_config.get('silence_duration_ms')}ms")
+            print(f"*** [SUCCESS] VAD SETTINGS UPDATED: threshold={current_config.get('threshold')}, silence_duration={current_config.get('silence_duration_ms')}ms ***")
         except Exception as e:
-            self.logger.error(f"❌ Failed to update VAD settings: {e}")
-            print(f"*** ❌ VAD UPDATE FAILED: {e} ***")
+            self.logger.error(f"[ERROR] Failed to update VAD settings: {e}")
+            print(f"*** [ERROR] VAD UPDATE FAILED: {e} ***")
     
     async def _handle_reconnection(self) -> None:
         """Handle automatic reconnection"""

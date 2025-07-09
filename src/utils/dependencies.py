@@ -187,7 +187,7 @@ def print_dependency_status() -> None:
         print("Audio Dependency Status:")
         print("=" * 40)
         for lib, version in deps.items():
-            status = f"✅ {version}" if version else "❌ Missing"
+            status = f"[OK] {version}" if version else "[MISSING] Missing"
             print(f"{lib:15} {status}")
         
         # Test device access

@@ -34,12 +34,12 @@ class AudioPlayback:
         # State
         self.is_playing = False
         self.stream: Optional[sd.OutputStream] = None
-        self.audio_queue = Queue(maxsize=50)  # Limit queue size to prevent memory issues
+        self.audio_queue = Queue(maxsize=100)  # Increased queue size to prevent underruns
         
         # Buffering for smooth playback - optimized for OpenAI's variable chunk sizes
         self.audio_buffer = np.array([], dtype=np.float32)
-        self.min_buffer_size = int(self.device_sample_rate * 0.05)  # 50ms buffer minimum (reduced)
-        self.target_buffer_size = int(self.device_sample_rate * 0.15)  # 150ms target buffer (reduced)
+        self.min_buffer_size = int(self.device_sample_rate * 0.1)  # 100ms buffer minimum (increased)
+        self.target_buffer_size = int(self.device_sample_rate * 0.25)  # 250ms target buffer (increased)
         
         # Resampling
         self.need_resampling = self.device_sample_rate != self.source_sample_rate
@@ -70,7 +70,7 @@ class AudioPlayback:
             if device_info:
                 self.logger.info(f"Using output device: {device_info['name']}")
             
-            # Create audio stream
+            # Create audio stream with increased buffer size
             self.stream = sd.OutputStream(
                 device=self.output_device if self.output_device != "default" else None,
                 samplerate=self.device_sample_rate,
@@ -78,7 +78,8 @@ class AudioPlayback:
                 dtype=np.float32,
                 blocksize=self.chunk_size,
                 callback=self._audio_callback,
-                latency='low'
+                latency='low',
+                extra_settings=sd.CoreAudioSettings(channel_map=None) if hasattr(sd, 'CoreAudioSettings') else None
             )
             
             # Start stream

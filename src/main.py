@@ -196,11 +196,23 @@ class VoiceAssistant:
         
         try:
             while self.running:
-                # Check connection health
-                await self._check_connections()
+                # Check connection health with error handling
+                try:
+                    await self._check_connections()
+                except Exception as e:
+                    self.logger.error(f"Error checking connections: {e}")
+                    # Continue loop - connection issues are handled elsewhere
                 
-                # Handle session timeouts
-                await self._handle_session_timeout()
+                # Handle session timeouts with error handling
+                try:
+                    await self._handle_session_timeout()
+                except Exception as e:
+                    self.logger.error(f"Error handling session timeout: {e}")
+                    # Try to recover by ending the session
+                    try:
+                        await self._end_session()
+                    except:
+                        pass
                 
                 # TODO: Handle wake word detection
                 # For now, we'll assume always listening (for development)
@@ -232,7 +244,8 @@ class VoiceAssistant:
         timeout = self.config.session.timeout
         
         if current_time - self.last_activity > timeout:
-            self.logger.info("Session timeout, ending session")
+            self.logger.info(f"Session timeout after {timeout}s of inactivity, ending session")
+            print(f"*** SESSION TIMEOUT AFTER {timeout}S - ENDING SESSION ***")
             await self._end_session()
     
     async def _start_session(self) -> None:
@@ -265,10 +278,13 @@ class VoiceAssistant:
         print("*** VOICE SESSION ACTIVE - SPEAK YOUR QUESTION ***")
     
     async def _end_session(self) -> None:
-        """End the current voice session"""
+        """End the current voice session with comprehensive cleanup"""
         if not self.session_active:
             return
             
+        self.logger.info(f"Ending session (current state: {self.session_state.value})")
+        print(f"*** ENDING SESSION (STATE: {self.session_state.value.upper()}) ***")
+        
         self.session_active = False
         self.response_active = False
         
@@ -279,17 +295,36 @@ class VoiceAssistant:
         if self.vad_timeout_task and not self.vad_timeout_task.done():
             self.vad_timeout_task.cancel()
             self.vad_timeout_task = None
+            self.logger.debug("Cancelled VAD timeout task")
         
         # Cancel response end task if it exists
         if self.response_end_task and not self.response_end_task.done():
             self.response_end_task.cancel()
             self.response_end_task = None
+            self.logger.debug("Cancelled response end task")
+        
+        # Clear audio playback queue to prevent stuck audio
+        if self.audio_playback:
+            try:
+                self.audio_playback.clear_queue()
+                self.logger.debug("Cleared audio playback queue")
+            except Exception as e:
+                self.logger.warning(f"Error clearing audio queue: {e}")
+        
+        # Reset audio counters
+        if hasattr(self, '_openai_audio_counter'):
+            self._openai_audio_counter = 0
+        if hasattr(self, '_mute_debug_counter'):
+            self._mute_debug_counter = 0
+        if hasattr(self, '_mute_debug_counter_direct'):
+            self._mute_debug_counter_direct = 0
         
         # Note: With server VAD enabled, manual commit_audio() calls are not needed
         # and will cause "input_audio_buffer_commit_empty" errors
         self.logger.debug("Session ended - server VAD handles audio buffer automatically")
         
-        self.logger.info("Voice session ended")
+        self.logger.info("Voice session ended with complete cleanup")
+        print("*** VOICE SESSION ENDED - READY FOR WAKE WORD ***")
     
     def _setup_openai_handlers(self) -> None:
         """Setup OpenAI event handlers"""
@@ -327,8 +362,8 @@ class VoiceAssistant:
                     self.logger.debug(f"Audio muted: {self._mute_debug_counter} chunks skipped (state: {self.session_state.value}, response_active: {self.response_active})")
             else:
                 self._mute_debug_counter = 1
-                self.logger.info(f"🔇 Audio muted during {self.session_state.value} state (response_active: {self.response_active})")
-                print(f"*** 🔇 AUDIO MUTED DURING {self.session_state.value.upper()} STATE ***")
+                self.logger.info(f"[MUTED] Audio muted during {self.session_state.value} state (response_active: {self.response_active})")
+                print(f"*** [MUTED] AUDIO MUTED DURING {self.session_state.value.upper()} STATE ***")
             return
         
         if not self.session_active:
@@ -368,8 +403,8 @@ class VoiceAssistant:
                     self.logger.debug(f"Direct audio muted: {self._mute_debug_counter_direct} chunks skipped (state: {self.session_state.value}, response_active: {self.response_active})")
             else:
                 self._mute_debug_counter_direct = 1
-                self.logger.info(f"🔇 Direct audio muted during {self.session_state.value} state (response_active: {self.response_active})")
-                print(f"*** 🔇 DIRECT AUDIO MUTED DURING {self.session_state.value.upper()} STATE ***")
+                self.logger.info(f"[MUTED] Direct audio muted during {self.session_state.value} state (response_active: {self.response_active})")
+                print(f"*** [MUTED] DIRECT AUDIO MUTED DURING {self.session_state.value.upper()} STATE ***")
             return
         
         if not self.session_active:
@@ -385,8 +420,8 @@ class VoiceAssistant:
         if (self.config.audio.feedback_prevention and
             (self.session_state == SessionState.RESPONDING or 
              self.session_state == SessionState.COOLDOWN)):
-            self.logger.warning(f"🚫 BLOCKED: Attempted to send audio to OpenAI during {self.session_state.value} state")
-            print(f"*** 🚫 BLOCKED AUDIO TO OPENAI DURING {self.session_state.value.upper()} STATE ***")
+            self.logger.warning(f"[BLOCKED] Attempted to send audio to OpenAI during {self.session_state.value} state")
+            print(f"*** [BLOCKED] AUDIO TO OPENAI DURING {self.session_state.value.upper()} STATE ***")
             return
         
         # Update activity timestamp
@@ -505,17 +540,34 @@ class VoiceAssistant:
         print("*** SERVER VAD WILL HANDLE RESPONSE - WAITING FOR OPENAI ***")
     
     async def _on_openai_error(self, error_data: dict) -> None:
-        """Handle OpenAI errors"""
-        self.logger.error(f"OpenAI error: {error_data}")
+        """Handle OpenAI errors with recovery logic"""
+        error_type = error_data.get('type', 'unknown')
+        error_message = error_data.get('message', 'unknown error')
         
-        # End session on error
+        self.logger.error(f"OpenAI error [{error_type}]: {error_message}")
+        print(f"*** OPENAI ERROR [{error_type.upper()}]: {error_message} ***")
+        
+        # Handle specific error types with recovery
+        if error_type == 'input_audio_buffer_commit_empty':
+            self.logger.warning("Empty audio buffer - this is normal with server VAD")
+            # Don't end session for this error - it's expected with server VAD
+            return
+        elif error_type == 'connection_error':
+            self.logger.warning("Connection error - attempting reconnection")
+            try:
+                await self.openai_client.connect()
+                return
+            except Exception as e:
+                self.logger.error(f"Reconnection failed: {e}")
+        
+        # End session on unrecoverable errors
         await self._end_session()
     
     async def _vad_timeout_handler(self) -> None:
         """Handle VAD timeout - force response if speech_stopped never fires"""
         try:
-            # Wait for VAD timeout (3 seconds after session start)
-            await asyncio.sleep(3.0)
+            # Wait for VAD timeout (5 seconds after session start - increased for reliability)
+            await asyncio.sleep(5.0)
             
             if self.session_active:
                 self.logger.warning("VAD timeout - forcing response generation (speech_stopped never received)")
@@ -530,8 +582,12 @@ class VoiceAssistant:
                         }
                         await self.openai_client._send_event(response_event)
                         self.logger.info("Forced response creation due to VAD timeout")
+                        # Transition to processing state
+                        self._transition_to_state(SessionState.PROCESSING)
                     except Exception as e:
                         self.logger.error(f"Error forcing response after VAD timeout: {e}")
+                        # End session on error to prevent hanging
+                        await self._end_session()
                         
         except asyncio.CancelledError:
             # Task was cancelled because speech was properly detected
