@@ -54,6 +54,7 @@ class WakeWordDetector:
         self.model_ready = False
         self.warmup_chunks_required = 10  # Based on test results showing predictions start after 5-6 chunks
         self.warmup_chunks_processed = 0
+        self._model_ready_logged = False  # Track when we log model ready status
         
         # Detection parameters
         self.model_name = config.model
@@ -72,7 +73,7 @@ class WakeWordDetector:
         self.predictions_history = []  # Track recent predictions to detect stuck state
         self.stuck_detection_threshold = 5  # Number of identical predictions to trigger reset
         self.last_model_reset_time = 0
-        self.model_reset_interval = 30.0  # Reset model every 30 seconds as preventive measure
+        self.model_reset_interval = 300.0  # Reset model every 5 minutes (reduced frequency for testing)
         self.chunks_since_reset = 0
         self.reset_on_stuck = True  # Enable automatic reset when stuck state detected
     
@@ -504,6 +505,7 @@ class WakeWordDetector:
         # Mark model as ready
         self.model_ready = True
         self.warmup_chunks_processed = self.warmup_chunks_required
+        self._model_ready_logged = False  # Reset ready logging flag
     
     def _suggest_available_models(self) -> None:
         """Try to suggest available wake word models"""
@@ -598,6 +600,12 @@ class WakeWordDetector:
                         print(f"   DETECTOR: Model still warming up, skipping detection check")
                     continue
                 
+                # Debug: Log when model becomes ready for detection
+                if not getattr(self, '_model_ready_logged', True):
+                    print(f"   DETECTOR: MODEL NOW READY FOR DETECTION after {chunks_processed} chunks")
+                    self.logger.info(f"Model ready for detection after {chunks_processed} processed chunks")
+                    self._model_ready_logged = True
+                
                 for model_name, confidence in predictions.items():
                     # Track confidence for stability detection
                     self.recent_confidences.append(confidence)
@@ -608,8 +616,8 @@ class WakeWordDetector:
                         self.recent_confidences.pop(0)
                     
                     # Log any confidence above threshold for debugging
-                    if confidence > self.sensitivity * 0.3:  # Log at 30% of sensitivity
-                        print(f"   DETECTOR: {model_name} confidence {confidence:.3f} (threshold: {self.sensitivity:.3f}, above 30%)")
+                    if confidence > self.sensitivity * 0.1:  # Log at 10% of sensitivity (more frequent)
+                        print(f"   DETECTOR: {model_name} confidence {confidence:.6f} (threshold: {self.sensitivity:.6f}, ratio: {confidence/self.sensitivity:.1f}x)")
                     
                     if confidence >= self.sensitivity:
                         current_time = time.time()
@@ -811,6 +819,7 @@ class WakeWordDetector:
         # Reset warm-up state - model needs re-warming after reset
         self.model_ready = False
         self.warmup_chunks_processed = 0
+        self._model_ready_logged = False  # Reset ready logging flag
         
         # Re-warm the model
         if self.model:
