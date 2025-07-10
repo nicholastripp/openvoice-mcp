@@ -264,9 +264,9 @@ class WakeWordDetector:
             pre_amp_level = np.max(np.abs(audio_float))
             pre_amp_rms = np.sqrt(np.mean(audio_float ** 2))
             
-            # FIX: Implement proper RMS-based gain control
-            # Wake word models need sufficient signal strength (target RMS: 0.1-0.2)
-            target_rms = 0.15  # Good level for wake word detection
+            # FIX: Implement proper RMS-based gain control  
+            # Wake word models need higher signal strength than speech recognition
+            target_rms = 0.4  # Increased from 0.15 for better wake word detection
             
             if pre_amp_rms > 0.001:  # Avoid division by zero
                 gain = min(10.0, target_rms / pre_amp_rms)  # Max 10x gain
@@ -479,12 +479,14 @@ class WakeWordDetector:
             
             actual_model_name = model_mapping.get(self.model_name, self.model_name)
             
-            # Initialize model with minimal configuration to avoid stuck states
-            model_kwargs = {}
+            # Initialize model with noise suppression for better performance
+            model_kwargs = {
+                'enable_speex_noise_suppression': True  # Enable noise suppression for better detection
+            }
             
-            # Disable VAD and noise suppression as they can cause stuck predictions
-            self.logger.info("[INFO] Initializing OpenWakeWord with minimal configuration")
-            self.logger.info("[INFO] VAD and noise suppression disabled to prevent stuck predictions")
+            # Enable noise suppression to improve detection rates
+            self.logger.info("[INFO] Initializing OpenWakeWord with Speex noise suppression enabled")
+            self.logger.info("[INFO] Noise suppression should improve both false-reject and false-accept rates")
             
             # Force reinitialize the model to clear any cached state
             if hasattr(self, 'model') and self.model:
