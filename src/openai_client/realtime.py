@@ -79,9 +79,9 @@ class OpenAIRealtimeClient:
             self.session_config["output_audio_format"] = "pcm16"
             self.session_config["turn_detection"] = {
                 "type": "server_vad",
-                "threshold": 0.3,  # Lowered threshold for more sensitive speech detection
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": 500  # Longer silence duration to prevent premature cutoff
+                "threshold": 0.2,  # Further lowered for more sensitive detection
+                "prefix_padding_ms": 500,  # Increased padding to capture speech start
+                "silence_duration_ms": 800  # Longer silence before stopping to allow natural speech
             }
             self.session_config["input_audio_transcription"] = {
                 "model": "whisper-1"

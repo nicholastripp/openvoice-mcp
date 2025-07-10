@@ -265,14 +265,23 @@ class WakeWordDetector:
             pre_amp_rms = np.sqrt(np.mean(audio_float ** 2))
             
             # FIX: Implement proper RMS-based gain control  
-            # Wake word models need higher signal strength than speech recognition
-            target_rms = 0.4  # Increased from 0.15 for better wake word detection
+            # OpenAI VAD needs very strong, clear audio signals
+            target_rms = 0.6  # Increased for better OpenAI VAD detection
             
             if pre_amp_rms > 0.001:  # Avoid division by zero
-                gain = min(10.0, target_rms / pre_amp_rms)  # Max 10x gain
+                gain = min(15.0, target_rms / pre_amp_rms)  # Increased max gain for VAD
                 # Apply gain with soft clipping to avoid distortion
                 audio_float = np.tanh(audio_float * gain).astype(np.float32)
-                self.logger.debug(f"Applied RMS-based gain of {gain:.2f}x (RMS: {pre_amp_rms:.6f} -> target: {target_rms:.2f})")
+                
+                # Additional audio enhancement for speech clarity
+                # Apply mild noise gate to reduce background noise
+                noise_floor = np.percentile(np.abs(audio_float), 10)  # 10th percentile as noise floor
+                noise_gate_threshold = noise_floor * 2.0
+                mask = np.abs(audio_float) > noise_gate_threshold
+                audio_float = audio_float * mask.astype(np.float32)
+                
+                self.logger.debug(f"Applied enhanced gain of {gain:.2f}x (RMS: {pre_amp_rms:.6f} -> target: {target_rms:.2f})")
+                self.logger.debug(f"Noise gate applied: threshold={noise_gate_threshold:.6f}")
             else:
                 gain = 1.0  # No gain for silence
             
