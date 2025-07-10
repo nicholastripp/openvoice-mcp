@@ -223,11 +223,28 @@ class WakeWordDetector:
             # Enhanced audio quality analysis before amplification
             pre_amp_metrics = self._analyze_audio_quality(audio_float, "pre-amp")
             
-            # Apply audio normalization fix based on test results
-            # The amplify_50x method produced the best results in testing
+            # Apply intelligent audio normalization instead of raw amplification
             pre_amp_level = np.max(np.abs(audio_float))
-            audio_float = np.clip(audio_float * 50.0, -1.0, 1.0).astype(np.float32)
+            pre_amp_rms = np.sqrt(np.mean(audio_float ** 2))
+            
+            # Target RMS level for consistent audio quality
+            target_rms = 0.1  # 10% of full scale
+            min_gain = 1.0
+            max_gain = 20.0  # Maximum 20x amplification to prevent distortion
+            
+            if pre_amp_rms > 0:
+                # Calculate gain based on RMS normalization
+                calculated_gain = target_rms / pre_amp_rms
+                # Constrain gain to reasonable limits
+                gain = max(min_gain, min(calculated_gain, max_gain))
+            else:
+                # Fallback for silent audio
+                gain = max_gain
+            
+            # Apply normalized gain
+            audio_float = np.clip(audio_float * gain, -1.0, 1.0).astype(np.float32)
             post_amp_level = np.max(np.abs(audio_float))
+            post_amp_rms = np.sqrt(np.mean(audio_float ** 2))
             
             # Enhanced audio quality analysis after amplification
             post_amp_metrics = self._analyze_audio_quality(audio_float, "post-amp")
@@ -239,10 +256,10 @@ class WakeWordDetector:
                 self._amp_debug_counter = 1
                 
             if self._amp_debug_counter % 500 == 0:  # Every 500 chunks (reduced for production)
-                self.logger.debug(f"Audio amplification: {pre_amp_level:.4f} -> {post_amp_level:.4f} (50x gain)")
+                self.logger.debug(f"Audio normalization: RMS {pre_amp_rms:.6f} -> {post_amp_rms:.6f} (gain: {gain:.2f}x, target: {target_rms:.3f})")
                 self.logger.debug(f"Pre-amp metrics: {pre_amp_metrics}")
                 self.logger.debug(f"Post-amp metrics: {post_amp_metrics}")
-                print(f"   DETECTOR: AMPLIFICATION: {pre_amp_level:.4f} -> {post_amp_level:.4f} (50x gain)")
+                print(f"   DETECTOR: NORMALIZATION: RMS {pre_amp_rms:.6f} -> {post_amp_rms:.6f} (gain: {gain:.2f}x)")
                 print(f"   DETECTOR: PRE-AMP QUALITY: RMS={pre_amp_metrics['rms']:.6f}, SNR={pre_amp_metrics['snr']:.1f}dB, Peak={pre_amp_metrics['peak']:.4f}")
                 print(f"   DETECTOR: POST-AMP QUALITY: RMS={post_amp_metrics['rms']:.6f}, SNR={post_amp_metrics['snr']:.1f}dB, Peak={post_amp_metrics['peak']:.4f}")
             

@@ -681,9 +681,8 @@ class VoiceAssistant:
             SessionState.PROCESSING
         ]
         
-        if (self.config.audio.feedback_prevention and
-            (self.session_state in blocked_states or self.response_active)):
-            
+        # More aggressive blocking - always block during these states regardless of config
+        if self.session_state in blocked_states or self.response_active:
             # Track blocked audio chunks during response states
             if hasattr(self, '_response_blocked_counter'):
                 self._response_blocked_counter += 1
@@ -696,6 +695,11 @@ class VoiceAssistant:
                 self.logger.debug(f"Blocked {self._response_blocked_counter} audio chunks during response (state: {self.session_state.value}, response_active: {self.response_active})")
             return
         
+        # Additional check: Block if OpenAI is in responding mode or session should be idle
+        if not self.session_active:
+            self.logger.debug(f"[BLOCKED] Session not active - blocking audio streaming")
+            return
+        
         # ADDITIONAL VALIDATION: Check OpenAI client state
         if not self.openai_client or self.openai_client.state.value != "connected":
             self.logger.warning(f"[BLOCKED] OpenAI client not connected - cannot send audio (state: {self.openai_client.state.value if self.openai_client else 'None'})")
@@ -704,6 +708,11 @@ class VoiceAssistant:
         
         # Update activity timestamp
         self.last_activity = asyncio.get_event_loop().time()
+        
+        # Validate audio quality before sending to OpenAI
+        if not self._validate_audio_quality(audio_data):
+            self.logger.debug("Audio quality validation failed - skipping OpenAI transmission")
+            return
         
         # Send audio to OpenAI
         if self.openai_client:
@@ -721,6 +730,59 @@ class VoiceAssistant:
         else:
             self.logger.error("No OpenAI client available to send audio!")
             print("*** ERROR: NO OPENAI CLIENT FOR AUDIO ***")
+    
+    def _validate_audio_quality(self, audio_data: bytes) -> bool:
+        """
+        Validate audio quality before sending to OpenAI
+        
+        Args:
+            audio_data: PCM16 audio data
+            
+        Returns:
+            True if audio quality is acceptable, False otherwise
+        """
+        try:
+            # Convert PCM16 bytes to numpy array for analysis
+            import numpy as np
+            audio_array = np.frombuffer(audio_data, dtype=np.int16)
+            
+            if len(audio_array) == 0:
+                return False
+            
+            # Convert to float for analysis
+            audio_float = audio_array.astype(np.float32) / 32767.0
+            
+            # Calculate audio quality metrics
+            rms = np.sqrt(np.mean(audio_float ** 2))
+            peak = np.max(np.abs(audio_float))
+            
+            # Minimum quality thresholds
+            min_rms = 0.001    # Minimum RMS level
+            min_peak = 0.01    # Minimum peak level
+            max_peak = 0.95    # Maximum peak level (to detect clipping)
+            
+            # Check for too quiet audio
+            if rms < min_rms or peak < min_peak:
+                self.logger.debug(f"Audio too quiet: RMS={rms:.6f}, peak={peak:.4f}")
+                return False
+            
+            # Check for clipping/distortion
+            if peak > max_peak:
+                self.logger.debug(f"Audio clipping detected: peak={peak:.4f}")
+                return False
+            
+            # Check for reasonable dynamic range
+            if rms > 0:
+                dynamic_range = peak / rms
+                if dynamic_range < 1.5:  # Too compressed
+                    self.logger.debug(f"Audio too compressed: dynamic_range={dynamic_range:.2f}")
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error validating audio quality: {e}")
+            return True  # Allow audio through if validation fails
     
     async def _on_audio_response(self, audio_data: bytes) -> None:
         """Handle audio response from OpenAI"""
