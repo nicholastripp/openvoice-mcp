@@ -555,11 +555,12 @@ class VoiceAssistant:
             except Exception as e:
                 self.logger.warning(f"Error resetting wake word detector: {e}")
         
-        # Reset OpenAI VAD settings to default
+        # Reset OpenAI VAD settings to enhanced values for better speech detection
         if self.openai_client:
             try:
-                await self.openai_client.update_vad_settings(threshold=0.5, silence_duration_ms=500)
-                self.logger.debug("OpenAI VAD settings reset to default")
+                # Use enhanced settings that work better for speech detection
+                await self.openai_client.update_vad_settings(threshold=0.2, silence_duration_ms=800)
+                self.logger.debug("OpenAI VAD settings reset to enhanced values (threshold=0.2)")
             except Exception as e:
                 self.logger.warning(f"Error resetting OpenAI VAD settings: {e}")
         
@@ -879,10 +880,10 @@ class VoiceAssistant:
         # Mark response as no longer active and restore normal VAD threshold
         self.response_active = False
         
-        # Restore normal VAD threshold
+        # Restore enhanced VAD threshold for better speech detection
         if self.openai_client:
-            await self.openai_client.update_vad_settings(threshold=0.6, silence_duration_ms=300)
-            self.logger.debug("Restored normal VAD threshold after actual playback completion")
+            await self.openai_client.update_vad_settings(threshold=0.2, silence_duration_ms=800)
+            self.logger.debug("Restored enhanced VAD threshold (0.2) after actual playback completion")
         
         # Check if multi-turn conversation mode is enabled
         if self.config.session.conversation_mode == "multi_turn" and self.session_active:
@@ -952,9 +953,9 @@ class VoiceAssistant:
             # Force response to inactive
             self.response_active = False
             
-            # Restore VAD threshold
+            # Restore enhanced VAD threshold
             if self.openai_client:
-                await self.openai_client.update_vad_settings(threshold=0.6, silence_duration_ms=300)
+                await self.openai_client.update_vad_settings(threshold=0.2, silence_duration_ms=800)
             
             # End session
             await self._end_session()
