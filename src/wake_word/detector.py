@@ -722,7 +722,7 @@ class WakeWordDetector:
                         for stuck_value in self.known_stuck_values:
                             if abs(confidence - stuck_value) < self.stuck_value_tolerance:
                                 self.logger.warning(f"Detected known stuck value {confidence:.8e} (matches {stuck_value:.8e}) at chunk {chunks_processed}, chunks_since_reset={self.chunks_since_reset}")
-                                print(f"   DETECTOR: KNOWN STUCK VALUE DETECTED! {confidence:.8e} ≈ {stuck_value:.8e}, forcing immediate reset", flush=True)
+                                print(f"   DETECTOR: KNOWN STUCK VALUE DETECTED! {confidence:.8e} ~= {stuck_value:.8e}, forcing immediate reset", flush=True)
                                 # Force immediate reset for known stuck value - no delay
                                 self._reset_model_state("known_stuck_value")
                                 continue
@@ -986,7 +986,7 @@ class WakeWordDetector:
                 if stuck_count >= stuck_threshold:
                     # Only log once when we first detect stuck state
                     if not hasattr(self, '_last_stuck_log_value') or abs(self._last_stuck_log_value - first_value) > self.stuck_value_tolerance:
-                        self.logger.warning(f"Model stuck: {stuck_count} identical predictions of {first_value:.8e} (≈ {stuck_value:.8e})")
+                        self.logger.warning(f"Model stuck: {stuck_count} identical predictions of {first_value:.8e} (~= {stuck_value:.8e})")
                         self._last_stuck_log_value = first_value
                     return True
         
