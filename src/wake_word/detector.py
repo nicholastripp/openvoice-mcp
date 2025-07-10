@@ -245,7 +245,7 @@ class WakeWordDetector:
                 down_factor //= gcd
                 
                 # Apply high-quality polyphase resampling
-                audio_float = signal.resample_poly(audio_float, up_factor, down_factor, window='kaiser')
+                audio_float = signal.resample_poly(audio_float, up_factor, down_factor, window=('kaiser', 8.0))
                 
                 # Verify resampling worked
                 if abs(len(audio_float) - new_length) > 1:  # Allow 1 sample tolerance
