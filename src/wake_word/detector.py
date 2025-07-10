@@ -84,7 +84,7 @@ class WakeWordDetector:
         
         # Thread safety for model access
         self.model_lock = threading.Lock()  # Protect model access across threads
-        self.known_stuck_values = [5.0768717e-06, 0.0]  # Known stuck values to detect
+        self.known_stuck_values = [0.0]  # Known stuck values to detect (removed false positive)
         self.stuck_value_tolerance = 1e-8  # Tolerance for floating point comparison
         
         # Confidence monitoring for reliability analysis
