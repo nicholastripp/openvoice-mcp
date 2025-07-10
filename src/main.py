@@ -779,8 +779,8 @@ class VoiceAssistant:
             peak = np.max(np.abs(audio_float))
             
             # Minimum quality thresholds
-            min_rms = 0.001    # Minimum RMS level
-            min_peak = 0.01    # Minimum peak level
+            min_rms = 0.0001   # Lower threshold to allow quieter audio through
+            min_peak = 0.001   # Lower peak threshold as well
             max_peak = 0.95    # Maximum peak level (to detect clipping)
             
             # Check for too quiet audio

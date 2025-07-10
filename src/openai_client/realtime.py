@@ -243,6 +243,17 @@ class OpenAIRealtimeClient:
         self.logger.info(f"SEND DEBUG: send_audio called with {len(audio_data)} bytes, text_only={self.text_only}, state={self.state}")
             
         try:
+            # Log incoming audio characteristics
+            import struct
+            import numpy as np
+            sample_count = len(audio_data) // 2
+            if sample_count > 0:
+                samples = struct.unpack(f'<{sample_count}h', audio_data)
+                audio_array = np.array(samples, dtype=np.float32)
+                incoming_rms = np.sqrt(np.mean(audio_array ** 2))
+                incoming_max = np.max(np.abs(audio_array))
+                self.logger.debug(f"Incoming audio: {len(audio_data)} bytes, RMS={incoming_rms:.1f}, Max={incoming_max:.0f}")
+            
             # Validate audio data format
             if not self._validate_audio_format(audio_data):
                 self.logger.error("Audio format validation failed - skipping audio data")
@@ -836,8 +847,9 @@ class OpenAIRealtimeClient:
             # Check for obvious patterns that might indicate format issues
             if all(s == 0 for s in first_samples):
                 self.logger.warning("First 10 samples are all zero")
-            elif all(abs(s) < 100 for s in first_samples):
-                self.logger.warning("First 10 samples are very quiet")
+            elif all(abs(s) < 10 for s in first_samples):
+                # Only warn for extremely quiet audio (was 100, now 10)
+                self.logger.debug("First 10 samples are very quiet")
             elif any(abs(s) > 30000 for s in first_samples):
                 self.logger.warning("Some samples are very loud (possible clipping)")
             
@@ -995,38 +1007,63 @@ class OpenAIRealtimeClient:
             
             # Check if audio is too quiet (likely silence or noise)
             max_amplitude = np.max(np.abs(audio_array))
-            if max_amplitude < 50:  # Relaxed threshold - only filter truly silent audio
-                self.logger.debug(f"Filtering out very quiet audio (max_amplitude: {max_amplitude})")
+            if max_amplitude < 10:  # Very low threshold - only filter complete silence
+                self.logger.debug(f"Filtering out silent audio (max_amplitude: {max_amplitude})")
                 return None
             
-            # Enhanced audio normalization for better VAD performance
-            # Target RMS level around 3000 for better VAD detection
-            rms = np.sqrt(np.mean(audio_array ** 2))
-            if rms > 0 and rms < 2000:  # Normalize all audio below 2000 RMS
-                target_rms = 3000.0  # Higher target for better VAD detection
-                gain = target_rms / rms
+            # Calculate RMS in normalized float range for consistent processing
+            audio_normalized = audio_array / 32768.0  # Normalize to [-1, 1]
+            rms_normalized = np.sqrt(np.mean(audio_normalized ** 2))
+            
+            # Log current audio levels for debugging
+            self.logger.debug(f"Audio levels - RMS (normalized): {rms_normalized:.6f}, RMS (int16): {np.sqrt(np.mean(audio_array ** 2)):.1f}, Max: {max_amplitude}")
+            
+            # AGGRESSIVE NORMALIZATION for OpenAI VAD detection
+            # Target RMS of 0.15 in normalized range (about 4915 in int16 range)
+            target_rms_normalized = 0.15
+            
+            if rms_normalized > 0:
+                # Calculate required gain
+                gain = target_rms_normalized / rms_normalized
                 
-                # Limit gain to prevent excessive amplification
-                gain = min(gain, 6.0)  # Allow up to 6x amplification for very quiet audio
+                # More aggressive gain limits for better VAD detection
+                # Allow up to 50x gain for very quiet audio (was 6x)
+                gain = np.clip(gain, 0.5, 50.0)
                 
-                # Apply gain
-                audio_array *= gain
+                # Apply gain to normalized audio
+                audio_normalized *= gain
                 
-                # Clip to prevent overflow
+                # Soft clipping to prevent harsh distortion
+                # Use tanh for smooth limiting
+                audio_normalized = np.tanh(audio_normalized * 0.7) / 0.7
+                
+                # Calculate actual RMS after processing
+                final_rms_normalized = np.sqrt(np.mean(audio_normalized ** 2))
+                
+                # Convert back to int16 range
+                audio_array = (audio_normalized * 32767).astype(np.float32)
                 audio_array = np.clip(audio_array, -32767.0, 32767.0)
                 
-                self.logger.debug(f"Audio normalized: original_rms={rms:.1f}, gain={gain:.2f}, new_rms={np.sqrt(np.mean(audio_array ** 2)):.1f}")
-            elif rms > 0:
-                # Even for louder audio, apply a small boost if it's still relatively quiet
-                if rms < 5000:
-                    gain = 1.5  # Small boost for better VAD detection
-                    audio_array *= gain
-                    audio_array = np.clip(audio_array, -32767.0, 32767.0)
-                    self.logger.debug(f"Audio boosted: original_rms={rms:.1f}, gain={gain:.2f}, new_rms={np.sqrt(np.mean(audio_array ** 2)):.1f}")
+                # Log the transformation
+                self.logger.info(f"Audio gain applied: {gain:.1f}x, RMS: {rms_normalized:.6f} -> {final_rms_normalized:.6f}")
+            else:
+                self.logger.warning("Audio RMS is zero, cannot normalize")
+                return None
+            
+            # Add a high-pass filter to remove DC offset and very low frequencies
+            # This can help with VAD detection
+            if len(audio_array) > 100:
+                # Simple DC offset removal
+                audio_array -= np.mean(audio_array)
             
             # Convert back to bytes
             processed_samples = audio_array.astype(np.int16)
             processed_audio = struct.pack(f'<{len(processed_samples)}h', *processed_samples)
+            
+            # Final validation - ensure we have actual audio content
+            final_rms = np.sqrt(np.mean(processed_samples.astype(np.float32) ** 2))
+            if final_rms < 100:
+                self.logger.warning(f"Processed audio still too quiet: RMS={final_rms:.1f}")
             
             return processed_audio
             
