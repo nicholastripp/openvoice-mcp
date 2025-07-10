@@ -14,6 +14,12 @@ from utils.logger import get_logger
 from utils.audio_diagnostics import AudioDiagnostics
 
 try:
+    from scipy import signal as scipy_signal
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+
+try:
     import openwakeword
     from openwakeword import Model as WakeWordModel
     OPENWAKEWORD_AVAILABLE = True
@@ -266,12 +272,24 @@ class WakeWordDetector:
             
             # FIX: Implement proper RMS-based gain control  
             # Balance between wake word detection and OpenAI VAD needs
-            target_rms = 0.1  # Reduced to prevent environmental sounds from triggering false positives
+            target_rms = 0.04  # Much lower target to prevent environmental sounds from triggering
+            
+            # Simple speech/noise discrimination
+            # Calculate zero-crossing rate to distinguish speech from steady noise
+            zero_crossings = np.sum(np.diff(np.sign(audio_float)) != 0)
+            zcr = zero_crossings / len(audio_float)
+            
+            # Speech typically has ZCR between 0.02-0.15, noise often outside this range
+            is_likely_speech = 0.02 < zcr < 0.15 and pre_amp_rms > 0.01
             
             if pre_amp_rms > 0.001:  # Avoid division by zero
-                gain = min(10.0, target_rms / pre_amp_rms)  # Reasonable gain limit
+                # Apply less gain to non-speech sounds
+                max_gain = 3.0 if is_likely_speech else 1.5
+                gain = min(max_gain, target_rms / pre_amp_rms)
                 # Apply gain with proper clipping (not tanh which distorts audio)
                 audio_float = np.clip(audio_float * gain, -1.0, 1.0).astype(np.float32)
+                
+                self.logger.debug(f"ZCR: {zcr:.3f}, likely_speech: {is_likely_speech}, gain: {gain:.2f}x")
                 
                 # Performance optimization: Removed noise gate (too CPU intensive)
                 # The gain control and pre-emphasis provide sufficient enhancement
@@ -279,6 +297,29 @@ class WakeWordDetector:
                 self.logger.debug(f"Applied gain of {gain:.2f}x (RMS: {pre_amp_rms:.6f} -> target: {target_rms:.2f})")
             else:
                 gain = 1.0  # No gain for silence
+            
+            # Apply band-pass filter for speech frequencies (300-3000 Hz)
+            # This helps reduce false positives from environmental sounds
+            if SCIPY_AVAILABLE and is_likely_speech:
+                try:
+                    # Design a simple Butterworth band-pass filter
+                    nyquist = self.sample_rate / 2
+                    low_freq = 300 / nyquist
+                    high_freq = 3000 / nyquist
+                    
+                    # 2nd order filter for efficiency
+                    b, a = scipy_signal.butter(2, [low_freq, high_freq], btype='band')
+                    audio_float = scipy_signal.filtfilt(b, a, audio_float).astype(np.float32)
+                    
+                    # Normalize after filtering to maintain levels
+                    filtered_rms = np.sqrt(np.mean(audio_float ** 2))
+                    if filtered_rms > 0.001:
+                        audio_float = audio_float * (target_rms / filtered_rms)
+                        audio_float = np.clip(audio_float, -1.0, 1.0).astype(np.float32)
+                    
+                    self.logger.debug("Applied band-pass filter for speech frequencies")
+                except Exception as e:
+                    self.logger.debug(f"Band-pass filter failed: {e}")
             
             # Pre-emphasis filter removed for performance optimization
             # The gain control provides sufficient enhancement for wake word detection
@@ -292,12 +333,16 @@ class WakeWordDetector:
             else:
                 self._amp_debug_counter = 1
                 
-            if self._amp_debug_counter % 500 == 0:  # Every 500 chunks (reduced for production)
-                self.logger.debug(f"Audio stats: RMS {pre_amp_rms:.6f} -> {post_amp_rms:.6f} (gain: {gain:.2f}x)")
-                print(f"   DETECTOR: AUDIO STATS: RMS {pre_amp_rms:.6f} -> {post_amp_rms:.6f} (gain: {gain:.2f}x)")
+            if self._amp_debug_counter % 100 == 0:  # Every 100 chunks for better monitoring
+                # Calculate additional audio characteristics
+                spectral_centroid = np.sum(np.arange(len(audio_float)) * np.abs(audio_float)) / np.sum(np.abs(audio_float)) if np.sum(np.abs(audio_float)) > 0 else 0
+                spectral_centroid_hz = (spectral_centroid / len(audio_float)) * self.sample_rate
+                
+                self.logger.info(f"Audio characteristics - RMS: {pre_amp_rms:.6f} -> {post_amp_rms:.6f}, Gain: {gain:.2f}x, ZCR: {zcr:.3f}, Speech-like: {is_likely_speech}, Spectral centroid: {spectral_centroid_hz:.0f}Hz")
+                print(f"   DETECTOR: AUDIO STATS: RMS {pre_amp_rms:.6f} -> {post_amp_rms:.6f} (gain: {gain:.2f}x), ZCR: {zcr:.3f}, Speech: {is_likely_speech}")
             
-            # Immediate debug feedback (not just debug logs)
-            print(f"   DETECTOR: audio_level={audio_level:.3f}, samples={len(audio_float)}", flush=True)
+            # Immediate debug feedback with enhanced info
+            print(f"   DETECTOR: audio_level={audio_level:.3f}, samples={len(audio_float)}, ZCR={zcr:.3f}, speech={is_likely_speech}", flush=True)
             
             # Lower threshold to allow speech audio (was 0.005)
             if audio_level > 0.001:  # Much lower threshold for legitimate audio activity
@@ -898,7 +943,7 @@ class WakeWordDetector:
                         self.logger.info(f"Detection candidate: {model_name} confidence {confidence:.6f} >= threshold {self.sensitivity:.6f}")
                         
                         # Additional validation: require minimum confidence level for reliability
-                        min_reliable_confidence = self.sensitivity * 1.2  # 1.2x threshold for reliability
+                        min_reliable_confidence = self.sensitivity * 1.5  # 1.5x threshold for reliability
                         if confidence < min_reliable_confidence:
                             print(f"   DETECTOR: CONFIDENCE TOO LOW: {confidence:.6f} < {min_reliable_confidence:.6f} (need {min_reliable_confidence/confidence:.1f}x more for reliability)")
                             self.logger.debug(f"Wake word confidence too low for reliability: {confidence:.6f} < {min_reliable_confidence:.6f}")
