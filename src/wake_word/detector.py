@@ -227,34 +227,26 @@ class WakeWordDetector:
                 
                 self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {len(audio_array)} -> {len(audio_float)} samples (level: {audio_level:.3f})")
             
-            # Enhanced audio quality analysis before amplification
-            pre_amp_metrics = self._analyze_audio_quality(audio_float, "pre-amp")
-            
-            # Apply intelligent audio normalization instead of raw amplification
+            # DISABLED NORMALIZATION FOR DEBUGGING
+            # The aggressive normalization might be causing the model to get stuck
+            # Let's test with raw audio first
             pre_amp_level = np.max(np.abs(audio_float))
             pre_amp_rms = np.sqrt(np.mean(audio_float ** 2))
             
-            # Target RMS level for consistent audio quality
-            target_rms = 0.1  # 10% of full scale
-            min_gain = 1.0
-            max_gain = 20.0  # Maximum 20x amplification to prevent distortion
-            
-            if pre_amp_rms > 0:
-                # Calculate gain based on RMS normalization
-                calculated_gain = target_rms / pre_amp_rms
-                # Constrain gain to reasonable limits
-                gain = max(min_gain, min(calculated_gain, max_gain))
+            # For now, use minimal gain to avoid distortion
+            # Only amplify very quiet audio
+            if pre_amp_rms < 0.01:  # Very quiet
+                gain = min(2.0, 0.05 / pre_amp_rms) if pre_amp_rms > 0 else 1.0
             else:
-                # Fallback for silent audio
-                gain = max_gain
+                gain = 1.0  # No amplification for normal audio
             
-            # Apply normalized gain
-            audio_float = np.clip(audio_float * gain, -1.0, 1.0).astype(np.float32)
+            # Apply minimal gain if needed
+            if gain > 1.0:
+                audio_float = np.clip(audio_float * gain, -1.0, 1.0).astype(np.float32)
+                self.logger.debug(f"Applied minimal gain of {gain:.2f}x to quiet audio (RMS: {pre_amp_rms:.6f})")
+            
             post_amp_level = np.max(np.abs(audio_float))
             post_amp_rms = np.sqrt(np.mean(audio_float ** 2))
-            
-            # Enhanced audio quality analysis after amplification
-            post_amp_metrics = self._analyze_audio_quality(audio_float, "post-amp")
             
             # Debug logging for amplification with enhanced metrics
             if hasattr(self, '_amp_debug_counter'):
@@ -263,12 +255,8 @@ class WakeWordDetector:
                 self._amp_debug_counter = 1
                 
             if self._amp_debug_counter % 500 == 0:  # Every 500 chunks (reduced for production)
-                self.logger.debug(f"Audio normalization: RMS {pre_amp_rms:.6f} -> {post_amp_rms:.6f} (gain: {gain:.2f}x, target: {target_rms:.3f})")
-                self.logger.debug(f"Pre-amp metrics: {pre_amp_metrics}")
-                self.logger.debug(f"Post-amp metrics: {post_amp_metrics}")
-                print(f"   DETECTOR: NORMALIZATION: RMS {pre_amp_rms:.6f} -> {post_amp_rms:.6f} (gain: {gain:.2f}x)")
-                print(f"   DETECTOR: PRE-AMP QUALITY: RMS={pre_amp_metrics['rms']:.6f}, SNR={pre_amp_metrics['snr']:.1f}dB, Peak={pre_amp_metrics['peak']:.4f}")
-                print(f"   DETECTOR: POST-AMP QUALITY: RMS={post_amp_metrics['rms']:.6f}, SNR={post_amp_metrics['snr']:.1f}dB, Peak={post_amp_metrics['peak']:.4f}")
+                self.logger.debug(f"Audio stats: RMS {pre_amp_rms:.6f} -> {post_amp_rms:.6f} (gain: {gain:.2f}x)")
+                print(f"   DETECTOR: AUDIO STATS: RMS {pre_amp_rms:.6f} -> {post_amp_rms:.6f} (gain: {gain:.2f}x)")
             
             # Immediate debug feedback (not just debug logs)
             print(f"   DETECTOR: audio_level={audio_level:.3f}, samples={len(audio_float)}", flush=True)
@@ -673,7 +661,16 @@ class WakeWordDetector:
                             print(f"   DETECTOR: Skipping prediction due to queue backup ({current_queue_size} items)")
                             continue
                     
+                    # Enhanced logging for debugging stuck model
+                    chunk_stats = {
+                        'min': float(np.min(audio_chunk)),
+                        'max': float(np.max(audio_chunk)),
+                        'mean': float(np.mean(audio_chunk)),
+                        'std': float(np.std(audio_chunk)),
+                        'rms': float(np.sqrt(np.mean(audio_chunk ** 2)))
+                    }
                     print(f"   DETECTOR: Calling model.predict() with chunk: samples={len(audio_chunk)}, dtype={audio_chunk.dtype}")
+                    print(f"   DETECTOR: Chunk stats: min={chunk_stats['min']:.6f}, max={chunk_stats['max']:.6f}, mean={chunk_stats['mean']:.6f}, std={chunk_stats['std']:.6f}, rms={chunk_stats['rms']:.6f}")
                     
                     # Direct prediction with simple timeout check
                     start_time = time.time()
@@ -706,6 +703,11 @@ class WakeWordDetector:
                         continue
                     
                     print(f"   DETECTOR: model.predict() returned: {predictions}")
+                    
+                    # Log if we're getting the stuck value
+                    if predictions and any(abs(conf - 5.0768717e-06) < 1e-10 for conf in predictions.values()):
+                        print(f"   DETECTOR: WARNING: Model returned known stuck value 5.0768717e-06")
+                        self.logger.warning(f"Model returned stuck value with chunk stats: {chunk_stats}")
                     
                     # Track predictions for stuck state detection
                     self._track_prediction(predictions)
@@ -985,7 +987,7 @@ class WakeWordDetector:
                 
                 if stuck_count >= stuck_threshold:
                     # Only log once when we first detect stuck state
-                    if not hasattr(self, '_last_stuck_log_value') or abs(self._last_stuck_log_value - first_value) > self.stuck_value_tolerance:
+                    if not hasattr(self, '_last_stuck_log_value') or self._last_stuck_log_value is None or abs(self._last_stuck_log_value - first_value) > self.stuck_value_tolerance:
                         self.logger.warning(f"Model stuck: {stuck_count} identical predictions of {first_value:.8e} (~= {stuck_value:.8e})")
                         self._last_stuck_log_value = first_value
                     return True
@@ -1001,7 +1003,7 @@ class WakeWordDetector:
         # If variance is extremely low, model is stuck
         if variance < 1e-12:  # Essentially zero variance
             is_stuck = True
-            if not hasattr(self, '_last_stuck_log_value') or abs(self._last_stuck_log_value - first_value) > 1e-10:
+            if not hasattr(self, '_last_stuck_log_value') or self._last_stuck_log_value is None or abs(self._last_stuck_log_value - first_value) > 1e-10:
                 self.logger.warning(f"Model stuck: Zero variance in {len(values)} predictions (all {first_value:.8e})")
                 self._last_stuck_log_value = first_value
         else:
