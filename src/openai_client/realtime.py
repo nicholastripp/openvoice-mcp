@@ -130,7 +130,7 @@ class OpenAIRealtimeClient:
         print("DEBUG: Starting connection to OpenAI Realtime API...")
         
         # Check if websockets is available
-        if not WEBSOCKETS_AVAILABLE or websockets is None:
+        if not WEBSOCKETS_AVAILABLE:
             self.logger.error("Websockets library not available - cannot connect to OpenAI")
             self.state = ConnectionState.FAILED
             return False

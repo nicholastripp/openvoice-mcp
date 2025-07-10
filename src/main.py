@@ -1357,7 +1357,7 @@ async def main():
         # Override test mode if specified
         if args.test_mode:
             config.wake_word.test_mode = True
-            logger.info("Test mode enabled via CLI argument")
+            # Note: Can't use logger here as it hasn't been created yet
         
         # Setup logging
         logger = setup_logging(
@@ -1368,6 +1368,10 @@ async def main():
         
         # Load personality
         personality = PersonalityProfile(args.persona)
+        
+        # Log test mode if enabled
+        if args.test_mode:
+            logger.info("Test mode enabled via CLI argument")
         
         logger.info("Configuration loaded successfully")
         logger.info(f"OpenAI Model: {config.openai.model}")
