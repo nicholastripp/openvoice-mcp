@@ -566,6 +566,14 @@ class VoiceAssistant:
         
         self.logger.info("Voice session ended with complete cleanup")
         print("*** VOICE SESSION ENDED - READY FOR WAKE WORD ***")
+        
+        # Log audio capture state to verify it's still working
+        if self.audio_capture and self.audio_capture.is_recording:
+            self.logger.info("Audio capture is ACTIVE and ready for wake word detection")
+            print("*** AUDIO CAPTURE ACTIVE - LISTENING FOR WAKE WORD ***")
+        else:
+            self.logger.error("Audio capture is NOT active after session end!")
+            print("*** ERROR: AUDIO CAPTURE NOT ACTIVE ***")
     
     def _setup_openai_handlers(self) -> None:
         """Setup OpenAI event handlers"""
@@ -1171,11 +1179,17 @@ class VoiceAssistant:
     async def _vad_timeout_handler(self) -> None:
         """Handle VAD timeout - end session gracefully if no speech detected"""
         try:
-            # Wait for VAD timeout (5 seconds after session start - increased for reliability)
+            # Initial delay to allow user to start speaking after wake word
+            self.logger.info("VAD timeout handler started - waiting 2s for user to begin speaking")
+            print("*** WAITING FOR USER TO SPEAK (2s grace period) ***")
+            await asyncio.sleep(2.0)
+            
+            # Now wait for actual VAD timeout (5 seconds to detect speech)
+            self.logger.info("Starting VAD detection period (5s)")
             await asyncio.sleep(5.0)
             
             if self.session_active:
-                self.logger.warning("VAD timeout - no speech detected, ending session gracefully")
+                self.logger.warning("VAD timeout - no speech detected after 7s total, ending session gracefully")
                 print("*** VAD TIMEOUT - NO SPEECH DETECTED, ENDING SESSION ***")
                 
                 # End session gracefully instead of forcing a response

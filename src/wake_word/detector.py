@@ -474,6 +474,13 @@ class WakeWordDetector:
                 max_conf = max(test_predictions.values()) if test_predictions else 0.0
                 self.logger.info(f"[TEST] Post-warmup test prediction: {test_predictions} (max: {max_conf:.8f})")
                 
+                # CRITICAL: Check if model is stuck at 5.0768717e-06 immediately
+                if any(abs(conf - 5.0768717e-06) < 1e-10 for conf in test_predictions.values()):
+                    self.logger.error(f"[CRITICAL] Model '{actual_model_name}' is returning stuck value 5.0768717e-06 immediately after load!")
+                    self.logger.error("[CRITICAL] This indicates the model file may be corrupted. Try using 'alexa' instead of 'hey_jarvis'")
+                    print("*** CRITICAL: WAKE WORD MODEL IS CORRUPTED - STUCK AT 5.0768717e-06 ***")
+                    print("*** PLEASE CHANGE config.yaml TO USE 'alexa' INSTEAD OF 'hey_jarvis' ***")
+                
                 if max_conf > 0.0:
                     self.logger.info("[OK] Model warm-up successful - producing non-zero predictions")
                 else:
@@ -676,6 +683,22 @@ class WakeWordDetector:
                         'std': float(np.std(audio_chunk)),
                         'rms': float(np.sqrt(np.mean(audio_chunk ** 2)))
                     }
+                    
+                    # CRITICAL: Validate audio format for OpenWakeWord
+                    expected_samples = 1280  # 80ms at 16kHz
+                    if len(audio_chunk) != expected_samples:
+                        self.logger.error(f"INVALID CHUNK SIZE: {len(audio_chunk)} samples, expected {expected_samples}")
+                        print(f"   DETECTOR: ERROR - INVALID CHUNK SIZE: {len(audio_chunk)} != {expected_samples}")
+                    
+                    if audio_chunk.dtype != np.float32:
+                        self.logger.error(f"INVALID DTYPE: {audio_chunk.dtype}, expected float32")
+                        print(f"   DETECTOR: ERROR - INVALID DTYPE: {audio_chunk.dtype}")
+                    
+                    # Check if audio is in correct range [-1.0, 1.0]
+                    if chunk_stats['max'] > 1.0 or chunk_stats['min'] < -1.0:
+                        self.logger.warning(f"Audio out of range: [{chunk_stats['min']:.3f}, {chunk_stats['max']:.3f}]")
+                        print(f"   DETECTOR: WARNING - Audio exceeds [-1, 1] range")
+                    
                     print(f"   DETECTOR: Calling model.predict() with chunk: samples={len(audio_chunk)}, dtype={audio_chunk.dtype}")
                     print(f"   DETECTOR: Chunk stats: min={chunk_stats['min']:.6f}, max={chunk_stats['max']:.6f}, mean={chunk_stats['mean']:.6f}, std={chunk_stats['std']:.6f}, rms={chunk_stats['rms']:.6f}")
                     
@@ -858,8 +881,9 @@ class WakeWordDetector:
                                     print(f"   DETECTOR: ERROR in callback {i+1}: {e}")
                                     self.logger.error(f"Error in detection callback {i+1}: {e}")
                         else:
-                            print(f"   DETECTOR: Detection in cooldown: {model_name} (confidence: {confidence:.6f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
-                            self.logger.debug(f"Wake word detected but in cooldown: {model_name} (confidence: {confidence:.6f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
+                            print(f"   DETECTOR: WAKE WORD BLOCKED BY COOLDOWN: {model_name} (confidence: {confidence:.6f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
+                            self.logger.warning(f"Wake word detected but BLOCKED by cooldown: {model_name} (confidence: {confidence:.6f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
+                            # This is likely why subsequent wake words aren't working!
                     else:
                         # DEBUG: Log why detection didn't trigger
                         if confidence > self.sensitivity * 0.1:  # Log if close to threshold
