@@ -22,8 +22,8 @@ audio:
   sample_rate: 48000               # Device sample rate (48000, 44100, etc.)
   channels: 1                      # Audio channels (1=mono, 2=stereo)
   chunk_size: 1200                 # Audio chunk size (50ms at 24kHz)
-  input_volume: 1.0                # Input volume multiplier
-  output_volume: 1.0               # Output volume multiplier
+  input_volume: 5.0                # Input volume multiplier
+  output_volume: 2.0               # Output volume multiplier
   feedback_prevention: true        # Enable audio feedback prevention
   feedback_threshold: 0.1          # Feedback detection threshold
   mute_during_response: true       # Mute microphone during response playback

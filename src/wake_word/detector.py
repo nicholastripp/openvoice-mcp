@@ -270,8 +270,8 @@ class WakeWordDetector:
             
             if pre_amp_rms > 0.001:  # Avoid division by zero
                 gain = min(10.0, target_rms / pre_amp_rms)  # Reasonable gain limit
-                # Apply gain with soft clipping to avoid distortion
-                audio_float = np.tanh(audio_float * gain).astype(np.float32)
+                # Apply gain with proper clipping (not tanh which distorts audio)
+                audio_float = np.clip(audio_float * gain, -1.0, 1.0).astype(np.float32)
                 
                 # Performance optimization: Removed noise gate (too CPU intensive)
                 # The gain control and pre-emphasis provide sufficient enhancement
