@@ -40,7 +40,7 @@ class AudioPlayback:
         self.audio_buffer = np.array([], dtype=np.float32)
         self.min_buffer_size = int(self.device_sample_rate * 0.20)  # 200ms buffer minimum (increased)
         self.target_buffer_size = int(self.device_sample_rate * 0.50)  # 500ms target buffer (increased)
-        self.max_buffer_size = int(self.device_sample_rate * 1.0)  # 1s maximum buffer to prevent memory issues
+        self.max_buffer_size = int(self.device_sample_rate * 2.0)  # 2s maximum buffer to handle large OpenAI chunks
         
         # Resampling
         self.need_resampling = self.device_sample_rate != self.source_sample_rate

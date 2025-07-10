@@ -808,8 +808,11 @@ class VoiceAssistant:
     
     async def _on_audio_response(self, audio_data: bytes) -> None:
         """Handle audio response from OpenAI"""
-        self.logger.info(f"Received audio response from OpenAI: {len(audio_data)} bytes")
-        print(f"*** AUDIO RESPONSE RECEIVED: {len(audio_data)} bytes ***")
+        # Calculate audio duration for debugging (PCM16 at 24kHz)
+        samples = len(audio_data) // 2  # 2 bytes per sample
+        duration_ms = samples / 24.0  # 24kHz sample rate
+        self.logger.info(f"Received audio response from OpenAI: {len(audio_data)} bytes ({samples} samples, {duration_ms:.1f}ms)")
+        print(f"*** AUDIO RESPONSE RECEIVED: {len(audio_data)} bytes ({duration_ms:.1f}ms) ***")
         
         # Mark response as active and increase VAD threshold to prevent false positives
         if not self.response_active:
