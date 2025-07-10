@@ -177,14 +177,6 @@ class OpenAIRealtimeClient:
             if not connected:
                 raise ConnectionError("All WebSocket connection methods failed")
             
-            # Log websockets library version
-            try:
-                import websockets
-                ws_version = getattr(websockets, '__version__', 'unknown')
-                self.logger.info(f"Using websockets library version: {ws_version}")
-            except:
-                pass
-            
             # NOTE: Removed WebSocket verification check that was causing immediate disconnection
             # The check was failing due to timing or state issues
             
