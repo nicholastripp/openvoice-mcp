@@ -8,21 +8,22 @@ from typing import Dict, Any, Optional, Callable, List
 from dataclasses import dataclass
 from enum import Enum
 
-# Check websockets version and capabilities
-WEBSOCKETS_VERSION = None
-LEGACY_WEBSOCKETS_AVAILABLE = False
-WEBSOCKETS_AVAILABLE = False
+# Import websockets - will fail with clear error if not installed
 try:
     import websockets
-    WEBSOCKETS_VERSION = websockets.__version__
+    import websockets.exceptions
     WEBSOCKETS_AVAILABLE = True
+    WEBSOCKETS_VERSION = getattr(websockets, '__version__', 'unknown')
     try:
         import websockets.legacy.client
         LEGACY_WEBSOCKETS_AVAILABLE = True
     except ImportError:
-        pass
-except ImportError:
-    websockets = None  # Ensure websockets is defined even if import fails
+        LEGACY_WEBSOCKETS_AVAILABLE = False
+except ImportError as e:
+    # This will give a clear error message if websockets is not installed
+    raise ImportError(
+        "websockets library is required. Install with: pip install websockets>=10.0"
+    ) from e
 
 from config import OpenAIConfig
 from utils.logger import get_logger
@@ -128,12 +129,6 @@ class OpenAIRealtimeClient:
         self.state = ConnectionState.CONNECTING
         self.logger.info("Connecting to OpenAI Realtime API...")
         print("DEBUG: Starting connection to OpenAI Realtime API...")
-        
-        # Check if websockets is available
-        if not WEBSOCKETS_AVAILABLE:
-            self.logger.error("Websockets library not available - cannot connect to OpenAI")
-            self.state = ConnectionState.FAILED
-            return False
         
         # Log websockets version for debugging
         if WEBSOCKETS_VERSION:
