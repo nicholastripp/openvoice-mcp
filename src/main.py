@@ -243,22 +243,25 @@ class VoiceAssistant:
         """Initialize all components"""
         self.logger.info("Initializing components...")
         
-        # Initialize Home Assistant client
-        self.logger.info("Initializing Home Assistant client...")
-        self.ha_client = HomeAssistantConversationClient(self.config.home_assistant)
-        await self.ha_client.start()
-        
-        # Initialize function bridge
-        self.function_bridge = FunctionCallBridge(self.ha_client)
-        
-        # Check for wake word only mode
+        # Check for wake word only mode early
         wake_word_only_mode = self.config.wake_word.enabled and hasattr(self.config.wake_word, 'test_mode') and self.config.wake_word.test_mode
         
         if wake_word_only_mode:
-            self.logger.info("Starting in WAKE WORD ONLY TEST MODE - OpenAI connection disabled")
-            print("*** WAKE WORD ONLY TEST MODE - OPENAI DISABLED ***")
+            self.logger.info("WAKE WORD TEST MODE: Skipping Home Assistant and OpenAI initialization")
+            print("*** WAKE WORD TEST MODE: MINIMAL INITIALIZATION ***")
+            self.ha_client = None
+            self.function_bridge = None
             self.openai_client = None
         else:
+            # Initialize Home Assistant client
+            self.logger.info("Initializing Home Assistant client...")
+            self.ha_client = HomeAssistantConversationClient(self.config.home_assistant)
+            await self.ha_client.start()
+            
+            # Initialize function bridge
+            self.function_bridge = FunctionCallBridge(self.ha_client)
+        
+        if not wake_word_only_mode:
             # Initialize OpenAI client with device-aware personality
             self.logger.info("Initializing OpenAI client...")
             personality_prompt = await self._generate_device_aware_personality()
