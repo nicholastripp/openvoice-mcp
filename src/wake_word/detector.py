@@ -74,10 +74,10 @@ class WakeWordDetector:
         
         # Model state management to prevent stuck predictions
         self.predictions_history = []  # Track recent predictions to detect stuck state
-        self.stuck_detection_threshold = 5  # Number of identical predictions to trigger reset (reduced for faster detection)
+        self.stuck_detection_threshold = 3  # Number of identical predictions to trigger reset (reduced for faster detection)
         self.last_model_reset_time = 0
         self.model_reset_interval = 300.0  # Reset model every 5 minutes (reduced for better responsiveness)
-        self.min_reset_cooldown = 10.0  # Minimum time between resets (reduced further)
+        self.min_reset_cooldown = 2.0  # Minimum time between resets (reduced to 2s for faster recovery)
         self.chunks_since_reset = 0
         self.reset_on_stuck = True  # Enable automatic reset when stuck state detected
         self.stuck_confidence_threshold = 0.0  # Check for stuck state at any confidence level
@@ -648,11 +648,18 @@ class WakeWordDetector:
                         current_time = time.time()
                         time_since_last_reset = current_time - self.last_model_reset_time
                         if self._is_stuck_state():
+                            self.logger.warning(f"Triggering reset due to stuck state")
                             self._reset_model_state("stuck_state")
                         elif time_since_last_reset > self.model_reset_interval:
                             self._reset_model_state("scheduled_interval")
                         else:
                             self._reset_model_state("preventive")
+                    else:
+                        # Log why reset was not triggered (every 50 chunks)
+                        if chunks_processed % 50 == 0 and self._is_stuck_state():
+                            current_time = time.time()
+                            time_since_last_reset = current_time - self.last_model_reset_time
+                            self.logger.warning(f"Model stuck but reset blocked - time since last: {time_since_last_reset:.1f}s, cooldown: {self.min_reset_cooldown}s")
                     
                     # Check if we should skip predictions due to queue backup
                     current_queue_size = self.audio_queue.qsize()
@@ -720,12 +727,21 @@ class WakeWordDetector:
                     if predictions:
                         first_model = list(predictions.keys())[0]
                         confidence = predictions[first_model]
-                        # Use tolerance-based comparison for floating point
+                        # Check for the specific stuck value 5.0768717e-06
+                        if abs(confidence - 5.0768717e-06) < 1e-10:
+                            self.logger.error(f"CRITICAL: Model stuck at known bad value {confidence:.8e}")
+                            print(f"   DETECTOR: CRITICAL STUCK VALUE 5.0768717e-06 DETECTED! Forcing immediate reset NOW", flush=True)
+                            # Force immediate reset - bypass ALL checks
+                            self.last_model_reset_time = 0  # Force bypass cooldown
+                            self._reset_model_state("critical_stuck_value")
+                            continue
+                        # Use tolerance-based comparison for other floating point stuck values
                         for stuck_value in self.known_stuck_values:
                             if abs(confidence - stuck_value) < self.stuck_value_tolerance:
                                 self.logger.warning(f"Detected known stuck value {confidence:.8e} (matches {stuck_value:.8e}) at chunk {chunks_processed}, chunks_since_reset={self.chunks_since_reset}")
                                 print(f"   DETECTOR: KNOWN STUCK VALUE DETECTED! {confidence:.8e} ~= {stuck_value:.8e}, forcing immediate reset", flush=True)
                                 # Force immediate reset for known stuck value - no delay
+                                self.last_model_reset_time = 0  # Force bypass cooldown
                                 self._reset_model_state("known_stuck_value")
                                 continue
                     
@@ -936,19 +952,21 @@ class WakeWordDetector:
             True if model should be reset, False otherwise
         """
         current_time = time.time()
-        
-        # Enforce minimum cooldown between resets
         time_since_last_reset = current_time - self.last_model_reset_time
+        
+        # Check if stuck state detected FIRST (bypass cooldown for stuck states)
+        if self.reset_on_stuck and self._is_stuck_state():
+            self.logger.info(f"Stuck state detected, bypassing cooldown (time since last reset: {time_since_last_reset:.1f}s)")
+            return True
+        
+        # Enforce minimum cooldown between resets for non-stuck states
         if time_since_last_reset < self.min_reset_cooldown:
+            self.logger.debug(f"Reset blocked by cooldown: {time_since_last_reset:.1f}s < {self.min_reset_cooldown}s")
             return False
         
         # Preventive reset based on time interval (extended from 5 to 10 minutes)
         if time_since_last_reset > self.model_reset_interval:
             self.logger.debug(f"Model reset due to time interval ({self.model_reset_interval}s)")
-            return True
-        
-        # Reset if stuck state detected (with improved detection logic)
-        if self.reset_on_stuck and self._is_stuck_state():
             return True
         
         return False
@@ -973,7 +991,21 @@ class WakeWordDetector:
         first_model_name = list(recent_predictions[0].keys())[0]
         first_value = recent_predictions[0][first_model_name]
         
-        # Check for stuck values with tolerance
+        # Special handling for the critical stuck value 5.0768717e-06
+        if abs(first_value - 5.0768717e-06) < 1e-10:
+            # For this specific stuck value, trigger reset after just 2 occurrences
+            stuck_threshold = 2
+            recent_predictions = self.predictions_history[-stuck_threshold:] if len(self.predictions_history) >= stuck_threshold else self.predictions_history
+            
+            stuck_count = sum(1 for pred in recent_predictions 
+                            if pred and first_model_name in pred 
+                            and abs(pred[first_model_name] - 5.0768717e-06) < 1e-10)
+            
+            if stuck_count >= stuck_threshold:
+                self.logger.error(f"CRITICAL: Model stuck at 5.0768717e-06 for {stuck_count} predictions")
+                return True
+        
+        # Check for other stuck values with tolerance
         for stuck_value in self.known_stuck_values:
             if abs(first_value - stuck_value) < self.stuck_value_tolerance:
                 # If we see a known stuck value, only need fewer consecutive to trigger reset
