@@ -537,7 +537,7 @@ class VoiceAssistant:
         if self.wake_word_detector:
             try:
                 # Reset any stuck states in wake word detection
-                await self.wake_word_detector._reset_model()
+                self.wake_word_detector.reset_audio_buffers()
                 self.logger.debug("Wake word detector reset during session cleanup")
             except Exception as e:
                 self.logger.warning(f"Error resetting wake word detector: {e}")
