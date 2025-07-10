@@ -4,7 +4,6 @@ OpenAI Realtime API WebSocket client
 import json
 import base64
 import asyncio
-import websockets
 from typing import Dict, Any, Optional, Callable, List
 from dataclasses import dataclass
 from enum import Enum
@@ -12,16 +11,18 @@ from enum import Enum
 # Check websockets version and capabilities
 WEBSOCKETS_VERSION = None
 LEGACY_WEBSOCKETS_AVAILABLE = False
+WEBSOCKETS_AVAILABLE = False
 try:
     import websockets
     WEBSOCKETS_VERSION = websockets.__version__
+    WEBSOCKETS_AVAILABLE = True
     try:
         import websockets.legacy.client
         LEGACY_WEBSOCKETS_AVAILABLE = True
     except ImportError:
         pass
 except ImportError:
-    pass
+    websockets = None  # Ensure websockets is defined even if import fails
 
 from config import OpenAIConfig
 from utils.logger import get_logger
@@ -128,11 +129,17 @@ class OpenAIRealtimeClient:
         self.logger.info("Connecting to OpenAI Realtime API...")
         print("DEBUG: Starting connection to OpenAI Realtime API...")
         
+        # Check if websockets is available
+        if not WEBSOCKETS_AVAILABLE or websockets is None:
+            self.logger.error("Websockets library not available - cannot connect to OpenAI")
+            self.state = ConnectionState.FAILED
+            return False
+        
         # Log websockets version for debugging
         if WEBSOCKETS_VERSION:
             self.logger.debug(f"Using websockets version: {WEBSOCKETS_VERSION}")
         else:
-            self.logger.warning("Websockets library not properly detected")
+            self.logger.warning("Websockets library version not detected")
         
         try:
             # WebSocket URL with model parameter (required by OpenAI)
