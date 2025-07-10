@@ -208,7 +208,11 @@ class WakeWordDetector:
             audio_array = np.frombuffer(audio_data, dtype=np.int16)
             
             # Convert to float32 and normalize to [-1.0, 1.0] range (OpenWakeWord requirement)
-            audio_float = audio_array.astype(np.float32) / 32767.0
+            # FIX: Use symmetric normalization to avoid bias
+            audio_float = audio_array.astype(np.float32) / 32768.0
+            
+            # Remove DC bias for better signal quality
+            audio_float = audio_float - np.mean(audio_float)
             
             # Validate audio format
             if not self._validate_audio_chunk(audio_float):
@@ -229,18 +233,30 @@ class WakeWordDetector:
                 self.logger.info(f"RESAMPLING: {input_sample_rate}Hz -> {self.sample_rate}Hz, samples: {original_length} -> {new_length}")
                 print(f"   DETECTOR: RESAMPLING {input_sample_rate}Hz -> {self.sample_rate}Hz, samples: {original_length} -> {new_length}")
                 
-                audio_float = signal.resample(audio_float, new_length)
+                # FIX: Use high-quality polyphase resampling with proper anti-aliasing
+                # This preserves signal quality much better than basic FFT resampling
+                up_factor = self.sample_rate
+                down_factor = input_sample_rate
+                
+                # Find GCD for efficient resampling
+                import math
+                gcd = math.gcd(up_factor, down_factor)
+                up_factor //= gcd
+                down_factor //= gcd
+                
+                # Apply high-quality polyphase resampling
+                audio_float = signal.resample_poly(audio_float, up_factor, down_factor, window='kaiser')
                 
                 # Verify resampling worked
-                if len(audio_float) != new_length:
-                    self.logger.error(f"RESAMPLING ERROR: Expected {new_length} samples, got {len(audio_float)}")
+                if abs(len(audio_float) - new_length) > 1:  # Allow 1 sample tolerance
+                    self.logger.error(f"RESAMPLING ERROR: Expected ~{new_length} samples, got {len(audio_float)}")
                 
                 # Check if resampling destroyed the signal
                 post_resample_level = np.max(np.abs(audio_float))
                 post_resample_rms = np.sqrt(np.mean(audio_float ** 2))
                 self.logger.info(f"Post-resample: level={post_resample_level:.6f}, RMS={post_resample_rms:.6f} (was {audio_level:.6f})")
                 
-                self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {original_length} -> {len(audio_float)} samples (level: {audio_level:.3f} -> {post_resample_level:.3f})")
+                self.logger.debug(f"High-quality resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {original_length} -> {len(audio_float)} samples (level: {audio_level:.3f} -> {post_resample_level:.3f})")
             
             # DISABLED NORMALIZATION FOR DEBUGGING
             # The aggressive normalization might be causing the model to get stuck
@@ -248,17 +264,23 @@ class WakeWordDetector:
             pre_amp_level = np.max(np.abs(audio_float))
             pre_amp_rms = np.sqrt(np.mean(audio_float ** 2))
             
-            # For now, use minimal gain to avoid distortion
-            # Only amplify very quiet audio
-            if pre_amp_rms < 0.01:  # Very quiet
-                gain = min(2.0, 0.05 / pre_amp_rms) if pre_amp_rms > 0 else 1.0
-            else:
-                gain = 1.0  # No amplification for normal audio
+            # FIX: Implement proper RMS-based gain control
+            # Wake word models need sufficient signal strength (target RMS: 0.1-0.2)
+            target_rms = 0.15  # Good level for wake word detection
             
-            # Apply minimal gain if needed
-            if gain > 1.0:
-                audio_float = np.clip(audio_float * gain, -1.0, 1.0).astype(np.float32)
-                self.logger.debug(f"Applied minimal gain of {gain:.2f}x to quiet audio (RMS: {pre_amp_rms:.6f})")
+            if pre_amp_rms > 0.001:  # Avoid division by zero
+                gain = min(10.0, target_rms / pre_amp_rms)  # Max 10x gain
+                # Apply gain with soft clipping to avoid distortion
+                audio_float = np.tanh(audio_float * gain).astype(np.float32)
+                self.logger.debug(f"Applied RMS-based gain of {gain:.2f}x (RMS: {pre_amp_rms:.6f} -> target: {target_rms:.2f})")
+            else:
+                gain = 1.0  # No gain for silence
+            
+            # Add pre-emphasis filter for speech enhancement
+            # This enhances high frequencies important for wake word detection
+            if len(audio_float) > 1:
+                pre_emphasis_coeff = 0.97
+                audio_float = np.append(audio_float[0], audio_float[1:] - pre_emphasis_coeff * audio_float[:-1])
             
             post_amp_level = np.max(np.abs(audio_float))
             post_amp_rms = np.sqrt(np.mean(audio_float ** 2))
