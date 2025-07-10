@@ -244,11 +244,12 @@ class VoiceAssistant:
         self.logger.info("Initializing components...")
         
         # Check for wake word only mode early
-        wake_word_only_mode = self.config.wake_word.enabled and hasattr(self.config.wake_word, 'test_mode') and self.config.wake_word.test_mode
+        wake_word_only_mode = self.config.wake_word.enabled and getattr(self.config.wake_word, 'test_mode', False)
         
         if wake_word_only_mode:
             self.logger.info("WAKE WORD TEST MODE: Skipping Home Assistant and OpenAI initialization")
             print("*** WAKE WORD TEST MODE: MINIMAL INITIALIZATION ***")
+            print(f"*** TEST MODE VALUE: {self.config.wake_word.test_mode} ***")
             self.ha_client = None
             self.function_bridge = None
             self.openai_client = None
@@ -1333,6 +1334,11 @@ async def main():
         action="store_true",
         help="Run as daemon (no console output)"
     )
+    parser.add_argument(
+        "--test-mode",
+        action="store_true",
+        help="Run in wake word test mode (no OpenAI/HA connection)"
+    )
     
     args = parser.parse_args()
     
@@ -1347,6 +1353,11 @@ async def main():
         # Override daemon mode if specified
         if args.daemon:
             config.system.daemon = True
+            
+        # Override test mode if specified
+        if args.test_mode:
+            config.wake_word.test_mode = True
+            logger.info("Test mode enabled via CLI argument")
         
         # Setup logging
         logger = setup_logging(

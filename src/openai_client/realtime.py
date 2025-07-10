@@ -155,8 +155,8 @@ class OpenAIRealtimeClient:
                 {"origin": None, "extensions": None, "subprotocols": None, "extra_headers": headers},
                 # Basic connection without ping interval
                 {"extra_headers": headers, "max_size": None},
-                # Last resort - minimal parameters
-                {"max_size": None}
+                # Minimal parameters but with headers
+                {"extra_headers": headers}
             ]
             
             for i, attempt_params in enumerate(connection_attempts):
@@ -167,10 +167,13 @@ class OpenAIRealtimeClient:
                     connected = True
                     break
                 except (TypeError, AttributeError, ValueError) as attempt_error:
-                    self.logger.debug(f"Attempt {i+1} failed: {attempt_error}")
+                    self.logger.warning(f"Attempt {i+1} failed with parameter error: {type(attempt_error).__name__}: {attempt_error}")
                     continue
                 except Exception as attempt_error:
-                    self.logger.debug(f"Attempt {i+1} failed with unexpected error: {attempt_error}")
+                    self.logger.error(f"Attempt {i+1} failed: {type(attempt_error).__name__}: {attempt_error}")
+                    # Log more details for the last attempt
+                    if i == len(connection_attempts) - 1:
+                        self.logger.error(f"Final attempt details - URL: {url[:50]}..., Headers keys: {list(headers.keys())}")
                     continue
             
             if not connected:
