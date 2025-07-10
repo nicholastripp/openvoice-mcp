@@ -266,7 +266,7 @@ class WakeWordDetector:
             
             # FIX: Implement proper RMS-based gain control  
             # Balance between wake word detection and OpenAI VAD needs
-            target_rms = 0.3  # Reduced for better performance while maintaining detection
+            target_rms = 0.1  # Reduced to prevent environmental sounds from triggering false positives
             
             if pre_amp_rms > 0.001:  # Avoid division by zero
                 gain = min(10.0, target_rms / pre_amp_rms)  # Reasonable gain limit
