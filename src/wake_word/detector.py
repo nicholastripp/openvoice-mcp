@@ -454,7 +454,7 @@ class WakeWordDetector:
             self.logger.info(f"[OK] Successfully loaded model: {actual_model_name}")
             self.logger.info(f"Available models: {list(self.model.models.keys())}")
             self.logger.info(f"Model expects: {self.sample_rate}Hz audio in {self.chunk_size} sample chunks (80ms)")
-            self.logger.info(f"Model configuration: VAD={self.vad_enabled}, Speex={speex_enabled}, sensitivity={self.sensitivity}")
+            self.logger.info(f"Model configuration: VAD={self.vad_enabled}, sensitivity={self.sensitivity}")
             
             # NEW: Model warm-up phase
             # Based on test results, OpenWakeWord needs 5-6 predictions before producing non-zero values
