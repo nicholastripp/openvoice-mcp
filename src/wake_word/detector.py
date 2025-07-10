@@ -222,10 +222,25 @@ class WakeWordDetector:
             if input_sample_rate != self.sample_rate:
                 from scipy import signal
                 # Calculate new length for resampling
+                original_length = len(audio_float)
                 new_length = int(len(audio_float) * self.sample_rate / input_sample_rate)
+                
+                # CRITICAL: Log resampling details
+                self.logger.info(f"RESAMPLING: {input_sample_rate}Hz → {self.sample_rate}Hz, samples: {original_length} → {new_length}")
+                print(f"   DETECTOR: RESAMPLING {input_sample_rate}Hz → {self.sample_rate}Hz, samples: {original_length} → {new_length}")
+                
                 audio_float = signal.resample(audio_float, new_length)
                 
-                self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {len(audio_array)} -> {len(audio_float)} samples (level: {audio_level:.3f})")
+                # Verify resampling worked
+                if len(audio_float) != new_length:
+                    self.logger.error(f"RESAMPLING ERROR: Expected {new_length} samples, got {len(audio_float)}")
+                
+                # Check if resampling destroyed the signal
+                post_resample_level = np.max(np.abs(audio_float))
+                post_resample_rms = np.sqrt(np.mean(audio_float ** 2))
+                self.logger.info(f"Post-resample: level={post_resample_level:.6f}, RMS={post_resample_rms:.6f} (was {audio_level:.6f})")
+                
+                self.logger.debug(f"Resampled audio from {input_sample_rate}Hz to {self.sample_rate}Hz: {original_length} -> {len(audio_float)} samples (level: {audio_level:.3f} -> {post_resample_level:.3f})")
             
             # DISABLED NORMALIZATION FOR DEBUGGING
             # The aggressive normalization might be causing the model to get stuck
@@ -318,7 +333,15 @@ class WakeWordDetector:
             self.logger.debug(f"Checking for model file: {model_path}")
             
             if model_path.exists():
-                self.logger.debug(f"Model file found: {model_path}")
+                # Check file size to ensure it's not corrupted
+                file_size = model_path.stat().st_size
+                self.logger.info(f"Model file found: {model_path} (size: {file_size} bytes)")
+                
+                if file_size < 10000:  # TFLite models should be at least 10KB
+                    self.logger.error(f"Model file appears corrupted - too small: {file_size} bytes")
+                    print(f"*** ERROR: WAKE WORD MODEL FILE TOO SMALL: {file_size} bytes ***")
+                    return False
+                    
                 return True
             else:
                 self.logger.warning(f"Model file not found: {model_path}")
@@ -636,6 +659,12 @@ class WakeWordDetector:
                 except Empty:
                     continue
                 
+                # CRITICAL: Verify chunk from queue
+                if len(audio_chunk) != 1280:
+                    self.logger.error(f"CRITICAL: Got wrong chunk size from queue: {len(audio_chunk)} samples (expected 1280)")
+                    print(f"   DETECTOR: CRITICAL ERROR - Wrong chunk size from queue: {len(audio_chunk)}")
+                    continue
+                
                 chunks_processed += 1
                 
                 # Immediate debug feedback for OpenWakeWord processing
@@ -698,6 +727,11 @@ class WakeWordDetector:
                     if chunk_stats['max'] > 1.0 or chunk_stats['min'] < -1.0:
                         self.logger.warning(f"Audio out of range: [{chunk_stats['min']:.3f}, {chunk_stats['max']:.3f}]")
                         print(f"   DETECTOR: WARNING - Audio exceeds [-1, 1] range")
+                    
+                    # Log exact format being sent to model (every 100th chunk)
+                    if chunks_processed % 100 == 0:
+                        self.logger.info(f"AUDIO FORMAT CHECK: shape={audio_chunk.shape}, dtype={audio_chunk.dtype}, range=[{chunk_stats['min']:.6f}, {chunk_stats['max']:.6f}], RMS={chunk_stats['rms']:.6f}")
+                        print(f"   DETECTOR: AUDIO FORMAT: {audio_chunk.shape} {audio_chunk.dtype} [{chunk_stats['min']:.6f}, {chunk_stats['max']:.6f}] RMS={chunk_stats['rms']:.6f}")
                     
                     print(f"   DETECTOR: Calling model.predict() with chunk: samples={len(audio_chunk)}, dtype={audio_chunk.dtype}")
                     print(f"   DETECTOR: Chunk stats: min={chunk_stats['min']:.6f}, max={chunk_stats['max']:.6f}, mean={chunk_stats['mean']:.6f}, std={chunk_stats['std']:.6f}, rms={chunk_stats['rms']:.6f}")
