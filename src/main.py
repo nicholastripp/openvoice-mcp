@@ -738,6 +738,24 @@ class VoiceAssistant:
         
         # Send audio to OpenAI
         if self.openai_client:
+            # Log audio levels before sending to OpenAI
+            try:
+                import numpy as np
+                audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                if len(audio_array) > 0:
+                    rms = np.sqrt(np.mean(audio_array.astype(np.float32) ** 2))
+                    peak = np.max(np.abs(audio_array))
+                    
+                    if not hasattr(self, '_audio_level_log_counter'):
+                        self._audio_level_log_counter = 0
+                    self._audio_level_log_counter += 1
+                    
+                    if self._audio_level_log_counter % 100 == 0:  # Every 100 chunks
+                        self.logger.info(f"Audio to OpenAI - RMS: {rms:.1f}, Peak: {peak}, Length: {len(audio_data)} bytes")
+                        print(f"*** AUDIO LEVELS TO OPENAI: RMS={rms:.1f}, Peak={peak} ***")
+            except Exception as e:
+                self.logger.debug(f"Could not log audio levels: {e}")
+            
             await self.openai_client.send_audio(audio_data)
             # Debug: Log audio being sent to OpenAI
             if hasattr(self, '_openai_audio_counter'):
