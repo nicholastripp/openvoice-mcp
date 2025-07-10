@@ -264,7 +264,7 @@ class WakeWordDetector:
                 print(f"   DETECTOR: POST-AMP QUALITY: RMS={post_amp_metrics['rms']:.6f}, SNR={post_amp_metrics['snr']:.1f}dB, Peak={post_amp_metrics['peak']:.4f}")
             
             # Immediate debug feedback (not just debug logs)
-            print(f"   DETECTOR: audio_level={audio_level:.3f}, samples={len(audio_float)}")
+            print(f"   DETECTOR: audio_level={audio_level:.3f}, samples={len(audio_float)}", flush=True)
             
             # Lower threshold to allow speech audio (was 0.005)
             if audio_level > 0.001:  # Much lower threshold for legitimate audio activity
@@ -682,11 +682,11 @@ class WakeWordDetector:
                         first_model = list(predictions.keys())[0]
                         confidence = predictions[first_model]
                         if confidence == 5.0768717e-06:
-                            self.logger.warning(f"Detected known stuck value {confidence:.8e} at chunk {chunks_processed}")
-                            # Force immediate reset for known stuck value
-                            if self.chunks_since_reset > 5:  # Allow a few chunks after reset
-                                self._reset_model_state("known_stuck_value")
-                                continue
+                            self.logger.warning(f"Detected known stuck value {confidence:.8e} at chunk {chunks_processed}, chunks_since_reset={self.chunks_since_reset}")
+                            print(f"   DETECTOR: KNOWN STUCK VALUE DETECTED! Forcing immediate reset (chunks_since_reset={self.chunks_since_reset})")
+                            # Force immediate reset for known stuck value - no delay
+                            self._reset_model_state("known_stuck_value")
+                            continue
                     
                 except Exception as e:
                     print(f"   DETECTOR: ERROR in model.predict(): {e}")
@@ -945,7 +945,10 @@ class WakeWordDetector:
                             and pred[first_model_name] == first_value)
             
             if stuck_count >= stuck_threshold:
-                self.logger.warning(f"Detected known stuck value {first_value:.8e} repeated {stuck_count} times")
+                # Only log once when we first detect stuck state
+                if not hasattr(self, '_last_stuck_log_value') or self._last_stuck_log_value != first_value:
+                    self.logger.warning(f"Model stuck: {stuck_count} identical predictions of {first_value:.8e}")
+                    self._last_stuck_log_value = first_value
                 return True
         
         # Use very strict tolerance for detecting stuck state
@@ -964,7 +967,14 @@ class WakeWordDetector:
         # Only consider stuck if we have enough identical predictions
         is_stuck = identical_count >= (self.stuck_detection_threshold - 1)
         if is_stuck:
-            self.logger.warning(f"Model stuck: {self.stuck_detection_threshold} identical predictions of {first_value:.8e}")
+            # Only log once when we first detect stuck state
+            if not hasattr(self, '_last_stuck_log_value') or self._last_stuck_log_value != first_value:
+                self.logger.warning(f"Model stuck: {self.stuck_detection_threshold} identical predictions of {first_value:.8e}")
+                self._last_stuck_log_value = first_value
+        else:
+            # Clear the last logged value if no longer stuck
+            if hasattr(self, '_last_stuck_log_value'):
+                self._last_stuck_log_value = None
         return is_stuck
     
     def _track_prediction(self, predictions: dict) -> None:
@@ -1087,15 +1097,20 @@ class WakeWordDetector:
                     confidence = pred[model_name]
                     self.logger.info(f"[RESET]   {i+1}. {model_name}: {confidence:.8f}")
         
-        # For stuck state, try complete model reload instead of just reset
-        if reset_reason == "stuck_state" and self.model:
+        # For stuck state or known stuck value, try complete model reload
+        if reset_reason in ["stuck_state", "known_stuck_value"] and self.model:
             try:
-                self.logger.info("[RESET] Stuck state detected - performing complete model reload")
+                self.logger.info(f"[RESET] {reset_reason} - performing complete model reload")
                 # Save current model name
                 current_model = self.model_name
-                # Delete the model
+                # Delete the model completely
                 del self.model
                 self.model = None
+                # Force garbage collection
+                import gc
+                gc.collect()
+                # Small delay to ensure cleanup
+                time.sleep(0.1)
                 # Reload the model
                 self._load_model()
                 self.logger.info("[RESET] Complete model reload successful")
@@ -1126,6 +1141,9 @@ class WakeWordDetector:
         self.last_model_reset_time = current_time
         self.recent_confidences = []  # Reset detection stability tracking
         self.hung_predictions = 0  # Reset hung predictions counter
+        # Clear stuck state logging tracker
+        if hasattr(self, '_last_stuck_log_value'):
+            self._last_stuck_log_value = None
         
         # Reset warm-up state - model needs re-warming after reset
         self.model_ready = False
