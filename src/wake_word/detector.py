@@ -74,13 +74,13 @@ class WakeWordDetector:
         
         # Model state management to prevent stuck predictions
         self.predictions_history = []  # Track recent predictions to detect stuck state
-        self.stuck_detection_threshold = 20  # Number of identical predictions to trigger reset (increased from 10)
+        self.stuck_detection_threshold = 10  # Number of identical predictions to trigger reset (reduced for faster detection)
         self.last_model_reset_time = 0
-        self.model_reset_interval = 600.0  # Reset model every 10 minutes (increased from 5 minutes)
-        self.min_reset_cooldown = 60.0  # Minimum time between resets (NEW)
+        self.model_reset_interval = 300.0  # Reset model every 5 minutes (reduced for better responsiveness)
+        self.min_reset_cooldown = 30.0  # Minimum time between resets (reduced)
         self.chunks_since_reset = 0
         self.reset_on_stuck = True  # Enable automatic reset when stuck state detected
-        self.stuck_confidence_threshold = 0.001  # Only check for stuck state above this confidence (NEW)
+        self.stuck_confidence_threshold = 0.0  # Check for stuck state at any confidence level
         
         # Confidence monitoring for reliability analysis
         self.confidence_history = []
@@ -431,19 +431,20 @@ class WakeWordDetector:
             
             actual_model_name = model_mapping.get(self.model_name, self.model_name)
             
-            # Initialize model with VAD and noise suppression
+            # Initialize model with minimal configuration to avoid stuck states
             model_kwargs = {}
             
-            # TEMPORARILY DISABLE VAD threshold for debugging (likely cause of 0.0 predictions)
-            if self.vad_enabled:
-                # model_kwargs['vad_threshold'] = 0.5  # VAD threshold for filtering non-speech
-                self.logger.info("[DEBUG] VAD threshold DISABLED for debugging - should see non-zero predictions")
-                self.logger.info("[DEBUG] If this fixes the issue, VAD threshold 0.5 was too aggressive")
+            # Disable VAD and noise suppression as they can cause stuck predictions
+            self.logger.info("[INFO] Initializing OpenWakeWord with minimal configuration")
+            self.logger.info("[INFO] VAD and noise suppression disabled to prevent stuck predictions")
             
-            # TEMPORARILY DISABLE Speex noise suppression for debugging
-            speex_enabled = False  # Force disable for minimal config testing
-            self.logger.info("[DEBUG] Speex noise suppression DISABLED for debugging")
-            self.logger.info("[DEBUG] Testing with minimal OpenWakeWord configuration")
+            # Force reinitialize the model to clear any cached state
+            if hasattr(self, 'model') and self.model:
+                try:
+                    del self.model
+                    self.logger.info("[INFO] Cleared existing model instance")
+                except:
+                    pass
             
             self.model = WakeWordModel(
                 wakeword_models=[actual_model_name],
@@ -522,6 +523,8 @@ class WakeWordDetector:
         self.logger.info(f"[WARMUP] Processing {self.warmup_chunks_required} warm-up chunks...")
         
         warmup_predictions = []
+        stuck_value_count = 0
+        last_prediction = None
         
         for i in range(self.warmup_chunks_required):
             # Generate varied audio for warm-up
@@ -538,30 +541,53 @@ class WakeWordDetector:
                 audio_chunk = np.random.normal(0, 0.05, self.chunk_size).astype(np.float32)
                 chunk_type = "medium noise"
             else:
-                # High noise  
-                audio_chunk = np.random.normal(0, 0.1, self.chunk_size).astype(np.float32)
-                chunk_type = "high noise"
+                # High noise with some variation
+                base_noise = np.random.normal(0, 0.1, self.chunk_size)
+                # Add some sine wave variation to ensure different predictions
+                t = np.linspace(0, 1, self.chunk_size)
+                sine_component = 0.05 * np.sin(2 * np.pi * (i - 8) * t)
+                audio_chunk = (base_noise + sine_component).astype(np.float32)
+                chunk_type = "high noise + variation"
             
             try:
                 predictions = self.model.predict(audio_chunk)
                 max_conf = max(predictions.values()) if predictions else 0.0
                 warmup_predictions.append(max_conf)
                 
+                # Check for stuck value during warmup
+                if last_prediction is not None and abs(max_conf - last_prediction) < 1e-10:
+                    stuck_value_count += 1
+                    if stuck_value_count >= 3:
+                        self.logger.warning(f"[WARMUP] Model appears stuck at {max_conf:.8e} during warmup")
+                        # Try to unstick by feeding very different audio
+                        unstick_audio = np.random.uniform(-0.5, 0.5, self.chunk_size).astype(np.float32)
+                        _ = self.model.predict(unstick_audio)
+                        stuck_value_count = 0
+                else:
+                    stuck_value_count = 0
+                
+                last_prediction = max_conf
+                
                 if i % 3 == 0 or max_conf > 0.0:
                     self.logger.debug(f"[WARMUP] Chunk {i+1}/{self.warmup_chunks_required} ({chunk_type}): max={max_conf:.8f}")
                 
                 # Check if we're getting non-zero predictions
-                if max_conf > 0.0:
-                    self.logger.info(f"[WARMUP] Model started producing non-zero predictions at chunk {i+1}")
+                if max_conf > 0.0 and max_conf != 5.0768717e-06:  # Exclude known stuck value
+                    self.logger.info(f"[WARMUP] Model started producing valid predictions at chunk {i+1}")
                     
             except Exception as e:
                 self.logger.warning(f"[WARMUP] Failed to process chunk {i+1}: {e}")
         
         # Check warm-up results
-        non_zero_count = sum(1 for p in warmup_predictions if p > 0.0)
+        non_zero_count = sum(1 for p in warmup_predictions if p > 0.0 and p != 5.0768717e-06)
         max_prediction = max(warmup_predictions) if warmup_predictions else 0.0
+        unique_predictions = len(set(warmup_predictions))
         
-        self.logger.info(f"[WARMUP] Complete: {non_zero_count}/{self.warmup_chunks_required} non-zero predictions, max={max_prediction:.8f}")
+        self.logger.info(f"[WARMUP] Complete: {non_zero_count}/{self.warmup_chunks_required} valid predictions, max={max_prediction:.8f}, unique values={unique_predictions}")
+        
+        # Warn if model seems stuck
+        if unique_predictions <= 2:
+            self.logger.warning(f"[WARMUP] Model may be stuck - only {unique_predictions} unique prediction values")
         
         # Mark model as ready
         self.model_ready = True
@@ -614,10 +640,10 @@ class WakeWordDetector:
                         # Determine reset reason
                         current_time = time.time()
                         time_since_last_reset = current_time - self.last_model_reset_time
-                        if time_since_last_reset > self.model_reset_interval:
-                            self._reset_model_state("scheduled_interval")
-                        elif self._is_stuck_state():
+                        if self._is_stuck_state():
                             self._reset_model_state("stuck_state")
+                        elif time_since_last_reset > self.model_reset_interval:
+                            self._reset_model_state("scheduled_interval")
                         else:
                             self._reset_model_state("preventive")
                     
@@ -650,6 +676,17 @@ class WakeWordDetector:
                     
                     # Track confidence for monitoring
                     self._track_confidence(predictions)
+                    
+                    # Immediate check for known stuck value
+                    if predictions:
+                        first_model = list(predictions.keys())[0]
+                        confidence = predictions[first_model]
+                        if confidence == 5.0768717e-06:
+                            self.logger.warning(f"Detected known stuck value {confidence:.8e} at chunk {chunks_processed}")
+                            # Force immediate reset for known stuck value
+                            if self.chunks_since_reset > 5:  # Allow a few chunks after reset
+                                self._reset_model_state("known_stuck_value")
+                                continue
                     
                 except Exception as e:
                     print(f"   DETECTOR: ERROR in model.predict(): {e}")
@@ -895,19 +932,24 @@ class WakeWordDetector:
         first_model_name = list(recent_predictions[0].keys())[0]
         first_value = recent_predictions[0][first_model_name]
         
-        # Only check for stuck state if confidence is above threshold
-        # Very low confidence values (background noise) are normal and shouldn't trigger resets
-        if first_value < self.stuck_confidence_threshold:
-            return False
+        # Check for the specific stuck value we're seeing in logs: 5.0768717e-06
+        known_stuck_values = [5.0768717e-06, 0.0]
+        if first_value in known_stuck_values:
+            # If we see a known stuck value, only need 5 consecutive to trigger reset
+            stuck_threshold = min(5, self.stuck_detection_threshold)
+            recent_predictions = self.predictions_history[-stuck_threshold:]
+            
+            # Count how many are the same stuck value
+            stuck_count = sum(1 for pred in recent_predictions 
+                            if pred and first_model_name in pred 
+                            and pred[first_model_name] == first_value)
+            
+            if stuck_count >= stuck_threshold:
+                self.logger.warning(f"Detected known stuck value {first_value:.8e} repeated {stuck_count} times")
+                return True
         
-        # Use adaptive tolerance based on confidence level
-        # Higher confidence values need stricter comparison
-        if first_value > 0.01:
-            tolerance = 1e-6  # Strict tolerance for higher confidence
-        elif first_value > 0.001:
-            tolerance = 1e-5  # Medium tolerance for medium confidence
-        else:
-            tolerance = 1e-4  # Relaxed tolerance for low confidence
+        # Use very strict tolerance for detecting stuck state
+        tolerance = 1e-10  # Extremely strict to catch exact repetitions
         
         # Check if all recent predictions are identical within tolerance
         identical_count = 0
@@ -920,7 +962,10 @@ class WakeWordDetector:
                 return False  # Found a different prediction, not stuck
         
         # Only consider stuck if we have enough identical predictions
-        return identical_count >= (self.stuck_detection_threshold - 1)
+        is_stuck = identical_count >= (self.stuck_detection_threshold - 1)
+        if is_stuck:
+            self.logger.warning(f"Model stuck: {self.stuck_detection_threshold} identical predictions of {first_value:.8e}")
+        return is_stuck
     
     def _track_prediction(self, predictions: dict) -> None:
         """
@@ -1042,7 +1087,28 @@ class WakeWordDetector:
                     confidence = pred[model_name]
                     self.logger.info(f"[RESET]   {i+1}. {model_name}: {confidence:.8f}")
         
-        if self.model:
+        # For stuck state, try complete model reload instead of just reset
+        if reset_reason == "stuck_state" and self.model:
+            try:
+                self.logger.info("[RESET] Stuck state detected - performing complete model reload")
+                # Save current model name
+                current_model = self.model_name
+                # Delete the model
+                del self.model
+                self.model = None
+                # Reload the model
+                self._load_model()
+                self.logger.info("[RESET] Complete model reload successful")
+            except Exception as e:
+                self.logger.error(f"[RESET] Failed to reload model: {e}")
+                # Try normal reset as fallback
+                if self.model:
+                    try:
+                        self.model.reset()
+                        self.logger.info(f"[RESET] Fallback to model.reset() completed")
+                    except Exception as e2:
+                        self.logger.warning(f"[RESET] Fallback reset also failed: {e2}")
+        elif self.model:
             try:
                 self.model.reset()
                 self.logger.info(f"[RESET] OpenWakeWord model.reset() completed successfully")
@@ -1059,13 +1125,14 @@ class WakeWordDetector:
         self.chunks_since_reset = 0
         self.last_model_reset_time = current_time
         self.recent_confidences = []  # Reset detection stability tracking
+        self.hung_predictions = 0  # Reset hung predictions counter
         
         # Reset warm-up state - model needs re-warming after reset
         self.model_ready = False
         self.warmup_chunks_processed = 0
         self._model_ready_logged = False  # Reset ready logging flag
         
-        # Re-warm the model
+        # Re-warm the model only if it exists
         if self.model:
             self.logger.info("[RESET] Re-warming model after reset...")
             self._warmup_model()
