@@ -207,14 +207,14 @@ def print_dependency_status() -> None:
         print(f"\nMicrophone Test:")
         print("=" * 40)
         mic_works = test_microphone_recording(duration=0.5)
-        status = "✅ Working" if mic_works else "❌ Failed"
+        status = "[OK] Working" if mic_works else "[FAIL] Failed"
         print(f"Recording test: {status}")
         
     except DependencyValidationError as e:
-        print(f"❌ Dependency validation failed: {e}")
+        print(f"[FAIL] Dependency validation failed: {e}")
     except Exception as e:
         logger.error(f"Unexpected error in dependency validation: {e}")
-        print(f"❌ Unexpected error: {e}")
+        print(f"[FAIL] Unexpected error: {e}")
 
 
 if __name__ == "__main__":

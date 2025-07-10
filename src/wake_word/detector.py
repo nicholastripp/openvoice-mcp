@@ -226,8 +226,8 @@ class WakeWordDetector:
                 new_length = int(len(audio_float) * self.sample_rate / input_sample_rate)
                 
                 # CRITICAL: Log resampling details
-                self.logger.info(f"RESAMPLING: {input_sample_rate}Hz → {self.sample_rate}Hz, samples: {original_length} → {new_length}")
-                print(f"   DETECTOR: RESAMPLING {input_sample_rate}Hz → {self.sample_rate}Hz, samples: {original_length} → {new_length}")
+                self.logger.info(f"RESAMPLING: {input_sample_rate}Hz -> {self.sample_rate}Hz, samples: {original_length} -> {new_length}")
+                print(f"   DETECTOR: RESAMPLING {input_sample_rate}Hz -> {self.sample_rate}Hz, samples: {original_length} -> {new_length}")
                 
                 audio_float = signal.resample(audio_float, new_length)
                 

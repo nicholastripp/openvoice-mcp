@@ -94,7 +94,7 @@ class OpenAIRealtimeClient:
             # Log audio configuration for debugging
             self.logger.info(f"Audio session config: input_format={self.session_config['input_audio_format']}, output_format={self.session_config['output_audio_format']}")
             self.logger.info(f"Server VAD enabled: threshold={self.session_config['turn_detection']['threshold']}, silence_duration={self.session_config['turn_detection']['silence_duration_ms']}ms")
-            self.logger.info("⚠️  Server VAD mode: Do NOT manually call commit_audio() - server will auto-commit when speech stops")
+            self.logger.info("[WARNING] Server VAD mode: Do NOT manually call commit_audio() - server will auto-commit when speech stops")
             self.logger.info("Enhanced session config: tool_choice=auto, max_response_output_tokens=inf for better audio responses")
         else:
             # Text-only mode: explicitly disable VAD to prevent audio buffer operations
@@ -511,7 +511,7 @@ class OpenAIRealtimeClient:
             text = event.data.get("delta", "")
             # Sanitize Unicode text for safe handling
             safe_text = sanitize_unicode_text(text)
-            self.logger.debug(f"💬 Received text response chunk: '{safe_text}'")
+            self.logger.debug(f"[TEXT] Received text response chunk: '{safe_text}'")
             await self._emit_event("text_response", safe_text)
             
         elif event_type == "response.function_call_arguments.done":
@@ -931,7 +931,7 @@ class OpenAIRealtimeClient:
                 self.logger.error("Base64 string validation failed")
                 return False
             
-            self.logger.debug(f"Base64 roundtrip successful: {len(original_audio)} bytes ↔ {len(audio_b64)} chars")
+            self.logger.debug(f"Base64 roundtrip successful: {len(original_audio)} bytes <-> {len(audio_b64)} chars")
             return True
             
         except Exception as e:
