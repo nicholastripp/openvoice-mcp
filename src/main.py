@@ -251,33 +251,42 @@ class VoiceAssistant:
         # Initialize function bridge
         self.function_bridge = FunctionCallBridge(self.ha_client)
         
-        # Initialize OpenAI client with device-aware personality
-        self.logger.info("Initializing OpenAI client...")
-        personality_prompt = await self._generate_device_aware_personality()
-        self.openai_client = OpenAIRealtimeClient(self.config.openai, personality_prompt)
+        # Check for wake word only mode
+        wake_word_only_mode = self.config.wake_word.enabled and hasattr(self.config.wake_word, 'test_mode') and self.config.wake_word.test_mode
         
-        # Register function handlers
-        for func_def in self.function_bridge.get_function_definitions():
-            # Create a wrapper function that calls the bridge with the correct arguments
-            def create_wrapper(func_name):
-                async def function_wrapper(arguments):
-                    return await self.function_bridge.handle_function_call(func_name, arguments)
-                return function_wrapper
+        if wake_word_only_mode:
+            self.logger.info("Starting in WAKE WORD ONLY TEST MODE - OpenAI connection disabled")
+            print("*** WAKE WORD ONLY TEST MODE - OPENAI DISABLED ***")
+            self.openai_client = None
+        else:
+            # Initialize OpenAI client with device-aware personality
+            self.logger.info("Initializing OpenAI client...")
+            personality_prompt = await self._generate_device_aware_personality()
+            self.openai_client = OpenAIRealtimeClient(self.config.openai, personality_prompt)
+        
+        if not wake_word_only_mode:
+            # Register function handlers
+            for func_def in self.function_bridge.get_function_definitions():
+                # Create a wrapper function that calls the bridge with the correct arguments
+                def create_wrapper(func_name):
+                    async def function_wrapper(arguments):
+                        return await self.function_bridge.handle_function_call(func_name, arguments)
+                    return function_wrapper
+                
+                self.openai_client.register_function(
+                    name=func_def["name"],
+                    handler=create_wrapper(func_def["name"]),
+                    description=func_def["description"],
+                    parameters=func_def["parameters"]
+                )
             
-            self.openai_client.register_function(
-                name=func_def["name"],
-                handler=create_wrapper(func_def["name"]),
-                description=func_def["description"],
-                parameters=func_def["parameters"]
-            )
-        
-        # Setup OpenAI event handlers
-        self._setup_openai_handlers()
-        
-        # Connect to OpenAI
-        success = await self.openai_client.connect()
-        if not success:
-            raise RuntimeError("Failed to connect to OpenAI Realtime API")
+            # Setup OpenAI event handlers
+            self._setup_openai_handlers()
+            
+            # Connect to OpenAI
+            success = await self.openai_client.connect()
+            if not success:
+                raise RuntimeError("Failed to connect to OpenAI Realtime API")
         
         # Initialize audio components
         self.logger.info("Initializing audio components...")
@@ -1235,6 +1244,25 @@ class VoiceAssistant:
         """Handle wake word detection"""
         self.logger.info(f"Wake word '{model_name}' detected with confidence {confidence:.6f}")
         print(f"*** WAKE WORD DETECTED: {model_name} (confidence: {confidence:.6f}) ***")
+        
+        # Check for wake word only mode
+        wake_word_only_mode = self.config.wake_word.enabled and hasattr(self.config.wake_word, 'test_mode') and self.config.wake_word.test_mode
+        
+        if wake_word_only_mode:
+            self.logger.info("WAKE WORD TEST MODE: Detection successful!")
+            print("*** WAKE WORD TEST MODE: DETECTION SUCCESSFUL! ***")
+            # Play a simple beep or confirmation sound
+            if self.audio_playback:
+                # Generate a simple beep tone
+                import numpy as np
+                sample_rate = 24000
+                duration = 0.2  # 200ms beep
+                freq = 800  # 800Hz tone
+                t = np.linspace(0, duration, int(sample_rate * duration))
+                beep = (0.3 * np.sin(2 * np.pi * freq * t) * 32767).astype(np.int16)
+                self.audio_playback.play_audio(beep.tobytes())
+            return
+        
         print(f"*** STARTING VOICE SESSION - LISTEN FOR RESPONSE ***")
         
         # Check current session state

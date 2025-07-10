@@ -52,6 +52,7 @@ class WakeWordConfig:
     timeout: float = 5.0
     vad_enabled: bool = True
     cooldown: float = 2.0
+    test_mode: bool = False  # Test wake word detection without OpenAI connection
     
     # Model download settings
     auto_download: bool = True

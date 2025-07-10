@@ -176,9 +176,25 @@ class OpenAIRealtimeClient:
             if not connected:
                 raise ConnectionError("All WebSocket connection methods failed")
             
+            # Log websockets library version
+            try:
+                import websockets
+                ws_version = getattr(websockets, '__version__', 'unknown')
+                self.logger.info(f"Using websockets library version: {ws_version}")
+            except:
+                pass
+            
+            # Verify connection is actually open
+            if self._is_websocket_closed():
+                self.logger.error("WebSocket reports closed immediately after connection!")
+                raise ConnectionError("WebSocket closed immediately after connection")
+            
             self.state = ConnectionState.CONNECTED
             self.reconnect_attempts = 0
-            self.logger.info("Connected to OpenAI Realtime API")
+            self.logger.info("Connected to OpenAI Realtime API - connection verified")
+            
+            # Small delay to ensure connection is stable
+            await asyncio.sleep(0.1)
             
             # Start event loop
             asyncio.create_task(self._event_loop())
@@ -208,16 +224,29 @@ class OpenAIRealtimeClient:
     def _is_websocket_closed(self) -> bool:
         """Check if websocket is closed, handling different websocket versions"""
         if not self.websocket:
+            self.logger.debug("_is_websocket_closed: No websocket object")
             return True
+        
+        # Log websocket attributes for debugging
+        ws_type = type(self.websocket).__name__
+        ws_attrs = dir(self.websocket)
+        self.logger.debug(f"WebSocket type: {ws_type}, has 'closed': {'closed' in ws_attrs}, has 'state': {'state' in ws_attrs}")
         
         try:
             # Try the standard approach first
-            return self.websocket.closed
+            is_closed = self.websocket.closed
+            self.logger.debug(f"WebSocket.closed = {is_closed}")
+            return is_closed
         except AttributeError:
+            self.logger.debug("WebSocket has no 'closed' attribute, checking state")
             # For older websocket versions, check state differently
             try:
-                return self.websocket.state != 1  # OPEN state is 1
+                state = self.websocket.state
+                is_open = state == 1  # OPEN state is 1
+                self.logger.debug(f"WebSocket.state = {state}, is_open = {is_open}")
+                return not is_open
             except AttributeError:
+                self.logger.debug("WebSocket has no 'state' attribute, assuming open")
                 # Last resort: assume it's open if we can't check
                 return False
     
