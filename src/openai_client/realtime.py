@@ -8,22 +8,18 @@ from typing import Dict, Any, Optional, Callable, List
 from dataclasses import dataclass
 from enum import Enum
 
-# Import websockets - will fail with clear error if not installed
+# Import websockets - required dependency
+import websockets
+import websockets.exceptions
+
+# Check version and legacy support
+WEBSOCKETS_VERSION = getattr(websockets, '__version__', 'unknown')
+WEBSOCKETS_AVAILABLE = True
 try:
-    import websockets
-    import websockets.exceptions
-    WEBSOCKETS_AVAILABLE = True
-    WEBSOCKETS_VERSION = getattr(websockets, '__version__', 'unknown')
-    try:
-        import websockets.legacy.client
-        LEGACY_WEBSOCKETS_AVAILABLE = True
-    except ImportError:
-        LEGACY_WEBSOCKETS_AVAILABLE = False
-except ImportError as e:
-    # This will give a clear error message if websockets is not installed
-    raise ImportError(
-        "websockets library is required. Install with: pip install websockets>=10.0"
-    ) from e
+    import websockets.legacy.client
+    LEGACY_WEBSOCKETS_AVAILABLE = True
+except ImportError:
+    LEGACY_WEBSOCKETS_AVAILABLE = False
 
 from config import OpenAIConfig
 from utils.logger import get_logger

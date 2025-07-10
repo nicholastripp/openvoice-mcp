@@ -10,9 +10,9 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 # This should not raise UnboundLocalError anymore
 try:
     from openai_client.realtime import OpenAIRealtimeClient, WEBSOCKETS_AVAILABLE, WEBSOCKETS_VERSION
-    print(f"Import successful!")
-    print(f"Websockets available: {WEBSOCKETS_AVAILABLE}")
-    print(f"Websockets version: {WEBSOCKETS_VERSION}")
+    print(f"[OK] Import successful!")
+    print(f"[OK] Websockets available: {WEBSOCKETS_AVAILABLE}")
+    print(f"[OK] Websockets version: {WEBSOCKETS_VERSION}")
     
     # Try to access websockets
     import openai_client.realtime as rt
