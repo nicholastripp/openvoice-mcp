@@ -280,11 +280,8 @@ class WakeWordDetector:
             else:
                 gain = 1.0  # No gain for silence
             
-            # Add pre-emphasis filter for speech enhancement
-            # This enhances high frequencies important for wake word detection
-            if len(audio_float) > 1:
-                pre_emphasis_coeff = 0.97
-                audio_float = np.append(audio_float[0], audio_float[1:] - pre_emphasis_coeff * audio_float[:-1])
+            # Pre-emphasis filter removed for performance optimization
+            # The gain control provides sufficient enhancement for wake word detection
             
             post_amp_level = np.max(np.abs(audio_float))
             post_amp_rms = np.sqrt(np.mean(audio_float ** 2))
@@ -888,6 +885,10 @@ class WakeWordDetector:
                     # DEBUG: Log all confidence levels with enhanced threshold comparison
                     threshold_ratio = confidence / self.sensitivity if self.sensitivity > 0 else 0
                     print(f"   DETECTOR: {model_name} confidence {confidence:.6f} (threshold: {self.sensitivity:.6f}, ratio: {threshold_ratio:.1f}x)")
+                    
+                    # Track confidence for monitoring (helps tune threshold)
+                    if chunks_processed % 100 == 0 and self.avg_confidence > 0:
+                        self.logger.info(f"Confidence monitoring - Avg: {self.avg_confidence:.6f}, Peak: {self.peak_confidence:.6f}, Threshold: {self.sensitivity:.6f}")
                     
                     # Enhanced threshold check with detailed logging
                     if confidence >= self.sensitivity:
