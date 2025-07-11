@@ -99,6 +99,13 @@ class WakeWordDetector:
         self.avg_confidence = 0.0
         self.peak_confidence = 0.0
         
+        # Audio gain configuration
+        self.use_fixed_gain = True  # True for fixed gain, False for bounded dynamic
+        self.fixed_gain = 3.5  # Fixed gain value (increased from 2.0)
+        self.dynamic_gain_min = 2.0  # Minimum gain for bounded dynamic mode
+        self.dynamic_gain_max = 5.0  # Maximum gain for bounded dynamic mode
+        self.dynamic_gain_target_rms = 0.04  # Target RMS for bounded dynamic mode
+        
         # Prediction failure tracking (no more ThreadPoolExecutor)
         self.failed_predictions = 0
         self.max_failed_predictions = 3  # Reset model after 3 consecutive failures
@@ -282,12 +289,19 @@ class WakeWordDetector:
             is_likely_speech = 0.02 < zcr < 0.15 and pre_amp_rms > 0.01
             
             if pre_amp_rms > 0.001:  # Avoid division by zero
-                # Use fixed gain to avoid inverse relationship with threshold
-                # This prevents the confusing behavior where louder speech gets lower confidence
-                gain = 2.0  # Fixed gain multiplier for consistent behavior
+                if self.use_fixed_gain:
+                    # Use fixed gain to avoid inverse relationship with threshold
+                    # This prevents the confusing behavior where louder speech gets lower confidence
+                    gain = self.fixed_gain
+                else:
+                    # Bounded dynamic gain provides some adaptation while preventing inverse threshold relationship
+                    gain = np.clip(self.dynamic_gain_target_rms / pre_amp_rms, 
+                                 self.dynamic_gain_min, self.dynamic_gain_max)
+                
                 audio_float = np.clip(audio_float * gain, -1.0, 1.0).astype(np.float32)
                 
-                self.logger.debug(f"ZCR: {zcr:.3f}, likely_speech: {is_likely_speech}, gain: {gain:.2f}x (fixed), input RMS: {pre_amp_rms:.6f}")
+                gain_mode = "fixed" if self.use_fixed_gain else "dynamic"
+                self.logger.debug(f"ZCR: {zcr:.3f}, likely_speech: {is_likely_speech}, gain: {gain:.2f}x ({gain_mode}), input RMS: {pre_amp_rms:.6f}")
                 
                 # Performance optimization: Removed noise gate (too CPU intensive)
                 # The gain control and pre-emphasis provide sufficient enhancement
@@ -550,6 +564,12 @@ class WakeWordDetector:
             self.logger.info(f"Available models: {list(self.model.models.keys())}")
             self.logger.info(f"Model expects: {self.sample_rate}Hz audio in {self.chunk_size} sample chunks (80ms)")
             self.logger.info(f"Model configuration: VAD={self.vad_enabled}, sensitivity={self.sensitivity}")
+            
+            # Log gain configuration
+            if self.use_fixed_gain:
+                self.logger.info(f"Audio gain: FIXED mode, gain={self.fixed_gain}x")
+            else:
+                self.logger.info(f"Audio gain: BOUNDED DYNAMIC mode, range={self.dynamic_gain_min}x-{self.dynamic_gain_max}x, target_rms={self.dynamic_gain_target_rms}")
             
             # NEW: Model warm-up phase
             # Based on test results, OpenWakeWord needs 5-6 predictions before producing non-zero values
