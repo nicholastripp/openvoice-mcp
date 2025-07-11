@@ -80,7 +80,7 @@ class WakeWordDetector:
         
         # Model state management to prevent stuck predictions
         self.predictions_history = []  # Track recent predictions to detect stuck state
-        self.stuck_detection_threshold = 3  # Number of identical predictions to trigger reset (reduced for faster detection)
+        self.stuck_detection_threshold = 2  # Number of identical predictions to trigger reset (reduced to 2 for faster detection)
         self.last_model_reset_time = 0
         self.model_reset_interval = 300.0  # Reset model every 5 minutes (reduced for better responsiveness)
         self.min_reset_cooldown = 2.0  # Minimum time between resets (reduced to 2s for faster recovery)
@@ -986,6 +986,15 @@ class WakeWordDetector:
                                 except Exception as e:
                                     print(f"   DETECTOR: ERROR in callback {i+1}: {e}")
                                     self.logger.error(f"Error in detection callback {i+1}: {e}")
+                            
+                            # Flush audio buffers after detection to prevent re-triggering
+                            # This is done in a separate thread to not block detection
+                            print("   DETECTOR: Scheduling audio buffer flush after detection")
+                            threading.Thread(
+                                target=self._flush_audio_with_silence,
+                                args=(1.0,),  # 1 second flush should be sufficient
+                                daemon=True
+                            ).start()
                         else:
                             print(f"   DETECTOR: WAKE WORD BLOCKED BY COOLDOWN: {model_name} (confidence: {confidence:.6f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
                             self.logger.warning(f"Wake word detected but BLOCKED by cooldown: {model_name} (confidence: {confidence:.6f}), {time_since_last:.1f}s < {self.detection_cooldown}s")
@@ -1044,7 +1053,53 @@ class WakeWordDetector:
         Use this method if you need to clear persistent wake word detections
         or reset the model state during operation.
         """
+        # First try flushing with silence before full reset
+        self._flush_audio_with_silence()
         self._reset_model_state("manual_reset")
+    
+    def _flush_audio_with_silence(self, duration_seconds: float = 2.0) -> None:
+        """
+        Flush model buffers by processing silence
+        
+        This is the recommended approach from OpenWakeWord maintainer
+        to clear buffers without full model reset.
+        
+        Args:
+            duration_seconds: Duration of silence to process (default 2 seconds)
+        """
+        if not self.model:
+            return
+            
+        self.logger.info(f"[FLUSH] Flushing audio buffers with {duration_seconds}s of silence")
+        
+        # Generate silence at 16kHz (OpenWakeWord's expected rate)
+        num_samples = int(self.sample_rate * duration_seconds)
+        silence = np.zeros(num_samples, dtype=np.float32)
+        
+        # Process in chunks of 1280 samples (80ms at 16kHz)
+        chunk_size = 1280
+        chunks_processed = 0
+        
+        try:
+            with self.model_lock:
+                for i in range(0, len(silence), chunk_size):
+                    chunk = silence[i:i+chunk_size]
+                    # Pad last chunk if needed
+                    if len(chunk) < chunk_size:
+                        chunk = np.pad(chunk, (0, chunk_size - len(chunk)), mode='constant')
+                    
+                    # Process chunk through model
+                    self.model.predict(chunk)
+                    chunks_processed += 1
+            
+            self.logger.info(f"[FLUSH] Processed {chunks_processed} chunks of silence")
+            
+            # Clear our internal buffers as well
+            self.audio_buffer = np.array([], dtype=np.float32)
+            self.recent_confidences = []
+            
+        except Exception as e:
+            self.logger.error(f"[FLUSH] Error during audio flush: {e}")
     
     def _validate_audio_chunk(self, audio_float: np.ndarray) -> bool:
         """
@@ -1120,6 +1175,15 @@ class WakeWordDetector:
         
         first_model_name = list(recent_predictions[0].keys())[0]
         first_value = recent_predictions[0][first_model_name]
+        
+        # First check variance - if predictions have very low variance, model is likely stuck
+        prediction_values = [pred[first_model_name] for pred in recent_predictions if pred and first_model_name in pred]
+        if len(prediction_values) >= self.stuck_detection_threshold:
+            variance = np.var(prediction_values)
+            if variance < 1e-12:  # Extremely low variance indicates stuck state
+                self.logger.warning(f"Model stuck: Zero variance in {len(prediction_values)} predictions (all {prediction_values[0]:.8e})")
+                print(f"Model stuck: Zero variance in {len(prediction_values)} predictions (all {prediction_values[0]:.8e})")
+                return True
         
         # Special handling for the critical stuck value 5.0768717e-06
         if abs(first_value - 5.0768717e-06) < 1e-10:
@@ -1295,6 +1359,36 @@ class WakeWordDetector:
                     model_name = list(pred.keys())[0]
                     confidence = pred[model_name]
                     self.logger.info(f"[RESET]   {i+1}. {model_name}: {confidence:.8f}")
+        
+        # First try flushing with silence (recommended approach)
+        if self.model and reset_reason != "manual_reset":  # Skip flush for manual reset since we already did it
+            self.logger.info("[RESET] Attempting audio flush before reset")
+            self._flush_audio_with_silence(duration_seconds=1.5)
+            
+            # Test if flush resolved the issue
+            if reset_reason == "stuck_state":
+                test_predictions = []
+                try:
+                    with self.model_lock:
+                        # Test with a few varied chunks
+                        for i in range(3):
+                            test_chunk = np.random.normal(0, 0.01 * (i + 1), 1280).astype(np.float32)
+                            test_chunk = np.clip(test_chunk, -1.0, 1.0)
+                            pred = self.model.predict(test_chunk)
+                            test_predictions.append(pred)
+                    
+                    # Check if predictions vary
+                    if len(test_predictions) >= 2:
+                        variance = np.var([max(p.values()) for p in test_predictions if p])
+                        if variance > 1e-10:
+                            self.logger.info(f"[RESET] Flush successful - model producing varied predictions (variance: {variance:.2e})")
+                            # Just clear tracking and return
+                            self.predictions_history = []
+                            self.chunks_since_reset = 0
+                            self.recent_confidences = []
+                            return
+                except Exception as e:
+                    self.logger.warning(f"[RESET] Error testing model after flush: {e}")
         
         # For stuck state, known stuck value, or failure, always try complete model reload
         if reset_reason in ["stuck_state", "known_stuck_value", "prediction_failure"] and self.model:
