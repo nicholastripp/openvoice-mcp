@@ -5,107 +5,154 @@ Test script to help tune wake word gain settings
 
 import sys
 import os
+import asyncio
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from wake_word.detector import WakeWordDetector
-from config import WakeWordConfig
+from config import WakeWordConfig, load_config
 import numpy as np
 import time
 
 
-def test_gain_settings():
-    """Test different gain settings and report confidence levels"""
+def test_gain_calculations():
+    """Test different gain calculations without full model initialization"""
     
     # Test configurations
     test_configs = [
         {"name": "Fixed 2.0x (old)", "fixed_gain": 2.0, "use_fixed": True},
         {"name": "Fixed 3.5x (new)", "fixed_gain": 3.5, "use_fixed": True},
         {"name": "Fixed 4.0x", "fixed_gain": 4.0, "use_fixed": True},
-        {"name": "Dynamic 2-5x", "use_fixed": False, "min": 2.0, "max": 5.0},
-        {"name": "Dynamic 3-6x", "use_fixed": False, "min": 3.0, "max": 6.0},
+        {"name": "Dynamic 2-5x", "use_fixed": False, "min": 2.0, "max": 5.0, "target_rms": 0.04},
+        {"name": "Dynamic 3-6x", "use_fixed": False, "min": 3.0, "max": 6.0, "target_rms": 0.04},
     ]
     
-    # Load config
-    config = WakeWordConfig(
-        enabled=True,
-        model="hey_jarvis",
-        sensitivity=0.005,  # Use a middle sensitivity for testing
-        timeout=5.0,
-        vad_enabled=False,
-        cooldown=2.0
-    )
+    print("Wake Word Gain Calculation Testing")
+    print("=" * 60)
+    print("Testing gain calculations for different input RMS levels")
+    print("Note: This tests gain calculations only, not actual model predictions")
+    print("=" * 60)
     
-    print("Wake Word Gain Testing")
-    print("=" * 50)
-    print(f"Model: {config.model}")
-    print(f"Sensitivity threshold: {config.sensitivity}")
-    print("=" * 50)
+    # Test with different audio RMS levels
+    test_rms_levels = [0.005, 0.01, 0.02, 0.03, 0.05, 0.08, 0.1]
     
     for test_config in test_configs:
-        print(f"\nTesting: {test_config['name']}")
-        print("-" * 30)
-        
-        # Create detector
-        detector = WakeWordDetector(config)
-        
-        # Apply test configuration
-        detector.use_fixed_gain = test_config.get("use_fixed", True)
-        if detector.use_fixed_gain:
-            detector.fixed_gain = test_config["fixed_gain"]
-        else:
-            detector.dynamic_gain_min = test_config["min"]
-            detector.dynamic_gain_max = test_config["max"]
-        
-        # Initialize model
-        detector._initialize_model()
-        
-        # Test with different audio levels
-        test_rms_levels = [0.01, 0.02, 0.03, 0.05, 0.08]
+        print(f"\n{test_config['name']}:")
+        print("-" * 40)
         
         for rms_level in test_rms_levels:
-            # Generate test audio at specific RMS level
-            # Using noise that somewhat resembles speech patterns
+            if test_config["use_fixed"]:
+                applied_gain = test_config["fixed_gain"]
+                gain_type = "fixed"
+            else:
+                # Calculate bounded dynamic gain
+                target_rms = test_config["target_rms"]
+                raw_gain = target_rms / rms_level
+                applied_gain = np.clip(raw_gain, test_config["min"], test_config["max"])
+                gain_type = "dynamic"
+            
+            # Calculate final RMS after gain
+            final_rms = rms_level * applied_gain
+            
+            print(f"  RMS={rms_level:.3f} -> Gain={applied_gain:.1f}x ({gain_type}) -> Final RMS={final_rms:.3f}")
+    
+    print("\n" + "=" * 60)
+    print("Analysis:")
+    print("- Fixed gain provides consistent amplification regardless of input level")
+    print("- Dynamic gain adapts to input level but is bounded to prevent extremes")
+    print("- Higher final RMS generally leads to better wake word confidence")
+    print("- Target final RMS should be in 0.1-0.2 range for best results")
+
+
+def test_with_actual_model():
+    """Test with actual model predictions (simpler version)"""
+    
+    try:
+        # Load actual configuration
+        print("\n" + "=" * 60)
+        print("Testing with Actual Wake Word Model")
+        print("=" * 60)
+        
+        # Try to load config from file, fall back to defaults
+        try:
+            config = load_config()
+            wake_config = config.wake_word
+            print(f"Loaded config from file: model={wake_config.model}, sensitivity={wake_config.sensitivity}")
+        except Exception as e:
+            print(f"Could not load config file ({e}), using defaults")
+            wake_config = WakeWordConfig(
+                enabled=True,
+                model="hey_jarvis",
+                sensitivity=0.005,
+                timeout=5.0,
+                vad_enabled=False,
+                cooldown=2.0
+            )
+        
+        # Create detector
+        detector = WakeWordDetector(wake_config)
+        
+        # Load model only (don't start full detection)
+        try:
+            detector._load_model()
+            print(f"Successfully loaded model: {wake_config.model}")
+            
+            # Test current configuration
+            print(f"\nCurrent gain configuration:")
+            print(f"- Use fixed gain: {detector.use_fixed_gain}")
+            if detector.use_fixed_gain:
+                print(f"- Fixed gain: {detector.fixed_gain}x")
+            else:
+                print(f"- Dynamic gain range: {detector.dynamic_gain_min}x - {detector.dynamic_gain_max}x")
+                print(f"- Target RMS: {detector.dynamic_gain_target_rms}")
+            
+            # Test prediction with sample audio
+            print("\nTesting with sample audio:")
             duration_samples = 1280  # 80ms at 16kHz
             
-            # Create audio with speech-like characteristics
-            # Mix of low and high frequency components
+            # Generate speech-like test audio
             t = np.linspace(0, duration_samples/16000, duration_samples)
-            low_freq = np.sin(2 * np.pi * 200 * t)  # 200 Hz component
-            mid_freq = np.sin(2 * np.pi * 800 * t) * 0.5  # 800 Hz component
-            high_freq = np.sin(2 * np.pi * 2000 * t) * 0.3  # 2000 Hz component
-            noise = np.random.normal(0, 0.1, duration_samples)
+            audio = (
+                np.sin(2 * np.pi * 300 * t) * 0.7 +  # Fundamental
+                np.sin(2 * np.pi * 900 * t) * 0.3 +  # Harmonic
+                np.random.normal(0, 0.05, duration_samples)  # Noise
+            )
             
-            audio = low_freq + mid_freq + high_freq + noise
+            # Test different gain levels
+            test_gains = [2.0, 3.0, 3.5, 4.0, 5.0]
             
-            # Normalize to target RMS
-            current_rms = np.sqrt(np.mean(audio ** 2))
-            audio = audio * (rms_level / current_rms)
-            audio = np.clip(audio, -1.0, 1.0).astype(np.float32)
+            for gain in test_gains:
+                # Apply gain and clip
+                test_audio = np.clip(audio * gain, -1.0, 1.0).astype(np.float32)
+                
+                # Get prediction
+                try:
+                    with detector.model_lock:
+                        prediction = detector.model.predict(test_audio)
+                    confidence = max(prediction.values()) if prediction else 0.0
+                    rms = np.sqrt(np.mean(test_audio ** 2))
+                    
+                    threshold_ratio = confidence / wake_config.sensitivity if wake_config.sensitivity > 0 else 0
+                    status = "DETECT" if confidence >= wake_config.sensitivity else "below"
+                    
+                    print(f"  Gain {gain:.1f}x: RMS={rms:.3f}, Confidence={confidence:.6f} ({threshold_ratio:.1f}x threshold) [{status}]")
+                    
+                except Exception as e:
+                    print(f"  Gain {gain:.1f}x: Prediction failed - {e}")
             
-            # Get prediction
-            prediction = detector.model.predict(audio)
-            confidence = max(prediction.values()) if prediction else 0.0
-            
-            # Calculate what the gain would be
-            if detector.use_fixed_gain:
-                applied_gain = detector.fixed_gain
-            else:
-                applied_gain = np.clip(detector.dynamic_gain_target_rms / rms_level,
-                                     detector.dynamic_gain_min, detector.dynamic_gain_max)
-            
-            print(f"  RMS={rms_level:.3f}, Gain={applied_gain:.1f}x, Confidence={confidence:.6f}")
+        except Exception as e:
+            print(f"Failed to load model: {e}")
+            print("Make sure you're running this on the Raspberry Pi with OpenWakeWord installed")
+            return
         
-        # Cleanup
-        detector.stop()
-        time.sleep(0.5)
-    
-    print("\n" + "=" * 50)
-    print("Testing complete!")
-    print("\nRecommendations:")
-    print("- If confidence values are still too low, try Fixed 4.0x")
-    print("- If getting false positives, reduce gain or increase sensitivity threshold")
-    print("- Dynamic gain can help with varying input levels but may be less predictable")
+    except Exception as e:
+        print(f"Test failed: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
-    test_gain_settings()
+    # First test gain calculations (works everywhere)
+    test_gain_calculations()
+    
+    # Then test with actual model (only works on Pi with proper setup)
+    test_with_actual_model()
