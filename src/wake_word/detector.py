@@ -270,9 +270,8 @@ class WakeWordDetector:
             pre_amp_level = np.max(np.abs(audio_float))
             pre_amp_rms = np.sqrt(np.mean(audio_float ** 2))
             
-            # FIX: Implement proper RMS-based gain control  
-            # Balance between wake word detection and OpenAI VAD needs
-            target_rms = 0.04  # Much lower target to prevent environmental sounds from triggering
+            # Fixed gain control to prevent inverse relationship with threshold
+            # Previously, RMS-based gain caused louder speech to get lower confidence
             
             # Simple speech/noise discrimination
             # Calculate zero-crossing rate to distinguish speech from steady noise
@@ -283,18 +282,17 @@ class WakeWordDetector:
             is_likely_speech = 0.02 < zcr < 0.15 and pre_amp_rms > 0.01
             
             if pre_amp_rms > 0.001:  # Avoid division by zero
-                # Apply less gain to non-speech sounds
-                max_gain = 3.0 if is_likely_speech else 1.5
-                gain = min(max_gain, target_rms / pre_amp_rms)
-                # Apply gain with proper clipping (not tanh which distorts audio)
+                # Use fixed gain to avoid inverse relationship with threshold
+                # This prevents the confusing behavior where louder speech gets lower confidence
+                gain = 2.0  # Fixed gain multiplier for consistent behavior
                 audio_float = np.clip(audio_float * gain, -1.0, 1.0).astype(np.float32)
                 
-                self.logger.debug(f"ZCR: {zcr:.3f}, likely_speech: {is_likely_speech}, gain: {gain:.2f}x")
+                self.logger.debug(f"ZCR: {zcr:.3f}, likely_speech: {is_likely_speech}, gain: {gain:.2f}x (fixed), input RMS: {pre_amp_rms:.6f}")
                 
                 # Performance optimization: Removed noise gate (too CPU intensive)
                 # The gain control and pre-emphasis provide sufficient enhancement
                 
-                self.logger.debug(f"Applied gain of {gain:.2f}x (RMS: {pre_amp_rms:.6f} -> target: {target_rms:.2f})")
+                self.logger.debug(f"Applied fixed gain of {gain:.2f}x (input RMS: {pre_amp_rms:.6f})")
             else:
                 gain = 1.0  # No gain for silence
             
@@ -338,8 +336,8 @@ class WakeWordDetector:
                 spectral_centroid = np.sum(np.arange(len(audio_float)) * np.abs(audio_float)) / np.sum(np.abs(audio_float)) if np.sum(np.abs(audio_float)) > 0 else 0
                 spectral_centroid_hz = (spectral_centroid / len(audio_float)) * self.sample_rate
                 
-                self.logger.info(f"Audio characteristics - RMS: {pre_amp_rms:.6f} -> {post_amp_rms:.6f}, Gain: {gain:.2f}x, ZCR: {zcr:.3f}, Speech-like: {is_likely_speech}, Spectral centroid: {spectral_centroid_hz:.0f}Hz")
-                print(f"   DETECTOR: AUDIO STATS: RMS {pre_amp_rms:.6f} -> {post_amp_rms:.6f} (gain: {gain:.2f}x), ZCR: {zcr:.3f}, Speech: {is_likely_speech}")
+                self.logger.info(f"Audio characteristics - RMS: {pre_amp_rms:.6f} -> {post_amp_rms:.6f}, Fixed Gain: {gain:.2f}x, ZCR: {zcr:.3f}, Speech-like: {is_likely_speech}, Spectral centroid: {spectral_centroid_hz:.0f}Hz")
+                print(f"   DETECTOR: AUDIO STATS: RMS {pre_amp_rms:.6f} -> {post_amp_rms:.6f} (fixed gain: {gain:.2f}x), ZCR: {zcr:.3f}, Speech: {is_likely_speech}")
             
             # Immediate debug feedback with enhanced info
             print(f"   DETECTOR: audio_level={audio_level:.3f}, samples={len(audio_float)}, ZCR={zcr:.3f}, speech={is_likely_speech}", flush=True)
