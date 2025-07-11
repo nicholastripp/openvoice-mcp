@@ -54,6 +54,10 @@ class WakeWordConfig:
     cooldown: float = 2.0
     test_mode: bool = False  # Test wake word detection without OpenAI connection
     
+    # Audio gain settings
+    audio_gain: float = 3.5  # Audio amplification factor (1.0-5.0)
+    audio_gain_mode: str = "fixed"  # Gain mode: "fixed" or "dynamic"
+    
     # Model download settings
     auto_download: bool = True
     download_timeout: int = 300
@@ -160,6 +164,13 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
         # Create optional configuration objects
         audio_config = AudioConfig(**config_data.get("audio", {}))
         wake_word_config = WakeWordConfig(**config_data.get("wake_word", {}))
+        
+        # Validate wake word gain settings
+        if wake_word_config.audio_gain < 1.0 or wake_word_config.audio_gain > 5.0:
+            raise ValueError(f"wake_word.audio_gain must be between 1.0 and 5.0, got {wake_word_config.audio_gain}")
+        if wake_word_config.audio_gain_mode not in ["fixed", "dynamic"]:
+            raise ValueError(f"wake_word.audio_gain_mode must be 'fixed' or 'dynamic', got '{wake_word_config.audio_gain_mode}'")
+        
         session_config = SessionConfig(**config_data.get("session", {}))
         system_config = SystemConfig(**config_data.get("system", {}))
         advanced_config = AdvancedConfig(**config_data.get("advanced", {}))

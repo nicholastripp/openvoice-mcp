@@ -99,9 +99,10 @@ class WakeWordDetector:
         self.avg_confidence = 0.0
         self.peak_confidence = 0.0
         
-        # Audio gain configuration
-        self.use_fixed_gain = True  # True for fixed gain, False for bounded dynamic
-        self.fixed_gain = 3.5  # Fixed gain value (increased from 2.0)
+        # Audio gain configuration from config
+        self.use_fixed_gain = (config.audio_gain_mode == "fixed")
+        self.fixed_gain = config.audio_gain  # Use configured gain value
+        # Keep these as hardcoded defaults for dynamic mode
         self.dynamic_gain_min = 2.0  # Minimum gain for bounded dynamic mode
         self.dynamic_gain_max = 5.0  # Maximum gain for bounded dynamic mode
         self.dynamic_gain_target_rms = 0.04  # Target RMS for bounded dynamic mode

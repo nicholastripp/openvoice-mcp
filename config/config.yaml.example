@@ -37,6 +37,13 @@ wake_word:
   vad_enabled: false              # Disable VAD (was causing 0.0 predictions with warm-up mechanism)
   cooldown: 1.5                   # Seconds between wake word detections
   
+  # Audio Gain Settings
+  audio_gain: 3.5                 # Audio amplification factor (1.0-5.0, default: 3.5)
+  audio_gain_mode: "fixed"        # Gain mode: "fixed" or "dynamic"
+  # dynamic_gain_min: 2.0         # Min gain for dynamic mode (optional)
+  # dynamic_gain_max: 5.0         # Max gain for dynamic mode (optional)
+  # dynamic_gain_target_rms: 0.04 # Target RMS for dynamic mode (optional)
+  
   # Model Download Settings
   auto_download: true             # Automatically download models if missing
   download_timeout: 300           # Download timeout in seconds
