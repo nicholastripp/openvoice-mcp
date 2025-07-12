@@ -316,7 +316,6 @@ class PorcupineDetector:
             # Apply high-pass filter to remove low-frequency noise (< 80Hz)
             # This helps with wake word detection by removing rumble and DC offset
             if not hasattr(self, '_highpass_sos'):
-                from scipy import signal
                 # Design a 4th order Butterworth high-pass filter at 80Hz
                 nyquist = input_sample_rate / 2
                 cutoff = 80 / nyquist
