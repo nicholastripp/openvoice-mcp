@@ -47,6 +47,7 @@ class AudioConfig:
 class WakeWordConfig:
     """Wake word configuration"""
     enabled: bool = True
+    engine: str = "openwakeword"  # Wake word engine: "openwakeword" or "porcupine"
     model: str = "alexa"
     sensitivity: float = 0.0001  # Reasonable default threshold for wake word detection
     timeout: float = 5.0
@@ -55,7 +56,7 @@ class WakeWordConfig:
     test_mode: bool = False  # Test wake word detection without OpenAI connection
     
     # Audio gain settings
-    audio_gain: float = 3.5  # Audio amplification factor (1.0-5.0)
+    audio_gain: float = 2.0  # Audio amplification factor (1.0-5.0, reduced to prevent clipping)
     audio_gain_mode: str = "fixed"  # Gain mode: "fixed" or "dynamic"
     
     # Model download settings
@@ -65,6 +66,9 @@ class WakeWordConfig:
     
     # Noise suppression settings
     speex_noise_suppression: bool = True  # Enable if speexdsp_ns is available
+    
+    # Porcupine-specific settings
+    porcupine_access_key: Optional[str] = None  # Picovoice access key
 
 
 @dataclass

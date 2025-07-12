@@ -267,6 +267,14 @@ class AudioCapture:
         Returns:
             PCM16 audio data at 24kHz
         """
+        # Apply input volume gain
+        if self.volume != 1.0:
+            audio_data = audio_data * self.volume
+            # Log if clipping occurs
+            if np.any(np.abs(audio_data) > 1.0):
+                clipped_samples = np.sum(np.abs(audio_data) > 1.0)
+                self.logger.debug(f"Audio clipping detected: {clipped_samples} samples clipped with gain {self.volume}")
+        
         # Resample if needed
         if self.need_resampling:
             # Calculate new length

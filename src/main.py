@@ -24,7 +24,7 @@ from ha_client.conversation import HomeAssistantConversationClient
 from audio.capture import AudioCapture
 from audio.playback import AudioPlayback
 from function_bridge import FunctionCallBridge
-from wake_word.detector import WakeWordDetector
+from wake_word import create_wake_word_detector
 
 
 class SessionState(Enum):
@@ -42,6 +42,7 @@ class VoiceAssistant:
     """Main voice assistant application"""
     
     def __init__(self, config: AppConfig, personality: PersonalityProfile):
+        print("DEBUG: VoiceAssistant.__init__() called", flush=True)
         self.config = config
         self.personality = personality
         self.logger = get_logger("VoiceAssistant")
@@ -84,15 +85,19 @@ class VoiceAssistant:
     
     async def start(self) -> None:
         """Start the voice assistant"""
+        print("DEBUG: VoiceAssistant.start() called", flush=True)
         self.logger.info("Starting Home Assistant Realtime Voice Assistant")
         
         try:
+            print("DEBUG: About to call _initialize_components()", flush=True)
             # Initialize components
             await self._initialize_components()
             
+            print("DEBUG: Components initialized, creating cleanup task", flush=True)
             # Start periodic cleanup task
             self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
             
+            print("DEBUG: Starting main loop", flush=True)
             # Start main loop
             self.running = True
             await self._main_loop()
@@ -142,6 +147,22 @@ class VoiceAssistant:
             # Enhanced logging with more context
             self.logger.info(f"Session state: {old_state.value} -> {new_state.value} (session_active: {self.session_active}, response_active: {self.response_active})")
             print(f"*** SESSION STATE: {old_state.value.upper()} -> {new_state.value.upper()} (session_active: {self.session_active}, response_active: {self.response_active}) ***")
+            
+            # Enhanced state visibility with visual banner
+            state_banner = {
+                SessionState.IDLE: "🔴 IDLE - Waiting for wake word",
+                SessionState.LISTENING: "🟡 LISTENING - Speak your question",
+                SessionState.PROCESSING: "🟠 PROCESSING - Analyzing speech",
+                SessionState.RESPONDING: "🟢 RESPONDING - Generating answer",
+                SessionState.AUDIO_PLAYING: "🔵 PLAYING - Response audio",
+                SessionState.COOLDOWN: "⏸️  COOLDOWN - Session ending",
+                SessionState.MULTI_TURN_LISTENING: "🔄 MULTI-TURN - Ask follow-up"
+            }
+            
+            if new_state in state_banner:
+                print(f"\n{'='*60}")
+                print(f"STATE: {state_banner[new_state]}")
+                print(f"{'='*60}\n")
             
             # Log additional context for specific transitions
             if new_state == SessionState.IDLE:
@@ -241,10 +262,12 @@ class VoiceAssistant:
     
     async def _initialize_components(self) -> None:
         """Initialize all components"""
+        print("DEBUG: _initialize_components() started", flush=True)
         self.logger.info("Initializing components...")
         
         # Check for wake word only mode early
         wake_word_only_mode = self.config.wake_word.enabled and getattr(self.config.wake_word, 'test_mode', False)
+        print(f"DEBUG: wake_word_only_mode = {wake_word_only_mode}", flush=True)
         
         if wake_word_only_mode:
             self.logger.info("WAKE WORD TEST MODE: Skipping Home Assistant and OpenAI initialization")
@@ -254,19 +277,23 @@ class VoiceAssistant:
             self.function_bridge = None
             self.openai_client = None
         else:
+            print("DEBUG: About to initialize Home Assistant client", flush=True)
             # Initialize Home Assistant client
             self.logger.info("Initializing Home Assistant client...")
             self.ha_client = HomeAssistantConversationClient(self.config.home_assistant)
             await self.ha_client.start()
+            print("DEBUG: Home Assistant client initialized", flush=True)
             
             # Initialize function bridge
             self.function_bridge = FunctionCallBridge(self.ha_client)
         
         if not wake_word_only_mode:
+            print("DEBUG: About to initialize OpenAI client", flush=True)
             # Initialize OpenAI client with device-aware personality
             self.logger.info("Initializing OpenAI client...")
             personality_prompt = await self._generate_device_aware_personality()
             self.openai_client = OpenAIRealtimeClient(self.config.openai, personality_prompt)
+            print("DEBUG: OpenAI client created", flush=True)
         
         if not wake_word_only_mode:
             # Register function handlers
@@ -287,27 +314,36 @@ class VoiceAssistant:
             # Setup OpenAI event handlers
             self._setup_openai_handlers()
             
+            print("DEBUG: About to connect to OpenAI", flush=True)
             # Connect to OpenAI
             success = await self.openai_client.connect()
             if not success:
                 raise RuntimeError("Failed to connect to OpenAI Realtime API")
+            print("DEBUG: OpenAI connection successful", flush=True)
         
+        print("DEBUG: About to initialize audio components", flush=True)
         # Initialize audio components
         self.logger.info("Initializing audio components...")
         self.audio_capture = AudioCapture(self.config.audio)
         self.audio_playback = AudioPlayback(self.config.audio)
         
+        print("DEBUG: Starting audio capture", flush=True)
         await self.audio_capture.start()
+        print("DEBUG: Starting audio playback", flush=True)
         await self.audio_playback.start()
+        print("DEBUG: Audio components started", flush=True)
         
         # Setup audio completion callback
         self.audio_playback.add_completion_callback(self._on_audio_playback_complete)
         
         # Initialize wake word detector
         if self.config.wake_word.enabled:
+            print("DEBUG: Wake word enabled, creating detector", flush=True)
             self.logger.info("Initializing wake word detector...")
-            self.wake_word_detector = WakeWordDetector(self.config.wake_word)
+            self.wake_word_detector = create_wake_word_detector(self.config.wake_word)
+            print("DEBUG: About to start wake word detector", flush=True)
             await self.wake_word_detector.start()
+            print("DEBUG: Wake word detector started", flush=True)
             
             # Setup wake word detection callback
             self.wake_word_detector.add_detection_callback(self._on_wake_word_detected)
@@ -608,6 +644,13 @@ class VoiceAssistant:
     
     async def _on_audio_captured_for_wake_word(self, audio_data: bytes) -> None:
         """Handle captured audio for wake word detection"""
+        # Debug audio flow
+        if not hasattr(self, '_audio_flow_counter'):
+            self._audio_flow_counter = 0
+            print(f"DEBUG: Audio callback registered, first audio data received: {len(audio_data)} bytes", flush=True)
+        
+        self._audio_flow_counter += 1
+        
         # ENHANCED: Check multiple conditions for muting audio during response/cooldown
         should_mute = (
             self.config.audio.mute_during_response and 
@@ -635,7 +678,35 @@ class VoiceAssistant:
             if self.wake_word_detector:
                 # Audio from capture is at the device sample rate (before resampling to 24kHz)
                 device_sample_rate = self.config.audio.sample_rate
-                self.wake_word_detector.process_audio(audio_data, input_sample_rate=device_sample_rate)
+                
+                # Initialize wake word stats if needed
+                if not hasattr(self, '_wake_word_stats'):
+                    self._wake_word_stats = {
+                        'chunks_processed': 0,
+                        'total_bytes': 0,
+                        'detection_attempts': 0,
+                        'last_detection_time': None
+                    }
+                
+                self._wake_word_stats['chunks_processed'] += 1
+                self._wake_word_stats['total_bytes'] += len(audio_data)
+                
+                # Log every 50th chunk with enhanced info
+                if self._audio_flow_counter % 50 == 0:
+                    duration_seconds = self._wake_word_stats['total_bytes'] / (device_sample_rate * 2)  # PCM16 = 2 bytes per sample
+                    print(f"DEBUG: Wake word listening - chunk #{self._audio_flow_counter}, "
+                          f"{duration_seconds:.1f}s processed, "
+                          f"{self._wake_word_stats.get('detection_attempts', 0)} detections", flush=True)
+                
+                # Process audio for wake word detection
+                result = self.wake_word_detector.process_audio(audio_data, input_sample_rate=device_sample_rate)
+                
+                # Track if wake word processing returned any result
+                if result is not None and result > 0:
+                    self._wake_word_stats['detection_attempts'] += 1
+                    if self._wake_word_stats['detection_attempts'] % 10 == 0:
+                        print(f"*** WAKE WORD ACTIVITY: {self._wake_word_stats['detection_attempts']} partial detections ***")
+                
                 # Debug: Log that audio is being sent to wake word detector
                 if hasattr(self, '_wake_word_debug_counter'):
                     self._wake_word_debug_counter += 1
@@ -1268,8 +1339,22 @@ class VoiceAssistant:
     
     def _on_wake_word_detected(self, model_name: str, confidence: float) -> None:
         """Handle wake word detection"""
+        # ENHANCED: Add prominent visual banner
+        print("\n" + "="*70)
+        print("🎙️  WAKE WORD DETECTED!  🎙️".center(70))
+        print("="*70)
+        print(f"Wake Word: {model_name}".center(70))
+        print(f"Confidence: {confidence:.6f}".center(70))
+        print("="*70)
+        print()
+        
         self.logger.info(f"Wake word '{model_name}' detected with confidence {confidence:.6f}")
-        print(f"*** WAKE WORD DETECTED: {model_name} (confidence: {confidence:.6f}) ***")
+        
+        # Increment wake word detection counter
+        if not hasattr(self, '_wake_word_detection_count'):
+            self._wake_word_detection_count = 0
+        self._wake_word_detection_count += 1
+        print(f"*** TOTAL WAKE WORD DETECTIONS THIS SESSION: {self._wake_word_detection_count} ***")
         
         # Check for wake word only mode
         wake_word_only_mode = self.config.wake_word.enabled and hasattr(self.config.wake_word, 'test_mode') and self.config.wake_word.test_mode
@@ -1289,7 +1374,19 @@ class VoiceAssistant:
                 self.audio_playback.play_audio(beep.tobytes())
             return
         
-        print(f"*** STARTING VOICE SESSION - LISTEN FOR RESPONSE ***")
+        # Play confirmation beep for all wake word detections
+        if self.audio_playback:
+            # Generate a simple beep tone
+            import numpy as np
+            sample_rate = 24000
+            duration = 0.15  # 150ms beep (shorter for production)
+            freq = 600  # 600Hz tone (lower frequency)
+            t = np.linspace(0, duration, int(sample_rate * duration))
+            beep = (0.2 * np.sin(2 * np.pi * freq * t) * 32767).astype(np.int16)
+            self.audio_playback.play_audio(beep.tobytes())
+            print("*** PLAYING CONFIRMATION BEEP ***")
+        
+        print(f"*** STARTING VOICE SESSION - SPEAK NOW ***")
         
         # Check current session state
         if self.session_active:
@@ -1401,12 +1498,15 @@ async def main():
         logger.info(f"HA URL: {config.home_assistant.url}")
         logger.info(f"Assistant Name: {personality.backstory.name}")
         
+        print("DEBUG: About to create VoiceAssistant instance", flush=True)
         # Create and start assistant
         assistant = VoiceAssistant(config, personality)
         
+        print("DEBUG: About to setup signal handlers", flush=True)
         # Setup signal handlers
         setup_signal_handlers(assistant)
         
+        print("DEBUG: About to start assistant", flush=True)
         # Start the assistant
         await assistant.start()
         
