@@ -676,8 +676,9 @@ class VoiceAssistant:
         if not self.session_active:
             # Send audio to wake word detector with proper sample rate
             if self.wake_word_detector:
-                # Audio from capture is at the device sample rate (before resampling to 24kHz)
-                device_sample_rate = self.config.audio.sample_rate
+                # CRITICAL FIX: Audio from capture has been resampled to 24kHz
+                # We must use the actual sample rate, not the device sample rate
+                actual_sample_rate = 24000  # Audio capture resamples to this rate
                 
                 # Initialize wake word stats if needed
                 if not hasattr(self, '_wake_word_stats'):
@@ -687,19 +688,22 @@ class VoiceAssistant:
                         'detection_attempts': 0,
                         'last_detection_time': None
                     }
+                    # Log the critical fix
+                    print(f"*** CRITICAL FIX APPLIED: Using actual sample rate {actual_sample_rate}Hz instead of device rate {self.config.audio.sample_rate}Hz ***")
+                    self.logger.info(f"Wake word detection using corrected sample rate: {actual_sample_rate}Hz (was incorrectly using {self.config.audio.sample_rate}Hz)")
                 
                 self._wake_word_stats['chunks_processed'] += 1
                 self._wake_word_stats['total_bytes'] += len(audio_data)
                 
                 # Log every 50th chunk with enhanced info
                 if self._audio_flow_counter % 50 == 0:
-                    duration_seconds = self._wake_word_stats['total_bytes'] / (device_sample_rate * 2)  # PCM16 = 2 bytes per sample
+                    duration_seconds = self._wake_word_stats['total_bytes'] / (actual_sample_rate * 2)  # PCM16 = 2 bytes per sample
                     print(f"DEBUG: Wake word listening - chunk #{self._audio_flow_counter}, "
                           f"{duration_seconds:.1f}s processed, "
                           f"{self._wake_word_stats.get('detection_attempts', 0)} detections", flush=True)
                 
                 # Process audio for wake word detection
-                result = self.wake_word_detector.process_audio(audio_data, input_sample_rate=device_sample_rate)
+                result = self.wake_word_detector.process_audio(audio_data, input_sample_rate=actual_sample_rate)
                 
                 # Track if wake word processing returned any result
                 if result is not None and result > 0:
