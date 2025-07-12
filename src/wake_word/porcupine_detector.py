@@ -424,7 +424,7 @@ class PorcupineDetector:
                     
                     # PROMINENT DETECTION LOGGING
                     print("\n" + "="*70, flush=True)
-                    print("🎯 PORCUPINE WAKE WORD DETECTED! 🎯".center(70), flush=True)
+                    print("[TARGET] PORCUPINE WAKE WORD DETECTED! [TARGET]".center(70), flush=True)
                     print("="*70, flush=True)
                     print(f"Keyword: {keyword}".center(70), flush=True)
                     print(f"Index: {keyword_index}".center(70), flush=True)
@@ -440,21 +440,21 @@ class PorcupineDetector:
                         sensitivity = self.sensitivities[keyword_index]
                         
                         self.logger.info(f"Wake word detected: {keyword} (index: {keyword_index})")
-                        print(f"✅ WAKE WORD ACTIVE: '{keyword}' (sensitivity: {sensitivity}, cooldown OK: {time_since_last:.2f}s)", flush=True)
+                        print(f"[OK] WAKE WORD ACTIVE: '{keyword}' (sensitivity: {sensitivity}, cooldown OK: {time_since_last:.2f}s)", flush=True)
                         self.last_detection_time = current_time
                         
                         # Call detection callbacks
                         # Porcupine doesn't provide confidence scores, so we use sensitivity as a proxy
-                        print(f"📢 Triggering {len(self.detection_callbacks)} detection callbacks...", flush=True)
+                        print(f"[ANNOUNCE] Triggering {len(self.detection_callbacks)} detection callbacks...", flush=True)
                         for callback in self.detection_callbacks:
                             try:
                                 callback(keyword, sensitivity)
-                                print(f"✅ Callback executed successfully", flush=True)
+                                print(f"[OK] Callback executed successfully", flush=True)
                             except Exception as e:
                                 self.logger.error(f"Error in detection callback: {e}")
-                                print(f"❌ Callback error: {e}", flush=True)
+                                print(f"[ERROR] Callback error: {e}", flush=True)
                     else:
-                        print(f"⏸️ COOLDOWN ACTIVE: Wake word detected but waiting ({time_since_last:.1f}s < {self.detection_cooldown}s)", flush=True)
+                        print(f"[PAUSE] COOLDOWN ACTIVE: Wake word detected but waiting ({time_since_last:.1f}s < {self.detection_cooldown}s)", flush=True)
                         self.logger.debug(f"Wake word detected but in cooldown period ({time_since_last:.1f}s < {self.detection_cooldown}s)")
                 
                 # Log progress periodically

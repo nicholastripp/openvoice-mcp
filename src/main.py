@@ -150,13 +150,13 @@ class VoiceAssistant:
             
             # Enhanced state visibility with visual banner
             state_banner = {
-                SessionState.IDLE: "🔴 IDLE - Waiting for wake word",
-                SessionState.LISTENING: "🟡 LISTENING - Speak your question",
-                SessionState.PROCESSING: "🟠 PROCESSING - Analyzing speech",
-                SessionState.RESPONDING: "🟢 RESPONDING - Generating answer",
-                SessionState.AUDIO_PLAYING: "🔵 PLAYING - Response audio",
-                SessionState.COOLDOWN: "⏸️  COOLDOWN - Session ending",
-                SessionState.MULTI_TURN_LISTENING: "🔄 MULTI-TURN - Ask follow-up"
+                SessionState.IDLE: "[IDLE] IDLE - Waiting for wake word",
+                SessionState.LISTENING: "[LISTEN] LISTENING - Speak your question",
+                SessionState.PROCESSING: "[PROCESS] PROCESSING - Analyzing speech",
+                SessionState.RESPONDING: "[RESPOND] RESPONDING - Generating answer",
+                SessionState.AUDIO_PLAYING: "[PLAY] PLAYING - Response audio",
+                SessionState.COOLDOWN: "[PAUSE] COOLDOWN - Session ending",
+                SessionState.MULTI_TURN_LISTENING: "[LOOP] MULTI-TURN - Ask follow-up"
             }
             
             if new_state in state_banner:
@@ -1341,7 +1341,7 @@ class VoiceAssistant:
         """Handle wake word detection"""
         # ENHANCED: Add prominent visual banner
         print("\n" + "="*70)
-        print("🎙️  WAKE WORD DETECTED!  🎙️".center(70))
+        print("[MIC]  WAKE WORD DETECTED!  [MIC]".center(70))
         print("="*70)
         print(f"Wake Word: {model_name}".center(70))
         print(f"Confidence: {confidence:.6f}".center(70))
