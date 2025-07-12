@@ -524,6 +524,15 @@ class VoiceAssistant:
         self.logger.info("Started VAD timeout task (5s) to handle cases where no speech is detected")
         print("*** VAD TIMEOUT TASK STARTED - WILL END SESSION IF NO SPEECH ***")
         
+        # Set initial VAD to be less sensitive to prevent premature triggers
+        if self.openai_client:
+            await self.openai_client.update_vad_settings(threshold=0.5, silence_duration_ms=1000)
+            self.logger.info("Set initial VAD settings: threshold=0.5, silence_duration=1000ms")
+            print("*** INITIAL VAD SETTINGS: LESS SENSITIVE TO PREVENT PREMATURE TRIGGERS ***")
+            
+            # Schedule VAD adjustment after initial period
+            asyncio.create_task(self._adjust_vad_after_delay())
+        
         self.logger.info("Voice session started - ready to receive audio input")
         print("*** VOICE SESSION ACTIVE - SPEAK YOUR QUESTION ***")
         
@@ -774,8 +783,8 @@ class VoiceAssistant:
         blocked_states = [
             SessionState.RESPONDING,
             SessionState.AUDIO_PLAYING,
-            SessionState.COOLDOWN,
-            SessionState.PROCESSING
+            SessionState.COOLDOWN
+            # REMOVED SessionState.PROCESSING - Allow audio to continue during processing
         ]
         
         # More aggressive blocking - always block during these states regardless of config
@@ -1206,8 +1215,11 @@ class VoiceAssistant:
     
     async def _on_speech_stopped(self, event_data) -> None:
         """Handle user speech stopped"""
-        self.logger.info("User speech stopped - server VAD will automatically trigger response")
-        print("*** USER STOPPED SPEAKING - SERVER VAD PROCESSING ***")
+        # Enhanced debug logging for VAD events
+        event_time = asyncio.get_event_loop().time()
+        time_in_session = event_time - self.session_start_time if hasattr(self, 'session_start_time') else 0
+        self.logger.info(f"User speech stopped - server VAD triggered after {time_in_session:.1f}s")
+        print(f"*** USER STOPPED SPEAKING - VAD EVENT AT {time_in_session:.1f}s ***")
         
         # CRITICAL: Ignore speech events during cooldown to prevent false positives
         if self.session_state == SessionState.COOLDOWN:
@@ -1232,6 +1244,21 @@ class VoiceAssistant:
             self.logger.warning(f"Ignoring speech_stopped event in {self.session_state.value} state")
             print(f"*** IGNORING SPEECH EVENT IN {self.session_state.value.upper()} STATE ***")
             return
+        
+        # CRITICAL: Require minimum speech duration to prevent premature VAD triggers
+        if hasattr(self, 'session_start_time'):
+            time_since_start = asyncio.get_event_loop().time() - self.session_start_time
+            min_speech_duration = 1.5  # Require at least 1.5 seconds before processing
+            
+            if time_since_start < min_speech_duration:
+                self.logger.warning(f"Ignoring premature speech_stopped - only {time_since_start:.1f}s since session start (min: {min_speech_duration}s)")
+                print(f"*** IGNORING PREMATURE VAD TRIGGER - ONLY {time_since_start:.1f}s ELAPSED (MIN: {min_speech_duration}s) ***")
+                return
+        
+        # Log VAD trigger timing for debugging
+        if hasattr(self, 'session_start_time'):
+            elapsed = asyncio.get_event_loop().time() - self.session_start_time
+            print(f"*** VAD TRIGGERED AFTER {elapsed:.1f}s OF LISTENING ***")
         
         # Transition to processing state
         self._transition_to_state(SessionState.PROCESSING)
@@ -1285,6 +1312,16 @@ class VoiceAssistant:
         
         # End session on unrecoverable errors
         await self._end_session()
+    
+    async def _adjust_vad_after_delay(self) -> None:
+        """Adjust VAD to normal sensitivity after initial period"""
+        await asyncio.sleep(2.0)  # Wait 2 seconds
+        
+        # Only adjust if still in listening state
+        if self.session_state == SessionState.LISTENING and self.openai_client:
+            await self.openai_client.update_vad_settings(threshold=0.2, silence_duration_ms=800)
+            self.logger.info("Adjusted VAD to normal sensitivity after initial period")
+            print("*** VAD ADJUSTED TO NORMAL SENSITIVITY ***")
     
     async def _vad_timeout_handler(self) -> None:
         """Handle VAD timeout - end session gracefully if no speech detected"""
