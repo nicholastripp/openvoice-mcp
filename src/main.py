@@ -79,6 +79,10 @@ class VoiceAssistant:
         self.max_state_duration = 60.0  # 60 seconds max in any state
         self.response_start_time = None
         
+        # Response tracking
+        self.response_done_received = False
+        self._audio_response_received = False
+        
         # Periodic cleanup task
         self.cleanup_task = None
         self.cleanup_interval = 30.0  # Check every 30 seconds
@@ -513,6 +517,10 @@ class VoiceAssistant:
         self.last_activity = asyncio.get_event_loop().time()
         self.session_start_time = asyncio.get_event_loop().time()
         
+        # Reset response tracking
+        self.response_done_received = False
+        self._audio_response_received = False
+        
         # Transition to listening state
         self._transition_to_state(SessionState.LISTENING)
         
@@ -933,6 +941,9 @@ class VoiceAssistant:
     
     async def _on_audio_response(self, audio_data: bytes) -> None:
         """Handle audio response from OpenAI"""
+        # Mark that we've received audio
+        self._audio_response_received = True
+        
         # Calculate audio duration for debugging (PCM16 at 24kHz)
         samples = len(audio_data) // 2  # 2 bytes per sample
         duration_ms = samples / 24.0  # 24kHz sample rate
@@ -1153,10 +1164,22 @@ class VoiceAssistant:
             print("*** MULTI-TURN TIMEOUT TASK CANCELLED ***")
         except Exception as e:
             self.logger.error(f"Error in multi-turn timeout handler: {e}")
-            print(f"*** ERROR IN MULTI-TURN TIMEOUT HANDLER: {e} ***")
-            # End session on error to prevent hanging
-            if self.session_active:
-                await self._end_session()
+    
+    async def _check_non_audio_response_completion(self) -> None:
+        """Check if a response without audio should complete"""
+        # Wait a bit for any delayed audio
+        await asyncio.sleep(1.0)
+        
+        # If still no audio and we're in responding state, complete the response
+        if (self.session_state == SessionState.RESPONDING and 
+            not self._audio_response_received and 
+            self.response_done_received):
+            
+            self.logger.info("Response completed without audio - transitioning to completion")
+            print("*** RESPONSE COMPLETED WITHOUT AUDIO ***")
+            
+            # Trigger audio completion handler for multi-turn flow
+            await self._handle_audio_completion()
     
     def _contains_end_phrases(self, text: str) -> bool:
         """Check if text contains conversation end phrases"""
@@ -1380,6 +1403,10 @@ class VoiceAssistant:
             self.logger.warning("Conversation already has active response - ignoring duplicate request")
             # Don't end session for this error - it's expected in some race conditions
             return
+        elif error_type == 'invalid_request_error':
+            self.logger.warning(f"Invalid request error: {error_message}")
+            # Don't end session - this is often recoverable (e.g., trying to create response when one exists)
+            return
         elif error_type == 'connection_error':
             self.logger.warning("Connection error - attempting reconnection")
             try:
@@ -1407,6 +1434,17 @@ class VoiceAssistant:
         status = response_data.get("status", "unknown")
         
         self.logger.info(f"Response {response_id} completed with status: {status}")
+        print(f"*** RESPONSE.DONE RECEIVED: {response_id} (status: {status}) ***")
+        
+        # Mark that we've received response.done
+        self.response_done_received = True
+        
+        # If audio hasn't been received yet, this might be a text-only or empty response
+        if not hasattr(self, '_audio_response_received') or not self._audio_response_received:
+            self.logger.info("Response completed without audio - checking if we should end response")
+            # Schedule audio completion check in case there's no audio
+            if self.session_state == SessionState.RESPONDING:
+                asyncio.create_task(self._check_non_audio_response_completion())
     
     async def _on_response_failed(self, event_data: dict) -> None:
         """Handle failed OpenAI response"""
