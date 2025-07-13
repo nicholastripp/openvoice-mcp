@@ -612,13 +612,9 @@ class OpenAIRealtimeClient:
         
         await self._send_event(event)
         
-        # Request audio response after function call completion
-        # This ensures OpenAI generates audio feedback for the user
-        self.logger.info("Requesting audio response after function call completion")
-        response_event = {
-            "type": "response.create"
-        }
-        await self._send_event(response_event)
+        # Don't automatically request response - let OpenAI handle the flow
+        # OpenAI will automatically generate a response after receiving function output
+        self.logger.debug("Function result sent - OpenAI will handle response generation")
     
     async def _send_function_error(self, call_id: str, error: str) -> None:
         """Send function call error back to OpenAI"""
@@ -633,13 +629,9 @@ class OpenAIRealtimeClient:
         
         await self._send_event(event)
         
-        # Request audio response after function call error
-        # This ensures OpenAI generates audio feedback even for errors
-        self.logger.info("Requesting audio response after function call error")
-        response_event = {
-            "type": "response.create"
-        }
-        await self._send_event(response_event)
+        # Don't automatically request response - let OpenAI handle the flow
+        # OpenAI will automatically generate a response after receiving function error
+        self.logger.debug("Function error sent - OpenAI will handle response generation")
     
     async def _emit_event(self, event_type: str, data: Any) -> None:
         """Emit event to registered handlers"""

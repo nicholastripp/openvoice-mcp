@@ -548,6 +548,15 @@ class VoiceAssistant:
         """End the current voice session with comprehensive cleanup"""
         if not self.session_active:
             return
+        
+        # Don't end session if audio is actively playing
+        if self.session_state in [SessionState.RESPONDING, SessionState.AUDIO_PLAYING]:
+            self.logger.warning(f"Attempted to end session during {self.session_state.value} - deferring")
+            print(f"*** DEFERRING SESSION END - AUDIO ACTIVE ({self.session_state.value.upper()}) ***")
+            # Schedule session end after audio completes
+            if not self.response_end_task or self.response_end_task.done():
+                self.response_end_task = asyncio.create_task(self._schedule_session_end())
+            return
             
         self.logger.info(f"Ending session (current state: {self.session_state.value})")
         print(f"*** ENDING SESSION (STATE: {self.session_state.value.upper()}) ***")
@@ -981,7 +990,7 @@ class VoiceAssistant:
                 
                 # Add timeout to prevent hanging
                 try:
-                    future.result(timeout=5.0)  # 5 second timeout
+                    future.result(timeout=30.0)  # 30 second timeout for longer responses
                 except Exception as e:
                     import traceback
                     self.logger.error(f"Error in audio completion handler: {e}")
@@ -1378,9 +1387,18 @@ class VoiceAssistant:
                 return
             except Exception as e:
                 self.logger.error(f"Reconnection failed: {e}")
+                # Only end session if reconnection fails
+                await self._end_session()
+                return
         
-        # End session on unrecoverable errors
-        await self._end_session()
+        # For all other errors, log but don't necessarily end session
+        self.logger.warning(f"Unhandled OpenAI error type: {error_type}")
+        
+        # Only end session for truly unrecoverable errors
+        unrecoverable_errors = ['authentication_error', 'permission_error', 'not_found_error']
+        if error_type in unrecoverable_errors:
+            self.logger.error(f"Unrecoverable error - ending session: {error_type}")
+            await self._end_session()
     
     async def _on_response_done(self, event_data: dict) -> None:
         """Handle OpenAI response completion"""
