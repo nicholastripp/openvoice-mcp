@@ -68,7 +68,6 @@ class VoiceAssistant:
         self.vad_timeout_task = None
         self.response_active = False
         self.response_end_task = None
-        self.response_fallback_task = None  # Fallback timer for response creation
         
         # Multi-turn conversation state
         self.conversation_turn_count = 0
@@ -178,6 +177,12 @@ class VoiceAssistant:
     
     def _validate_state_transition(self, old_state: SessionState, new_state: SessionState) -> bool:
         """Validate that a state transition is allowed"""
+        # If not in an active session, only allow transitions from IDLE
+        if not self.session_active and old_state != SessionState.IDLE:
+            self.logger.debug(f"Invalid transition from {old_state.value} to {new_state.value} - session not active")
+            print(f"Invalid state transition: {old_state.value} -> {new_state.value}")
+            return False
+        
         # Define valid transitions
         valid_transitions = {
             SessionState.IDLE: [SessionState.LISTENING, SessionState.COOLDOWN],
@@ -194,6 +199,7 @@ class VoiceAssistant:
         
         if not is_valid:
             self.logger.debug(f"Invalid transition from {old_state.value} to {new_state.value}. Allowed: {[s.value for s in allowed_transitions]}")
+            print(f"Invalid state transition: {old_state.value} -> {new_state.value}")
         
         return is_valid
     
@@ -565,11 +571,6 @@ class VoiceAssistant:
             self.response_end_task = None
             self.logger.debug("Cancelled response end task")
         
-        # Cancel response fallback task if it exists
-        if self.response_fallback_task and not self.response_fallback_task.done():
-            self.response_fallback_task.cancel()
-            self.response_fallback_task = None
-            self.logger.debug("Cancelled response fallback task")
         
         # Cancel multi-turn timeout task if it exists
         if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
@@ -935,12 +936,6 @@ class VoiceAssistant:
             # Transition to responding state
             self._transition_to_state(SessionState.RESPONDING)
             
-            # Cancel response fallback timer since we got a response
-            if self.response_fallback_task and not self.response_fallback_task.done():
-                self.response_fallback_task.cancel()
-                self.response_fallback_task = None
-                self.logger.info("Cancelled response fallback timer - response received")
-                print("*** RESPONSE FALLBACK TIMER CANCELLED - RESPONSE RECEIVED ***")
             
             # Increase VAD threshold during response playback
             if self.openai_client:
@@ -1325,16 +1320,9 @@ class VoiceAssistant:
                 self.logger.info("Explicitly requesting response after speech_stopped")
                 print("*** REQUESTING RESPONSE FROM OPENAI ***")
                 await self.openai_client._send_event({"type": "response.create"})
-                
-                # Start fallback timer to ensure response is created
-                self.response_fallback_task = asyncio.create_task(self._response_creation_fallback())
-                self.logger.info("Started response creation fallback timer (2s)")
             except Exception as e:
                 self.logger.error(f"Failed to request response after speech_stopped: {e}")
                 print(f"*** FAILED TO REQUEST RESPONSE: {e} ***")
-                
-                # Start fallback timer even on error
-                self.response_fallback_task = asyncio.create_task(self._response_creation_fallback())
     
     async def _on_openai_error(self, error_data: dict) -> None:
         """Handle OpenAI errors with recovery logic"""
@@ -1351,7 +1339,7 @@ class VoiceAssistant:
             return
         elif error_type == 'conversation_already_has_active_response':
             self.logger.warning("Conversation already has active response - ignoring duplicate request")
-            # Don't end session for this error - it's from our fallback timer
+            # Don't end session for this error - it's expected in some race conditions
             return
         elif error_type == 'connection_error':
             self.logger.warning("Connection error - attempting reconnection")
@@ -1371,13 +1359,6 @@ class VoiceAssistant:
         status = response_data.get("status", "unknown")
         
         self.logger.info(f"Response {response_id} completed with status: {status}")
-        
-        # Cancel response fallback timer since response completed
-        if self.response_fallback_task and not self.response_fallback_task.done():
-            self.response_fallback_task.cancel()
-            self.response_fallback_task = None
-            self.logger.info("Cancelled response fallback timer - response completed successfully")
-            print("*** RESPONSE FALLBACK TIMER CANCELLED - RESPONSE COMPLETED ***")
     
     async def _on_response_failed(self, event_data: dict) -> None:
         """Handle failed OpenAI response"""
@@ -1422,40 +1403,6 @@ class VoiceAssistant:
             self.logger.info("Adjusted VAD to normal sensitivity after initial period")
             print("*** VAD ADJUSTED TO NORMAL SENSITIVITY ***")
     
-    async def _response_creation_fallback(self) -> None:
-        """Fallback timer to ensure response is created after speech detection"""
-        try:
-            # Wait 2 seconds to see if a response is created
-            await asyncio.sleep(2.0)
-            
-            # Check if we're still in PROCESSING state (no response started)
-            if self.session_state == SessionState.PROCESSING and self.session_active:
-                self.logger.warning("No response created after 2s - triggering fallback response.create")
-                print("*** RESPONSE CREATION FALLBACK TRIGGERED ***")
-                
-                # Try to create response one more time
-                if self.openai_client and self.openai_client.state.value == "connected":
-                    try:
-                        await self.openai_client._send_event({"type": "response.create"})
-                        self.logger.info("Fallback response.create sent successfully")
-                    except Exception as e:
-                        self.logger.error(f"Fallback response.create failed: {e}")
-                        # End session if we can't get a response
-                        await self._end_session()
-                else:
-                    self.logger.error("Cannot send fallback response - OpenAI not connected")
-                    await self._end_session()
-            else:
-                self.logger.debug(f"Response fallback cancelled - state is now {self.session_state.value}")
-                
-        except asyncio.CancelledError:
-            # Task was cancelled (response was created normally)
-            self.logger.debug("Response fallback timer cancelled - response created normally")
-        except Exception as e:
-            self.logger.error(f"Error in response creation fallback: {e}")
-            # End session on error
-            if self.session_active:
-                await self._end_session()
     
     async def _vad_timeout_handler(self) -> None:
         """Handle VAD timeout - end session gracefully if no speech detected"""
