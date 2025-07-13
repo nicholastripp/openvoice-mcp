@@ -63,6 +63,9 @@ class OpenAIRealtimeClient:
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.function_handlers: Dict[str, Callable] = {}
         
+        # Function call tracking
+        self.waiting_for_function_response = False  # Track if we're waiting for response after function output
+        
         # Build base session configuration
         self.session_config = {
             "modalities": ["text"] if text_only else ["audio", "text"],
@@ -476,8 +479,14 @@ class OpenAIRealtimeClient:
             # Response creation started
             response_id = event.data.get("response", {}).get("id", "unknown")
             self.response_in_progress = True  # Mark that a response is in progress
-            self.logger.info(f"[RESPONSE CREATED] OpenAI started creating response: {response_id}")
-            print(f"*** OPENAI RESPONSE CREATION STARTED: {response_id} ***")
+            
+            # Log if this is a response after function output
+            if self.waiting_for_function_response:
+                self.logger.info(f"[RESPONSE CREATED] OpenAI creating response after function output: {response_id}")
+                print(f"*** OPENAI RESPONSE AFTER FUNCTION OUTPUT: {response_id} ***")
+            else:
+                self.logger.info(f"[RESPONSE CREATED] OpenAI started creating response: {response_id}")
+                print(f"*** OPENAI RESPONSE CREATION STARTED: {response_id} ***")
             
         elif event_type == "response.done":
             # Response creation completed
@@ -488,6 +497,13 @@ class OpenAIRealtimeClient:
             status_details = response_data.get("status_details", {})
             
             self.response_in_progress = False  # Mark that response is complete
+            
+            # Clear function response flag if set
+            if self.waiting_for_function_response:
+                self.waiting_for_function_response = False
+                self.logger.info(f"[RESPONSE DONE] Function response completed: {response_id}, status: {status}")
+                print(f"*** FUNCTION RESPONSE COMPLETED: {response_id} ***")
+            
             self.logger.info(f"[RESPONSE DONE] OpenAI completed response: {response_id}, status: {status}, outputs: {len(output_items)}")
             print(f"*** OPENAI RESPONSE COMPLETED: {response_id} (status: {status}, outputs: {len(output_items)}) ***")
             
@@ -554,6 +570,9 @@ class OpenAIRealtimeClient:
             function_name = call_data.get("name")
             arguments_str = call_data.get("arguments", "{}")
             call_id = call_data.get("call_id")
+            
+            self.logger.info(f"[FUNCTION CALL] Received function call: {function_name} (call_id: {call_id})")
+            print(f"*** FUNCTION CALL: {function_name} ***")
             
             try:
                 arguments = json.loads(arguments_str)
@@ -632,9 +651,13 @@ class OpenAIRealtimeClient:
         
         await self._send_event(event)
         
-        # Don't automatically request response - let OpenAI handle the flow
-        # OpenAI will automatically generate a response after receiving function output
-        self.logger.debug("Function result sent - OpenAI will handle response generation")
+        # Request OpenAI to generate a response with the function result
+        # In server VAD mode, we need to explicitly request a response after function output
+        self.logger.info("Function result sent - requesting response from OpenAI")
+        self.waiting_for_function_response = True  # Mark that we're waiting for response
+        await asyncio.sleep(0.1)  # Small delay to ensure function output is processed
+        await self._send_event({"type": "response.create"})
+        self.logger.info("Response.create sent after function output - waiting for audio response")
     
     async def _send_function_error(self, call_id: str, error: str) -> None:
         """Send function call error back to OpenAI"""
@@ -649,9 +672,13 @@ class OpenAIRealtimeClient:
         
         await self._send_event(event)
         
-        # Don't automatically request response - let OpenAI handle the flow
-        # OpenAI will automatically generate a response after receiving function error
-        self.logger.debug("Function error sent - OpenAI will handle response generation")
+        # Request OpenAI to generate a response with the error
+        # In server VAD mode, we need to explicitly request a response after function output
+        self.logger.info("Function error sent - requesting response from OpenAI")
+        self.waiting_for_function_response = True  # Mark that we're waiting for response
+        await asyncio.sleep(0.1)  # Small delay to ensure function output is processed
+        await self._send_event({"type": "response.create"})
+        self.logger.info("Response.create sent after function error - waiting for audio response")
     
     async def _emit_event(self, event_type: str, data: Any) -> None:
         """Emit event to registered handlers"""
