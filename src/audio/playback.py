@@ -74,7 +74,11 @@ class AudioPlayback:
         
         # Pre-buffering for smooth playback start
         self.pre_buffering = False
-        self.pre_buffer_threshold = int(self.device_sample_rate * 0.3)  # 300ms before starting playback
+        self.pre_buffer_threshold = int(self.device_sample_rate * 0.5)  # 500ms before starting playback
+        
+        # Track OpenAI streaming state
+        self.openai_streaming_active = False
+        self.last_chunk_received_time = 0
     
     async def start(self) -> None:
         """Start audio playback system"""
@@ -207,10 +211,16 @@ class AudioPlayback:
             processed_audio = self._process_audio_chunk(audio_float)
             self.audio_queue.put(processed_audio, block=False)
             
-            # Update last audio time when we get new data
+            # Update timing when we get new data
             if self.is_response_active:
                 import time
-                self.last_audio_time = time.time()
+                current_time = time.time()
+                self.last_audio_time = current_time
+                self.last_chunk_received_time = current_time
+                
+                # Log chunk reception for debugging
+                chunk_size_ms = len(processed_audio) / self.device_sample_rate * 1000
+                self.logger.debug(f"Received audio chunk: {chunk_size_ms:.1f}ms, queue size: {self.audio_queue.qsize()}")
             
         except Exception as e:
             self.logger.error(f"Error queuing audio: {e}")
@@ -236,20 +246,23 @@ class AudioPlayback:
         """Mark the start of a response for completion tracking"""
         self.is_response_active = True
         self.pre_buffering = True  # Enable pre-buffering for smooth start
+        self.openai_streaming_active = True  # OpenAI is now streaming audio
         self.silence_frames_count = 0
         self.underrun_count = 0  # Reset underrun count for new response
         self.consecutive_underruns = 0
         import time
         self.last_audio_time = time.time()
+        self.last_chunk_received_time = time.time()
         
         # Start timeout task
         self._start_completion_timeout()
         
-        self.logger.debug("Started response audio tracking with pre-buffering enabled")
+        self.logger.debug("Started response audio tracking with pre-buffering enabled (500ms threshold)")
     
     def end_response(self) -> None:
         """Mark the end of a response (OpenAI finished sending)"""
         self.logger.debug("OpenAI finished sending audio - monitoring for completion")
+        self.openai_streaming_active = False  # OpenAI has stopped streaming
         # Don't set is_response_active to False here - let completion detection handle it
         
         # Start a task to check for completion after a brief delay
@@ -372,12 +385,20 @@ class AudioPlayback:
                     self.logger.debug(f"Multiple underruns detected ({self.underrun_count}) with empty queue - may indicate completion")
                     self._check_completion()
                 
-                # If we have excessive underruns, force completion to prevent hanging
-                if self.underrun_count >= 10:
-                    self.logger.warning(f"Excessive underruns detected ({self.underrun_count}) - forcing completion to prevent hanging")
+                # If we have excessive underruns, check if OpenAI is still streaming
+                if self.underrun_count >= 10 and not self.openai_streaming_active:
+                    self.logger.warning(f"Excessive underruns ({self.underrun_count}) with OpenAI done - forcing completion")
                     print(f"*** EXCESSIVE UNDERRUNS ({self.underrun_count}) - FORCING COMPLETION ***")
                     self._notify_completion()
                     return
+                elif self.underrun_count >= 10:
+                    # OpenAI still streaming, increase tolerance
+                    import time
+                    time_since_last_chunk = time.time() - self.last_chunk_received_time
+                    if time_since_last_chunk > 3.0:  # No chunks for 3 seconds
+                        self.logger.warning(f"No audio chunks for {time_since_last_chunk:.1f}s - forcing completion")
+                        self._notify_completion()
+                        return
             else:
                 # No audio available - output silence
                 # This is normal when audio stream first starts or between utterances
@@ -387,12 +408,16 @@ class AudioPlayback:
                 if self.is_response_active:
                     self.consecutive_underruns += 1
                     
-                    # Force completion if too many consecutive underruns
-                    if self.consecutive_underruns >= self.max_consecutive_underruns:
-                        self.logger.warning(f"Too many consecutive underruns ({self.consecutive_underruns}) - forcing completion")
+                    # Only force completion if OpenAI has stopped streaming AND we have too many underruns
+                    if (self.consecutive_underruns >= self.max_consecutive_underruns and 
+                        not self.openai_streaming_active):
+                        self.logger.warning(f"Too many consecutive underruns ({self.consecutive_underruns}) with OpenAI done - forcing completion")
                         print(f"*** TOO MANY CONSECUTIVE UNDERRUNS ({self.consecutive_underruns}) - FORCING COMPLETION ***")
                         self._notify_completion()
                         return
+                    elif self.consecutive_underruns >= self.max_consecutive_underruns:
+                        # OpenAI is still streaming, don't force completion yet
+                        self.logger.debug(f"Consecutive underruns ({self.consecutive_underruns}) but OpenAI still streaming - waiting")
             
         except Exception as e:
             self.logger.error(f"Error in audio callback: {e}")
@@ -429,7 +454,10 @@ class AudioPlayback:
             
             # If buffer is critically low, be more aggressive
             if len(self.audio_buffer) < self.min_buffer_size:
-                buffer_threshold = self.target_buffer_size * 1.5  # 1.5x target when low
+                buffer_threshold = self.target_buffer_size * 2  # 2x target when low
+                # Try to fill more aggressively when buffer is empty
+                if len(self.audio_buffer) == 0 and self.openai_streaming_active:
+                    buffer_threshold = self.max_buffer_size * 0.5  # Fill up to half max when empty
             
             # Check if we're approaching buffer overflow
             if len(self.audio_buffer) >= self.max_buffer_size:
@@ -578,30 +606,47 @@ class AudioPlayback:
         """Check for completion after OpenAI finishes sending audio"""
         import asyncio
         
+        # First, give a brief delay for any final chunks to arrive
+        await asyncio.sleep(0.5)
+        
         # Wait for buffer to drain
-        max_wait = 5.0  # Maximum 5 seconds
+        max_wait = 3.0  # Reduced from 5.0 seconds
         wait_interval = 0.1
         elapsed = 0.0
+        last_buffer_size = len(self.audio_buffer)
         
         while elapsed < max_wait:
             if not self.is_response_active:
                 # Already completed
                 return
                 
+            current_buffer_size = len(self.audio_buffer)
+            queue_size = self.audio_queue.qsize()
+            
             # Check if audio is still playing
-            if self.audio_queue.empty() and len(self.audio_buffer) < self.chunk_size:
+            if queue_size == 0 and current_buffer_size < self.chunk_size:
                 # Buffer is nearly empty, audio should be finishing
-                self.logger.info("Audio buffer nearly empty - triggering completion")
+                self.logger.info(f"Audio playback complete - buffer: {current_buffer_size} samples, queue: {queue_size}")
                 self._notify_completion()
                 return
-                
+            
+            # Check if buffer is draining (audio is playing)
+            if current_buffer_size < last_buffer_size:
+                self.logger.debug(f"Buffer draining: {current_buffer_size} samples (was {last_buffer_size})")
+                last_buffer_size = current_buffer_size
+            
             await asyncio.sleep(wait_interval)
             elapsed += wait_interval
         
-        # Timeout - force completion
+        # Timeout - but only force completion if buffer is actually empty
         if self.is_response_active:
-            self.logger.warning("Delayed completion check timeout - forcing completion")
-            self._notify_completion()
+            if self.audio_queue.empty() and len(self.audio_buffer) < self.chunk_size:
+                self.logger.warning("Delayed completion check timeout with empty buffer - forcing completion")
+                self._notify_completion()
+            else:
+                self.logger.warning(f"Delayed completion check timeout but audio still buffered - waiting longer (buffer: {len(self.audio_buffer)}, queue: {self.audio_queue.qsize()})")
+                # Schedule another check
+                asyncio.create_task(self._delayed_completion_check())
     
     def _check_completion(self) -> None:
         """Check if audio playback has completed with comprehensive error handling"""
@@ -609,6 +654,10 @@ class AudioPlayback:
             return
         
         try:
+            # Don't check for completion if OpenAI is still streaming
+            if self.openai_streaming_active:
+                return
+            
             # Check if we have enough silence to consider playback complete
             if (self.silence_frames_count >= self.silence_threshold and 
                 self.audio_queue.empty() and 
@@ -620,16 +669,21 @@ class AudioPlayback:
             # Timeout-based completion detection as fallback
             import time
             current_time = time.time()
-            if (current_time - self.last_audio_time > self.completion_timeout and 
+            time_since_last_audio = current_time - self.last_audio_time
+            time_since_last_chunk = current_time - self.last_chunk_received_time
+            
+            # Only use timeout if OpenAI has stopped sending chunks
+            if (time_since_last_chunk > 2.0 and  # No chunks for 2 seconds
+                time_since_last_audio > self.completion_timeout and 
                 self.audio_queue.empty() and 
                 len(self.audio_buffer) == 0):
-                self.logger.debug(f"Audio completion detected via timeout ({self.completion_timeout}s)")
+                self.logger.debug(f"Audio completion detected via timeout (no audio: {time_since_last_audio:.1f}s, no chunks: {time_since_last_chunk:.1f}s)")
                 self._notify_completion()
                 return
             
             # Check for stuck state (no audio activity for too long)
-            if current_time - self.last_audio_time > self.max_response_duration * 0.5:
-                self.logger.warning(f"No audio activity for {current_time - self.last_audio_time:.1f}s - may be stuck")
+            if time_since_last_chunk > self.max_response_duration * 0.5:
+                self.logger.warning(f"No audio chunks for {time_since_last_chunk:.1f}s - may be stuck")
                 
         except Exception as e:
             self.logger.error(f"Error in completion check: {e}")
