@@ -292,19 +292,27 @@ class AudioPlayback:
         """Notify all callbacks that audio playback has completed"""
         if self.is_response_active:
             self.logger.info("Audio playback completed - notifying callbacks")
+            print("*** AUDIO PLAYBACK COMPLETED - NOTIFYING CALLBACKS ***")
             self.is_response_active = False
+            
+            # Reset streaming state
+            self.openai_streaming_active = False
             
             # Cancel timeout task
             self._cancel_completion_timeout()
             
             # Notify all callbacks with comprehensive error handling
-            for i, callback in enumerate(self.completion_callbacks):
+            # Make a copy of callbacks to avoid modification during iteration
+            callbacks_copy = list(self.completion_callbacks)
+            for i, callback in enumerate(callbacks_copy):
                 try:
                     self.logger.debug(f"Calling completion callback #{i+1}")
                     callback()
                     self.logger.debug(f"Completion callback #{i+1} completed successfully")
                 except Exception as e:
                     self.logger.error(f"Error in completion callback #{i+1}: {e}")
+                    import traceback
+                    self.logger.error(f"Traceback: {traceback.format_exc()}")
                     # Continue with other callbacks even if one fails
                     continue
     
@@ -433,6 +441,21 @@ class AudioPlayback:
                 # Track consecutive underruns when no audio available
                 if self.is_response_active:
                     self.consecutive_underruns += 1
+                    self.underrun_count += 1  # Also increment total underrun count
+                    
+                    # Log underrun status with buffer information
+                    import time
+                    current_time = time.time()
+                    if current_time - self.last_underrun_warning > 3.0:
+                        self.logger.warning(f"Audio underrun #{self.underrun_count}: needed {frames}, had 0, queue_size={self.audio_queue.qsize()}, openai_streaming={self.openai_streaming_active}")
+                        self.last_underrun_warning = current_time
+                    
+                    # Simple completion: If OpenAI stopped and we have any underrun with empty queue
+                    if self.underrun_count >= 1 and not self.openai_streaming_active and self.audio_queue.empty():
+                        self.logger.info(f"Underrun with empty buffer/queue and OpenAI done - completing playback")
+                        print(f"*** UNDERRUN COMPLETION (EMPTY BUFFER): OpenAI done, queue empty, underruns={self.underrun_count} ***")
+                        self._notify_completion()
+                        return
                     
                     # Only force completion if OpenAI has stopped streaming AND we have too many underruns
                     if (self.consecutive_underruns >= self.max_consecutive_underruns and 

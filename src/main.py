@@ -567,9 +567,16 @@ class VoiceAssistant:
         
         # Don't end session if audio is actively playing
         if self.session_state in [SessionState.RESPONDING, SessionState.AUDIO_PLAYING]:
+            # Log the call stack to understand what's trying to end the session
+            import traceback
             self.logger.warning(f"Attempted to end session during {self.session_state.value} - deferring")
+            self.logger.debug(f"Call stack: {traceback.format_stack()[-3:-1]}")  # Last 2 frames before this one
             print(f"*** DEFERRING SESSION END - AUDIO ACTIVE ({self.session_state.value.upper()}) ***")
-            # Schedule session end after audio completes
+            # In multi-turn mode, don't schedule session end - let audio completion handle it
+            if self.config.session.conversation_mode == "multi_turn":
+                self.logger.info("Multi-turn mode active - will transition to multi-turn listening after audio")
+                return
+            # Schedule session end after audio completes (single-turn mode only)
             if not self.response_end_task or self.response_end_task.done():
                 self.response_end_task = asyncio.create_task(self._schedule_session_end())
             return
@@ -577,11 +584,13 @@ class VoiceAssistant:
         self.logger.info(f"Ending session (current state: {self.session_state.value})")
         print(f"*** ENDING SESSION (STATE: {self.session_state.value.upper()}) ***")
         
+        # Transition to idle state BEFORE setting session_active to False
+        # This prevents "Invalid state transition" errors
+        self._transition_to_state(SessionState.IDLE)
+        
+        # Now mark session as inactive
         self.session_active = False
         self.response_active = False
-        
-        # Transition to idle state
-        self._transition_to_state(SessionState.IDLE)
         
         # Cancel VAD timeout task if it exists
         if self.vad_timeout_task and not self.vad_timeout_task.done():
@@ -1608,6 +1617,11 @@ class VoiceAssistant:
     async def _schedule_session_end(self) -> None:
         """Schedule session end after cooldown delay"""
         try:
+            # Don't use cooldown in multi-turn mode
+            if self.config.session.conversation_mode == "multi_turn":
+                self.logger.warning("_schedule_session_end called in multi-turn mode - ignoring")
+                return
+            
             # Transition to cooldown state
             self._transition_to_state(SessionState.COOLDOWN)
             
