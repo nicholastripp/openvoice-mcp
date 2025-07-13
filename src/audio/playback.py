@@ -261,13 +261,32 @@ class AudioPlayback:
     
     def end_response(self) -> None:
         """Mark the end of a response (OpenAI finished sending)"""
-        self.logger.debug("OpenAI finished sending audio - monitoring for completion")
+        self.logger.info("OpenAI finished sending audio - monitoring for completion")
+        print("*** AUDIO PLAYBACK: OPENAI FINISHED SENDING - STARTING COMPLETION MONITOR ***")
         self.openai_streaming_active = False  # OpenAI has stopped streaming
         # Don't set is_response_active to False here - let completion detection handle it
         
         # Start a task to check for completion after a brief delay
         import asyncio
-        asyncio.create_task(self._delayed_completion_check())
+        import threading
+        
+        def run_completion_check():
+            """Run completion check in a separate thread with its own event loop"""
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self._delayed_completion_check())
+            except Exception as e:
+                self.logger.error(f"Error in completion check thread: {e}")
+                # Fallback - notify completion immediately
+                self._notify_completion()
+            finally:
+                loop.close()
+        
+        # Start in a separate thread to avoid event loop issues
+        completion_thread = threading.Thread(target=run_completion_check, daemon=True)
+        completion_thread.start()
+        self.logger.info("Started delayed completion check in separate thread")
     
     def _notify_completion(self) -> None:
         """Notify all callbacks that audio playback has completed"""
@@ -384,6 +403,13 @@ class AudioPlayback:
                 if self.underrun_count >= 5 and self.audio_queue.empty():
                     self.logger.debug(f"Multiple underruns detected ({self.underrun_count}) with empty queue - may indicate completion")
                     self._check_completion()
+                
+                # Simple fallback: If OpenAI stopped streaming and we have any underrun, complete
+                if self.underrun_count >= 1 and not self.openai_streaming_active and self.audio_queue.empty():
+                    self.logger.info(f"Underrun with empty queue and OpenAI done - completing playback")
+                    print(f"*** UNDERRUN COMPLETION: OpenAI done, queue empty, underruns={self.underrun_count} ***")
+                    self._notify_completion()
+                    return
                 
                 # If we have excessive underruns, check if OpenAI is still streaming
                 if self.underrun_count >= 20 and not self.openai_streaming_active:
@@ -613,6 +639,9 @@ class AudioPlayback:
         """Check for completion after OpenAI finishes sending audio"""
         import asyncio
         
+        self.logger.info("Delayed completion check started")
+        print("*** DELAYED COMPLETION CHECK STARTED ***")
+        
         # Track retry count to prevent infinite recursion
         if not hasattr(self, '_completion_check_retries'):
             self._completion_check_retries = 0
@@ -639,6 +668,7 @@ class AudioPlayback:
             if queue_size == 0 and current_buffer_size < self.chunk_size:
                 # Buffer is nearly empty, audio should be finishing
                 self.logger.info(f"Audio playback complete - buffer: {current_buffer_size} samples, queue: {queue_size}")
+                print(f"*** AUDIO PLAYBACK COMPLETE - BUFFER: {current_buffer_size}, QUEUE: {queue_size} ***")
                 self._completion_check_retries = 0  # Reset counter
                 self._notify_completion()
                 return
