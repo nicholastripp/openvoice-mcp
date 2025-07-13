@@ -82,6 +82,7 @@ class VoiceAssistant:
         # Response tracking
         self.response_done_received = False
         self._audio_response_received = False
+        self._response_create_sent = False  # Track if we've sent response.create
         
         # Periodic cleanup task
         self.cleanup_task = None
@@ -178,6 +179,12 @@ class VoiceAssistant:
             elif new_state == SessionState.RESPONDING:
                 self.logger.info(f"Session entering RESPONDING state - audio streaming will be blocked")
                 print("*** SESSION ENTERING RESPONDING STATE - AUDIO STREAMING WILL BE BLOCKED ***")
+            elif new_state == SessionState.PROCESSING:
+                self.logger.info(f"Session entering PROCESSING state - audio continues streaming")
+                print("*** SESSION ENTERING PROCESSING STATE - AUDIO CONTINUES STREAMING ***")
+            elif new_state == SessionState.MULTI_TURN_LISTENING:
+                self.logger.info(f"Session entering MULTI_TURN_LISTENING state - ready for follow-up questions")
+                print("*** SESSION ENTERING MULTI-TURN LISTENING STATE - SPEAK YOUR FOLLOW-UP QUESTION ***")
     
     def _validate_state_transition(self, old_state: SessionState, new_state: SessionState) -> bool:
         """Validate that a state transition is allowed"""
@@ -520,6 +527,7 @@ class VoiceAssistant:
         # Reset response tracking
         self.response_done_received = False
         self._audio_response_received = False
+        self._response_create_sent = False  # Reset response.create tracking
         
         # Transition to listening state
         self._transition_to_state(SessionState.LISTENING)
@@ -797,7 +805,7 @@ class VoiceAssistant:
     async def _send_audio_to_openai(self, audio_data: bytes) -> None:
         """Send audio data to OpenAI and update activity"""
         # CRITICAL CHECK: Only send audio when session is active and in appropriate state
-        if not self.session_active or self.session_state == SessionState.IDLE:
+        if not self.session_active:
             # Track blocked audio chunks for debugging
             if hasattr(self, '_blocked_audio_counter'):
                 self._blocked_audio_counter += 1
@@ -810,12 +818,13 @@ class VoiceAssistant:
                 self.logger.debug(f"Blocked {self._blocked_audio_counter} audio chunks from OpenAI (session_active: {self.session_active}, state: {self.session_state.value})")
             return
         
-        # ENHANCED SAFETY CHECK: Don't send audio during response, cooldown, or processing
+        # ENHANCED SAFETY CHECK: Don't send audio during response, cooldown
+        # NOTE: We do NOT block during PROCESSING state to allow continuous audio streaming
         blocked_states = [
             SessionState.RESPONDING,
             SessionState.AUDIO_PLAYING,
-            SessionState.COOLDOWN,
-            SessionState.PROCESSING  # Block audio during processing to prevent continuous streaming
+            SessionState.COOLDOWN
+            # SessionState.PROCESSING removed - we want to continue capturing audio during processing
         ]
         
         # More aggressive blocking - always block during these states regardless of config
@@ -825,7 +834,7 @@ class VoiceAssistant:
                 self._response_blocked_counter += 1
             else:
                 self._response_blocked_counter = 1
-                self.logger.warning(f"[BLOCKED] Started blocking audio during {self.session_state.value} state (response_active: {self.response_active})")
+                self.logger.info(f"[BLOCKED] Started blocking audio during {self.session_state.value} state (response_active: {self.response_active})")
                 print(f"*** [BLOCKED] AUDIO TO OPENAI DURING {self.session_state.value.upper()} STATE ***")
             
             if self._response_blocked_counter % 50 == 0:  # Every 50 blocked chunks
@@ -1071,6 +1080,11 @@ class VoiceAssistant:
                 self.logger.info(f"Multi-turn conversation active (turn {self.conversation_turn_count}/{max_turns})")
                 print(f"*** MULTI-TURN CONVERSATION ACTIVE (TURN {self.conversation_turn_count}/{max_turns}) ***")
                 print(f"*** LISTENING FOR FOLLOW-UP QUESTION (TIMEOUT: {multi_turn_timeout}s) ***")
+                
+                # Reset response tracking for next turn
+                self._response_create_sent = False
+                self.response_done_received = False
+                self._audio_response_received = False
                 
                 self._transition_to_state(SessionState.MULTI_TURN_LISTENING)
                 
@@ -1375,23 +1389,37 @@ class VoiceAssistant:
         # CRITICAL: Even with server VAD, we need to explicitly request a response
         # The server VAD only commits the buffer, it doesn't automatically generate a response
         if self.openai_client and self.openai_client.state.value == "connected":
+            # Check if we've already sent a response.create to prevent duplicates
+            if self._response_create_sent:
+                self.logger.warning("Response.create already sent - skipping duplicate request")
+                print("*** RESPONSE.CREATE ALREADY SENT - SKIPPING DUPLICATE ***")
+                return
+            
             # Wait a small delay to ensure buffer is committed
             await asyncio.sleep(0.1)
             
             try:
                 self.logger.info("Explicitly requesting response after speech_stopped")
                 print("*** REQUESTING RESPONSE FROM OPENAI ***")
+                self._response_create_sent = True  # Mark that we've sent the request
                 await self.openai_client._send_event({"type": "response.create"})
             except Exception as e:
                 self.logger.error(f"Failed to request response after speech_stopped: {e}")
                 print(f"*** FAILED TO REQUEST RESPONSE: {e} ***")
+                self._response_create_sent = False  # Reset on error
     
     async def _on_openai_error(self, error_data: dict) -> None:
         """Handle OpenAI errors with recovery logic"""
-        error_type = error_data.get('type', 'unknown')
-        error_message = error_data.get('message', 'unknown error')
+        # Extract error details with better fallback handling
+        error_type = error_data.get('type', error_data.get('error_type', 'unknown'))
+        error_message = error_data.get('message', error_data.get('error_message', str(error_data)))
+        error_code = error_data.get('code', error_data.get('error_code', ''))
         
+        # Log the full error data for debugging
         self.logger.error(f"OpenAI error [{error_type}]: {error_message}")
+        if error_code:
+            self.logger.error(f"Error code: {error_code}")
+        self.logger.debug(f"Full error data: {error_data}")
         print(f"*** OPENAI ERROR [{error_type.upper()}]: {error_message} ***")
         
         # Handle specific error types with recovery
@@ -1401,12 +1429,24 @@ class VoiceAssistant:
             return
         elif error_type == 'conversation_already_has_active_response':
             self.logger.warning("Conversation already has active response - ignoring duplicate request")
+            # Reset our response tracking flag since OpenAI rejected the duplicate
+            self._response_create_sent = False
             # Don't end session for this error - it's expected in some race conditions
             return
         elif error_type == 'invalid_request_error':
             self.logger.warning(f"Invalid request error: {error_message}")
             # Don't end session - this is often recoverable (e.g., trying to create response when one exists)
             return
+        elif error_type == 'error':
+            # Generic error type - check the error code for more details
+            if error_code == 'conversation_already_has_active_response':
+                self.logger.warning("Generic error with active response code - treating as duplicate")
+                self._response_create_sent = False
+                return
+            else:
+                self.logger.warning(f"Generic error type: {error_message} (code: {error_code})")
+                # Don't end session for generic errors
+                return
         elif error_type == 'connection_error':
             self.logger.warning("Connection error - attempting reconnection")
             try:
@@ -1438,6 +1478,8 @@ class VoiceAssistant:
         
         # Mark that we've received response.done
         self.response_done_received = True
+        # Reset response.create flag since response is complete
+        self._response_create_sent = False
         
         # If audio hasn't been received yet, this might be a text-only or empty response
         if not hasattr(self, '_audio_response_received') or not self._audio_response_received:
@@ -1466,10 +1508,16 @@ class VoiceAssistant:
             # Request a new response
             if self.openai_client and self.openai_client.state.value == "connected":
                 try:
-                    await self.openai_client._send_event({"type": "response.create"})
-                    self.logger.info("Retry response.create sent")
+                    # Check if we should retry (avoid duplicate requests)
+                    if not self._response_create_sent:
+                        self._response_create_sent = True
+                        await self.openai_client._send_event({"type": "response.create"})
+                        self.logger.info("Retry response.create sent")
+                    else:
+                        self.logger.warning("Skipping retry - response.create already pending")
                 except Exception as e:
                     self.logger.error(f"Failed to retry response: {e}")
+                    self._response_create_sent = False  # Reset on error
                     await self._end_session()
             else:
                 self.logger.error("Cannot retry - OpenAI client not connected")

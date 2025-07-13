@@ -111,6 +111,9 @@ class OpenAIRealtimeClient:
         self.audio_chunks_sent = 0  # Track number of chunks sent
         self.last_audio_send_time = 0  # Track timing for proper streaming
         
+        # Response tracking
+        self.response_in_progress = False  # Track if a response is currently being created
+        
     async def connect(self) -> bool:
         """
         Connect to OpenAI Realtime API
@@ -472,6 +475,7 @@ class OpenAIRealtimeClient:
         elif event_type == "response.created":
             # Response creation started
             response_id = event.data.get("response", {}).get("id", "unknown")
+            self.response_in_progress = True  # Mark that a response is in progress
             self.logger.info(f"[RESPONSE CREATED] OpenAI started creating response: {response_id}")
             print(f"*** OPENAI RESPONSE CREATION STARTED: {response_id} ***")
             
@@ -483,6 +487,7 @@ class OpenAIRealtimeClient:
             output_items = response_data.get("output", [])
             status_details = response_data.get("status_details", {})
             
+            self.response_in_progress = False  # Mark that response is complete
             self.logger.info(f"[RESPONSE DONE] OpenAI completed response: {response_id}, status: {status}, outputs: {len(output_items)}")
             print(f"*** OPENAI RESPONSE COMPLETED: {response_id} (status: {status}, outputs: {len(output_items)}) ***")
             
@@ -573,10 +578,24 @@ class OpenAIRealtimeClient:
         elif event_type == "error":
             # Error from OpenAI
             error_data = event.data.get("error", {})
-            safe_error_data = {k: sanitize_unicode_text(str(v)) for k, v in error_data.items()}
-            print(f"DEBUG: Received error event: {safe_error_data}")
-            self.logger.error(f"OpenAI error: {safe_error_data}")
-            await self._emit_event("error", safe_error_data)
+            # If error data is nested, extract it
+            if not error_data and "error" not in event.data:
+                # Error might be at the top level
+                error_data = event.data
+            
+            # Create comprehensive error info
+            error_info = {
+                "type": error_data.get("type", error_data.get("error_type", "unknown")),
+                "message": error_data.get("message", error_data.get("error_message", error_data.get("msg", str(error_data)))),
+                "code": error_data.get("code", error_data.get("error_code", "")),
+                "raw_data": error_data  # Include raw data for debugging
+            }
+            
+            safe_error_info = {k: sanitize_unicode_text(str(v)) for k, v in error_info.items()}
+            print(f"DEBUG: Received error event: {safe_error_info}")
+            self.logger.error(f"OpenAI error - Type: {error_info['type']}, Message: {error_info['message']}, Code: {error_info['code']}")
+            self.logger.debug(f"Full error data: {safe_error_info}")
+            await self._emit_event("error", error_info)
         
         # Emit generic event
         await self._emit_event(event_type, event.data)

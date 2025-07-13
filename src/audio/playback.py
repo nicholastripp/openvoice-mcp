@@ -60,7 +60,7 @@ class AudioPlayback:
         self.underrun_count = 0
         self.last_underrun_warning = 0
         self.consecutive_underruns = 0
-        self.max_consecutive_underruns = 20  # Increased tolerance for network jitter
+        self.max_consecutive_underruns = 50  # Further increased tolerance for network jitter and delays
         
         # Audio completion tracking
         self.completion_callbacks = []
@@ -381,21 +381,21 @@ class AudioPlayback:
                 self.consecutive_underruns += 1  # Track consecutive underruns
                 
                 # If we have too many underruns, this may indicate completion
-                if self.underrun_count >= 3 and self.audio_queue.empty():
+                if self.underrun_count >= 5 and self.audio_queue.empty():
                     self.logger.debug(f"Multiple underruns detected ({self.underrun_count}) with empty queue - may indicate completion")
                     self._check_completion()
                 
                 # If we have excessive underruns, check if OpenAI is still streaming
-                if self.underrun_count >= 10 and not self.openai_streaming_active:
+                if self.underrun_count >= 20 and not self.openai_streaming_active:
                     self.logger.warning(f"Excessive underruns ({self.underrun_count}) with OpenAI done - forcing completion")
                     print(f"*** EXCESSIVE UNDERRUNS ({self.underrun_count}) - FORCING COMPLETION ***")
                     self._notify_completion()
                     return
-                elif self.underrun_count >= 10:
+                elif self.underrun_count >= 20:
                     # OpenAI still streaming, increase tolerance
                     import time
                     time_since_last_chunk = time.time() - self.last_chunk_received_time
-                    if time_since_last_chunk > 3.0:  # No chunks for 3 seconds
+                    if time_since_last_chunk > 5.0:  # Increased from 3 to 5 seconds
                         self.logger.warning(f"No audio chunks for {time_since_last_chunk:.1f}s - forcing completion")
                         self._notify_completion()
                         return
@@ -416,8 +416,15 @@ class AudioPlayback:
                         self._notify_completion()
                         return
                     elif self.consecutive_underruns >= self.max_consecutive_underruns:
-                        # OpenAI is still streaming, don't force completion yet
-                        self.logger.debug(f"Consecutive underruns ({self.consecutive_underruns}) but OpenAI still streaming - waiting")
+                        # OpenAI is still streaming, increase tolerance further
+                        if self.consecutive_underruns >= self.max_consecutive_underruns * 2:
+                            # Double the threshold - really excessive underruns
+                            self.logger.error(f"Excessive consecutive underruns ({self.consecutive_underruns}) even with OpenAI streaming - forcing completion")
+                            print(f"*** EXCESSIVE UNDERRUNS ({self.consecutive_underruns}) - FORCING COMPLETION ***")
+                            self._notify_completion()
+                            return
+                        else:
+                            self.logger.debug(f"Consecutive underruns ({self.consecutive_underruns}) but OpenAI still streaming - waiting")
             
         except Exception as e:
             self.logger.error(f"Error in audio callback: {e}")
