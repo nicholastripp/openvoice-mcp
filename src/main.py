@@ -687,6 +687,9 @@ class VoiceAssistant:
         # Response failed handler
         self.openai_client.on("response_failed", self._on_response_failed)
         
+        # Response created handler (when OpenAI starts creating response)
+        self.openai_client.on("response.created", self._on_response_created)
+        
         # Response done handler (when OpenAI finishes creating response)
         self.openai_client.on("response.done", self._on_response_done)
     
@@ -1010,23 +1013,24 @@ class VoiceAssistant:
                 
                 # Add timeout to prevent hanging
                 try:
-                    future.result(timeout=30.0)  # 30 second timeout for longer responses
+                    future.result(timeout=5.0)  # 5 second timeout - completion should be quick
+                except asyncio.TimeoutError:
+                    self.logger.error("Audio completion handler timed out after 5 seconds")
+                    print("*** AUDIO COMPLETION TIMEOUT - CONTINUING WITHOUT MULTI-TURN ***")
+                    # Don't end session on timeout - just continue
                 except Exception as e:
                     import traceback
                     self.logger.error(f"Error in audio completion handler: {e}")
                     self.logger.error(f"Traceback: {traceback.format_exc()}")
                     print(f"*** ERROR IN AUDIO COMPLETION: {e} ***")
-                    # Fallback: force session end
-                    self._schedule_fallback_session_end()
+                    # Don't end session on error - just log and continue
                     
             except Exception as e:
                 self.logger.error(f"Error scheduling audio completion handler: {e}")
-                # Fallback: force session end
-                self._schedule_fallback_session_end()
+                # Don't end session - just log the error
         else:
             self.logger.error("No event loop available for audio completion")
-            # Fallback: force session end
-            self._schedule_fallback_session_end()
+            # Don't end session - just log the error
     
     async def _handle_audio_completion(self) -> None:
         """Handle audio completion in async context"""
@@ -1045,9 +1049,13 @@ class VoiceAssistant:
                 return
             
             # Restore enhanced VAD threshold for better speech detection
-            if self.openai_client:
-                await self.openai_client.update_vad_settings(threshold=0.2, silence_duration_ms=800)
-                self.logger.debug("Restored enhanced VAD threshold (0.2) after actual playback completion")
+            if self.openai_client and self.openai_client.state.value == "connected":
+                try:
+                    await self.openai_client.update_vad_settings(threshold=0.2, silence_duration_ms=800)
+                    self.logger.debug("Restored enhanced VAD threshold (0.2) after actual playback completion")
+                except Exception as e:
+                    self.logger.warning(f"Failed to restore VAD settings: {e}")
+                    # Don't fail the entire completion handler for this
             
             # Check if multi-turn conversation mode is enabled
             conversation_mode = getattr(self.config.session, 'conversation_mode', 'single_turn')
@@ -1386,27 +1394,32 @@ class VoiceAssistant:
         self.logger.debug("Server VAD handling audio commit automatically - no manual commit needed")
         print("*** SERVER VAD WILL HANDLE RESPONSE - WAITING FOR OPENAI ***")
         
-        # CRITICAL: Even with server VAD, we need to explicitly request a response
-        # The server VAD only commits the buffer, it doesn't automatically generate a response
-        if self.openai_client and self.openai_client.state.value == "connected":
-            # Check if we've already sent a response.create to prevent duplicates
-            if self._response_create_sent:
-                self.logger.warning("Response.create already sent - skipping duplicate request")
-                print("*** RESPONSE.CREATE ALREADY SENT - SKIPPING DUPLICATE ***")
-                return
-            
-            # Wait a small delay to ensure buffer is committed
-            await asyncio.sleep(0.1)
-            
-            try:
-                self.logger.info("Explicitly requesting response after speech_stopped")
-                print("*** REQUESTING RESPONSE FROM OPENAI ***")
-                self._response_create_sent = True  # Mark that we've sent the request
-                await self.openai_client._send_event({"type": "response.create"})
-            except Exception as e:
-                self.logger.error(f"Failed to request response after speech_stopped: {e}")
-                print(f"*** FAILED TO REQUEST RESPONSE: {e} ***")
-                self._response_create_sent = False  # Reset on error
+        # NOTE: With server VAD in the current API version, OpenAI automatically creates a response
+        # after speech stops. Manual response.create calls cause "conversation_already_has_active_response" errors.
+        # Commenting out manual response creation to rely on server VAD's automatic behavior.
+        
+        # if self.openai_client and self.openai_client.state.value == "connected":
+        #     # Check if we've already sent a response.create to prevent duplicates
+        #     if self._response_create_sent:
+        #         self.logger.warning("Response.create already sent - skipping duplicate request")
+        #         print("*** RESPONSE.CREATE ALREADY SENT - SKIPPING DUPLICATE ***")
+        #         return
+        #     
+        #     # Wait a small delay to ensure buffer is committed
+        #     await asyncio.sleep(0.1)
+        #     
+        #     try:
+        #         self.logger.info("Explicitly requesting response after speech_stopped")
+        #         print("*** REQUESTING RESPONSE FROM OPENAI ***")
+        #         self._response_create_sent = True  # Mark that we've sent the request
+        #         await self.openai_client._send_event({"type": "response.create"})
+        #     except Exception as e:
+        #         self.logger.error(f"Failed to request response after speech_stopped: {e}")
+        #         print(f"*** FAILED TO REQUEST RESPONSE: {e} ***")
+        #         self._response_create_sent = False  # Reset on error
+        
+        self.logger.info("Server VAD will automatically create response after speech stops")
+        print("*** SERVER VAD WILL AUTO-CREATE RESPONSE ***")
     
     async def _on_openai_error(self, error_data: dict) -> None:
         """Handle OpenAI errors with recovery logic"""
@@ -1467,6 +1480,22 @@ class VoiceAssistant:
             self.logger.error(f"Unrecoverable error - ending session: {error_type}")
             await self._end_session()
     
+    async def _on_response_created(self, event_data: dict) -> None:
+        """Handle OpenAI response creation start"""
+        response_data = event_data.get("response", {})
+        response_id = response_data.get("id", "unknown")
+        
+        self.logger.info(f"Response {response_id} creation started")
+        print(f"*** RESPONSE.CREATED RECEIVED: {response_id} ***")
+        
+        # Mark that we have an active response
+        self.response_active = True
+        self._response_create_sent = True
+        
+        # Transition to responding state if not already
+        if self.session_state not in [SessionState.RESPONDING, SessionState.AUDIO_PLAYING]:
+            self._transition_to_state(SessionState.RESPONDING)
+    
     async def _on_response_done(self, event_data: dict) -> None:
         """Handle OpenAI response completion"""
         response_data = event_data.get("response", {})
@@ -1480,6 +1509,11 @@ class VoiceAssistant:
         self.response_done_received = True
         # Reset response.create flag since response is complete
         self._response_create_sent = False
+        
+        # If response was cancelled or failed, ensure we reset state
+        if status in ["cancelled", "failed"]:
+            self.response_active = False
+            self.logger.info(f"Response {status} - resetting response state")
         
         # If audio hasn't been received yet, this might be a text-only or empty response
         if not hasattr(self, '_audio_response_received') or not self._audio_response_received:
@@ -1496,6 +1530,10 @@ class VoiceAssistant:
         
         self.logger.error(f"Response {response_id} failed: {error_type} - {error_message}")
         print(f"*** RESPONSE FAILURE: {error_type} - {error_message} ***")
+        
+        # Reset response state since it failed
+        self.response_active = False
+        self._response_create_sent = False
         
         # Check if we can retry based on error type
         if error_type in ["timeout", "network_error", "temporary_failure"]:

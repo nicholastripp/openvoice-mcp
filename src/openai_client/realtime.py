@@ -595,7 +595,8 @@ class OpenAIRealtimeClient:
             print(f"DEBUG: Received error event: {safe_error_info}")
             self.logger.error(f"OpenAI error - Type: {error_info['type']}, Message: {error_info['message']}, Code: {error_info['code']}")
             self.logger.debug(f"Full error data: {safe_error_info}")
-            await self._emit_event("error", error_info)
+            # Pass just the error data, not the wrapper
+            await self._emit_event("error", error_data)
         
         # Emit generic event
         await self._emit_event(event_type, event.data)
