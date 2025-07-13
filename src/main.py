@@ -473,7 +473,22 @@ class VoiceAssistant:
                 await self._end_session()
                 return
         
+        # Don't attempt timeout during audio playback or response generation
+        if self.session_state in [SessionState.RESPONDING, SessionState.AUDIO_PLAYING]:
+            # Audio is actively playing - skip timeout check
+            self.logger.debug(f"Skipping timeout check - audio active in state {self.session_state.value}")
+            return
+        
         if current_time - self.last_activity > timeout:
+            # Check if we've already attempted to end this session recently
+            if not hasattr(self, '_last_timeout_attempt'):
+                self._last_timeout_attempt = 0
+            
+            # Prevent rapid retry attempts (wait at least 5 seconds between attempts)
+            if current_time - self._last_timeout_attempt < 5.0:
+                return
+                
+            self._last_timeout_attempt = current_time
             self.logger.info(f"Session timeout after {timeout}s of inactivity, ending session")
             print(f"*** SESSION TIMEOUT AFTER {timeout}S - ENDING SESSION ***")
             await self._end_session()

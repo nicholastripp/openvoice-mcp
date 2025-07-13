@@ -79,6 +79,9 @@ class AudioPlayback:
         # Track OpenAI streaming state
         self.openai_streaming_active = False
         self.last_chunk_received_time = 0
+        
+        # Completion notification tracking
+        self._completion_notified = False
     
     async def start(self) -> None:
         """Start audio playback system"""
@@ -250,6 +253,7 @@ class AudioPlayback:
         self.silence_frames_count = 0
         self.underrun_count = 0  # Reset underrun count for new response
         self.consecutive_underruns = 0
+        self._completion_notified = False  # Reset completion notification flag
         import time
         self.last_audio_time = time.time()
         self.last_chunk_received_time = time.time()
@@ -258,6 +262,7 @@ class AudioPlayback:
         self._start_completion_timeout()
         
         self.logger.debug("Started response audio tracking with pre-buffering enabled (500ms threshold)")
+        self.logger.info(f"Response started - is_response_active: True, completion_notified: False")
     
     def end_response(self) -> None:
         """Mark the end of a response (OpenAI finished sending)"""
@@ -290,31 +295,44 @@ class AudioPlayback:
     
     def _notify_completion(self) -> None:
         """Notify all callbacks that audio playback has completed"""
+        # Check if we've already notified completion for this response
+        if hasattr(self, '_completion_notified') and self._completion_notified:
+            self.logger.debug("Completion already notified - skipping duplicate notification")
+            return
+            
+        self.logger.info("Audio playback completed - notifying callbacks")
+        print("*** AUDIO PLAYBACK COMPLETED - NOTIFYING CALLBACKS ***")
+        
+        # Mark completion as notified to prevent duplicates
+        self._completion_notified = True
+        
+        # Update state flags
         if self.is_response_active:
-            self.logger.info("Audio playback completed - notifying callbacks")
-            print("*** AUDIO PLAYBACK COMPLETED - NOTIFYING CALLBACKS ***")
-            self.is_response_active = False
-            
-            # Reset streaming state
-            self.openai_streaming_active = False
-            
-            # Cancel timeout task
-            self._cancel_completion_timeout()
-            
-            # Notify all callbacks with comprehensive error handling
-            # Make a copy of callbacks to avoid modification during iteration
-            callbacks_copy = list(self.completion_callbacks)
-            for i, callback in enumerate(callbacks_copy):
-                try:
-                    self.logger.debug(f"Calling completion callback #{i+1}")
-                    callback()
-                    self.logger.debug(f"Completion callback #{i+1} completed successfully")
-                except Exception as e:
-                    self.logger.error(f"Error in completion callback #{i+1}: {e}")
-                    import traceback
-                    self.logger.error(f"Traceback: {traceback.format_exc()}")
-                    # Continue with other callbacks even if one fails
-                    continue
+            self.logger.debug("Setting is_response_active to False")
+        self.is_response_active = False
+        
+        # Reset streaming state
+        self.openai_streaming_active = False
+        
+        # Cancel timeout task
+        self._cancel_completion_timeout()
+        
+        # Notify all callbacks with comprehensive error handling
+        # Make a copy of callbacks to avoid modification during iteration
+        callbacks_copy = list(self.completion_callbacks)
+        self.logger.info(f"Notifying {len(callbacks_copy)} completion callbacks")
+        
+        for i, callback in enumerate(callbacks_copy):
+            try:
+                self.logger.debug(f"Calling completion callback #{i+1}")
+                callback()
+                self.logger.debug(f"Completion callback #{i+1} completed successfully")
+            except Exception as e:
+                self.logger.error(f"Error in completion callback #{i+1}: {e}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
+                # Continue with other callbacks even if one fails
+                continue
     
     def clear_queue(self) -> None:
         """Clear the audio playback queue and buffer"""
@@ -329,6 +347,7 @@ class AudioPlayback:
         
         # If we clear the queue, we're probably stopping playback
         if self.is_response_active:
+            self.logger.info("Clearing queue while response active - setting is_response_active to False")
             self.is_response_active = False
             self.silence_frames_count = 0
             self._cancel_completion_timeout()
