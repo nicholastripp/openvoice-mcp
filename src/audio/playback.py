@@ -254,6 +254,7 @@ class AudioPlayback:
         self.underrun_count = 0  # Reset underrun count for new response
         self.consecutive_underruns = 0
         self._completion_notified = False  # Reset completion notification flag
+        self._completion_check_retries = 0  # Reset retry counter for new response
         import time
         self.last_audio_time = time.time()
         self.last_chunk_received_time = time.time()
@@ -283,10 +284,18 @@ class AudioPlayback:
                 loop.run_until_complete(self._delayed_completion_check())
             except Exception as e:
                 self.logger.error(f"Error in completion check thread: {e}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
                 # Fallback - notify completion immediately
-                self._notify_completion()
+                try:
+                    self._notify_completion()
+                except Exception as notify_error:
+                    self.logger.error(f"Error in fallback notification: {notify_error}")
             finally:
-                loop.close()
+                try:
+                    loop.close()
+                except Exception as close_error:
+                    self.logger.error(f"Error closing event loop: {close_error}")
         
         # Start in a separate thread to avoid event loop issues
         completion_thread = threading.Thread(target=run_completion_check, daemon=True)
@@ -313,6 +322,9 @@ class AudioPlayback:
         
         # Reset streaming state
         self.openai_streaming_active = False
+        
+        # Reset retry counter for safety
+        self._completion_check_retries = 0
         
         # Cancel timeout task
         self._cancel_completion_timeout()
@@ -684,67 +696,79 @@ class AudioPlayback:
         self.logger.info("Delayed completion check started")
         print("*** DELAYED COMPLETION CHECK STARTED ***")
         
-        # Track retry count to prevent infinite recursion
+        # Initialize retry count if not already set
         if not hasattr(self, '_completion_check_retries'):
             self._completion_check_retries = 0
         
         # First, give a brief delay for any final chunks to arrive
         await asyncio.sleep(0.5)
         
-        # Wait for buffer to drain
-        max_wait = 3.0  # Reduced from 5.0 seconds
-        wait_interval = 0.1
-        elapsed = 0.0
-        last_buffer_size = len(self.audio_buffer)
+        # Maximum number of retry attempts
+        max_retries = 10
+        retry_count = 0
         
-        while elapsed < max_wait:
+        # Use a loop instead of recursion to avoid stack issues
+        while retry_count < max_retries:
+            # Wait for buffer to drain
+            max_wait = 3.0  # Reduced from 5.0 seconds
+            wait_interval = 0.1
+            elapsed = 0.0
+            last_buffer_size = len(self.audio_buffer)
+            
+            while elapsed < max_wait:
+                if not self.is_response_active:
+                    # Already completed
+                    self._completion_check_retries = 0  # Reset counter
+                    return
+                    
+                current_buffer_size = len(self.audio_buffer)
+                queue_size = self.audio_queue.qsize()
+                
+                # Check if audio is still playing
+                if queue_size == 0 and current_buffer_size < self.chunk_size:
+                    # Buffer is nearly empty, audio should be finishing
+                    self.logger.info(f"Audio playback complete - buffer: {current_buffer_size} samples, queue: {queue_size}")
+                    print(f"*** AUDIO PLAYBACK COMPLETE - BUFFER: {current_buffer_size}, QUEUE: {queue_size} ***")
+                    self._completion_check_retries = 0  # Reset counter
+                    self._notify_completion()
+                    return
+                
+                # Check if buffer is draining (audio is playing)
+                if current_buffer_size < last_buffer_size:
+                    self.logger.debug(f"Buffer draining: {current_buffer_size} samples (was {last_buffer_size})")
+                    last_buffer_size = current_buffer_size
+                
+                await asyncio.sleep(wait_interval)
+                elapsed += wait_interval
+            
+            # Check if we should complete or retry
             if not self.is_response_active:
-                # Already completed
-                self._completion_check_retries = 0  # Reset counter
+                # Already completed during wait
                 return
                 
-            current_buffer_size = len(self.audio_buffer)
-            queue_size = self.audio_queue.qsize()
-            
-            # Check if audio is still playing
-            if queue_size == 0 and current_buffer_size < self.chunk_size:
-                # Buffer is nearly empty, audio should be finishing
-                self.logger.info(f"Audio playback complete - buffer: {current_buffer_size} samples, queue: {queue_size}")
-                print(f"*** AUDIO PLAYBACK COMPLETE - BUFFER: {current_buffer_size}, QUEUE: {queue_size} ***")
-                self._completion_check_retries = 0  # Reset counter
-                self._notify_completion()
-                return
-            
-            # Check if buffer is draining (audio is playing)
-            if current_buffer_size < last_buffer_size:
-                self.logger.debug(f"Buffer draining: {current_buffer_size} samples (was {last_buffer_size})")
-                last_buffer_size = current_buffer_size
-            
-            await asyncio.sleep(wait_interval)
-            elapsed += wait_interval
-        
-        # Timeout - but only force completion if buffer is actually empty
-        if self.is_response_active:
             if self.audio_queue.empty() and len(self.audio_buffer) < self.chunk_size:
+                # Buffer is empty, complete now
                 self.logger.warning("Delayed completion check timeout with empty buffer - forcing completion")
                 self._completion_check_retries = 0  # Reset counter
                 self._notify_completion()
-            else:
-                # Limit retries to prevent infinite recursion
-                self._completion_check_retries += 1
-                if self._completion_check_retries >= 10:  # Max 10 retries
-                    self.logger.error(f"Max completion check retries reached ({self._completion_check_retries}) - forcing completion")
-                    self._completion_check_retries = 0  # Reset counter
-                    self._notify_completion()
-                else:
-                    self.logger.warning(f"Delayed completion check timeout but audio still buffered - retry {self._completion_check_retries}/10 (buffer: {len(self.audio_buffer)}, queue: {self.audio_queue.qsize()})")
-                    # Schedule another check with exponential backoff
-                    backoff_delay = min(2.0 * self._completion_check_retries, 10.0)  # Max 10 second delay
-                    await asyncio.sleep(backoff_delay)
-                    
-                    # Only schedule if still active
-                    if self.is_response_active:
-                        asyncio.create_task(self._delayed_completion_check())
+                return
+            
+            # Still have buffered audio, retry with backoff
+            retry_count += 1
+            self.logger.warning(f"Delayed completion check timeout but audio still buffered - retry {retry_count}/{max_retries} (buffer: {len(self.audio_buffer)}, queue: {self.audio_queue.qsize()})")
+            
+            # Exponential backoff delay
+            backoff_delay = min(2.0 * retry_count, 10.0)  # Max 10 second delay
+            await asyncio.sleep(backoff_delay)
+            
+            # Check if still active before continuing loop
+            if not self.is_response_active:
+                return
+        
+        # Max retries reached
+        self.logger.error(f"Max completion check retries reached ({max_retries}) - forcing completion")
+        self._completion_check_retries = 0  # Reset counter
+        self._notify_completion()
     
     def _check_completion(self) -> None:
         """Check if audio playback has completed with comprehensive error handling"""
