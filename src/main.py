@@ -1061,21 +1061,21 @@ class VoiceAssistant:
                 
                 return
         
-        # Original single-turn logic
-        # Check if we should auto-end the session
-        if (self.config.session.auto_end_after_response and 
-            self.session_active and 
-            self.config.session.response_cooldown_delay > 0):
-            
-            # Schedule session end after cooldown delay
-            self.logger.info(f"Scheduling session end in {self.config.session.response_cooldown_delay} seconds")
-            print(f"*** SCHEDULING SESSION END IN {self.config.session.response_cooldown_delay} SECONDS ***")
-            self.response_end_task = asyncio.create_task(self._schedule_session_end())
-        elif self.config.session.auto_end_after_response:
-            # End session immediately if no cooldown delay
-            self.logger.info("Auto-ending session after actual playback completion")
-            print("*** AUTO-ENDING SESSION AFTER ACTUAL PLAYBACK COMPLETION ***")
-            await self._end_session()
+            # Original single-turn logic
+            # Check if we should auto-end the session
+            if (self.config.session.auto_end_after_response and 
+                self.session_active and 
+                self.config.session.response_cooldown_delay > 0):
+                
+                # Schedule session end after cooldown delay
+                self.logger.info(f"Scheduling session end in {self.config.session.response_cooldown_delay} seconds")
+                print(f"*** SCHEDULING SESSION END IN {self.config.session.response_cooldown_delay} SECONDS ***")
+                self.response_end_task = asyncio.create_task(self._schedule_session_end())
+            elif self.config.session.auto_end_after_response:
+                # End session immediately if no cooldown delay
+                self.logger.info("Auto-ending session after actual playback completion")
+                print("*** AUTO-ENDING SESSION AFTER ACTUAL PLAYBACK COMPLETION ***")
+                await self._end_session()
         
         except Exception as e:
             import traceback
