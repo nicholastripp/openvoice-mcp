@@ -46,8 +46,8 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/ha-realtime-voice-assistant
-cd ha-realtime-voice-assistant
+git clone https://github.com/nicholastripp/ha-realtime-assist
+cd ha-realtime-assist
 
 # Install dependencies
 ./install.sh
@@ -200,9 +200,9 @@ python3 src/main.py
 ## Documentation
 
 - [CLAUDE.md](./CLAUDE.md) - Comprehensive technical documentation
-- [Installation Guide](./docs/INSTALL.md) - Detailed setup instructions
-- [Configuration Guide](./docs/CONFIG.md) - All configuration options
-- [Hardware Guide](./docs/HARDWARE.md) - Hardware recommendations
+- [Configuration Guide](./docs/CONFIGURATION.md) - All configuration options
+- [Wake Word Tuning](./docs/wake_word_gain_tuning.md) - Wake word sensitivity tuning
+- [Troubleshooting](./docs/troubleshooting/) - Common issues and solutions
 
 ## Contributing
 

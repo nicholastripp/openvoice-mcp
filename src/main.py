@@ -68,6 +68,7 @@ class VoiceAssistant:
         self.vad_timeout_task = None
         self.response_active = False
         self.response_end_task = None
+        self.response_fallback_task = None  # Fallback timer for response creation
         
         # Multi-turn conversation state
         self.conversation_turn_count = 0
@@ -564,6 +565,12 @@ class VoiceAssistant:
             self.response_end_task = None
             self.logger.debug("Cancelled response end task")
         
+        # Cancel response fallback task if it exists
+        if self.response_fallback_task and not self.response_fallback_task.done():
+            self.response_fallback_task.cancel()
+            self.response_fallback_task = None
+            self.logger.debug("Cancelled response fallback task")
+        
         # Cancel multi-turn timeout task if it exists
         if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
             self.multi_turn_timeout_task.cancel()
@@ -650,6 +657,9 @@ class VoiceAssistant:
         
         # Error handler
         self.openai_client.on("error", self._on_openai_error)
+        
+        # Response failed handler
+        self.openai_client.on("response_failed", self._on_response_failed)
     
     async def _on_audio_captured_for_wake_word(self, audio_data: bytes) -> None:
         """Handle captured audio for wake word detection"""
@@ -783,8 +793,8 @@ class VoiceAssistant:
         blocked_states = [
             SessionState.RESPONDING,
             SessionState.AUDIO_PLAYING,
-            SessionState.COOLDOWN
-            # REMOVED SessionState.PROCESSING - Allow audio to continue during processing
+            SessionState.COOLDOWN,
+            SessionState.PROCESSING  # Block audio during processing to prevent continuous streaming
         ]
         
         # More aggressive blocking - always block during these states regardless of config
@@ -921,6 +931,14 @@ class VoiceAssistant:
             self.response_active = True
             # Transition to responding state
             self._transition_to_state(SessionState.RESPONDING)
+            
+            # Cancel response fallback timer since we got a response
+            if self.response_fallback_task and not self.response_fallback_task.done():
+                self.response_fallback_task.cancel()
+                self.response_fallback_task = None
+                self.logger.info("Cancelled response fallback timer - response received")
+                print("*** RESPONSE FALLBACK TIMER CANCELLED - RESPONSE RECEIVED ***")
+            
             # Increase VAD threshold during response playback
             if self.openai_client:
                 await self.openai_client.update_vad_settings(threshold=0.8, silence_duration_ms=500)
@@ -1263,6 +1281,11 @@ class VoiceAssistant:
         # Transition to processing state
         self._transition_to_state(SessionState.PROCESSING)
         
+        # CRITICAL: Stop sending audio to OpenAI once speech is detected
+        # This prevents continuous audio streaming while waiting for response
+        self.logger.info("Speech detected - stopping audio transmission to OpenAI")
+        print("*** STOPPING AUDIO TRANSMISSION - SPEECH DETECTED ***")
+        
         # Cancel VAD timeout since speech was properly detected
         if self.vad_timeout_task and not self.vad_timeout_task.done():
             self.vad_timeout_task.cancel()
@@ -1288,6 +1311,27 @@ class VoiceAssistant:
         # because the server has already processed and committed the buffer.
         self.logger.debug("Server VAD handling audio commit automatically - no manual commit needed")
         print("*** SERVER VAD WILL HANDLE RESPONSE - WAITING FOR OPENAI ***")
+        
+        # CRITICAL: Even with server VAD, we need to explicitly request a response
+        # The server VAD only commits the buffer, it doesn't automatically generate a response
+        if self.openai_client and self.openai_client.state.value == "connected":
+            # Wait a small delay to ensure buffer is committed
+            await asyncio.sleep(0.1)
+            
+            try:
+                self.logger.info("Explicitly requesting response after speech_stopped")
+                print("*** REQUESTING RESPONSE FROM OPENAI ***")
+                await self.openai_client._send_event({"type": "response.create"})
+                
+                # Start fallback timer to ensure response is created
+                self.response_fallback_task = asyncio.create_task(self._response_creation_fallback())
+                self.logger.info("Started response creation fallback timer (2s)")
+            except Exception as e:
+                self.logger.error(f"Failed to request response after speech_stopped: {e}")
+                print(f"*** FAILED TO REQUEST RESPONSE: {e} ***")
+                
+                # Start fallback timer even on error
+                self.response_fallback_task = asyncio.create_task(self._response_creation_fallback())
     
     async def _on_openai_error(self, error_data: dict) -> None:
         """Handle OpenAI errors with recovery logic"""
@@ -1313,6 +1357,39 @@ class VoiceAssistant:
         # End session on unrecoverable errors
         await self._end_session()
     
+    async def _on_response_failed(self, event_data: dict) -> None:
+        """Handle failed OpenAI response"""
+        response_id = event_data.get("response_id", "unknown")
+        error_type = event_data.get("error_type", "unknown")
+        error_message = event_data.get("error_message", "No error message")
+        
+        self.logger.error(f"Response {response_id} failed: {error_type} - {error_message}")
+        print(f"*** RESPONSE FAILURE: {error_type} - {error_message} ***")
+        
+        # Check if we can retry based on error type
+        if error_type in ["timeout", "network_error", "temporary_failure"]:
+            self.logger.info("Attempting to retry response creation...")
+            print("*** RETRYING RESPONSE CREATION ***")
+            
+            # Wait a bit before retrying
+            await asyncio.sleep(0.5)
+            
+            # Request a new response
+            if self.openai_client and self.openai_client.state.value == "connected":
+                try:
+                    await self.openai_client._send_event({"type": "response.create"})
+                    self.logger.info("Retry response.create sent")
+                except Exception as e:
+                    self.logger.error(f"Failed to retry response: {e}")
+                    await self._end_session()
+            else:
+                self.logger.error("Cannot retry - OpenAI client not connected")
+                await self._end_session()
+        else:
+            # Non-retryable error - end session
+            self.logger.error(f"Non-retryable error: {error_type}")
+            await self._end_session()
+    
     async def _adjust_vad_after_delay(self) -> None:
         """Adjust VAD to normal sensitivity after initial period"""
         await asyncio.sleep(2.0)  # Wait 2 seconds
@@ -1322,6 +1399,41 @@ class VoiceAssistant:
             await self.openai_client.update_vad_settings(threshold=0.2, silence_duration_ms=800)
             self.logger.info("Adjusted VAD to normal sensitivity after initial period")
             print("*** VAD ADJUSTED TO NORMAL SENSITIVITY ***")
+    
+    async def _response_creation_fallback(self) -> None:
+        """Fallback timer to ensure response is created after speech detection"""
+        try:
+            # Wait 2 seconds to see if a response is created
+            await asyncio.sleep(2.0)
+            
+            # Check if we're still in PROCESSING state (no response started)
+            if self.session_state == SessionState.PROCESSING and self.session_active:
+                self.logger.warning("No response created after 2s - triggering fallback response.create")
+                print("*** RESPONSE CREATION FALLBACK TRIGGERED ***")
+                
+                # Try to create response one more time
+                if self.openai_client and self.openai_client.state.value == "connected":
+                    try:
+                        await self.openai_client._send_event({"type": "response.create"})
+                        self.logger.info("Fallback response.create sent successfully")
+                    except Exception as e:
+                        self.logger.error(f"Fallback response.create failed: {e}")
+                        # End session if we can't get a response
+                        await self._end_session()
+                else:
+                    self.logger.error("Cannot send fallback response - OpenAI not connected")
+                    await self._end_session()
+            else:
+                self.logger.debug(f"Response fallback cancelled - state is now {self.session_state.value}")
+                
+        except asyncio.CancelledError:
+            # Task was cancelled (response was created normally)
+            self.logger.debug("Response fallback timer cancelled - response created normally")
+        except Exception as e:
+            self.logger.error(f"Error in response creation fallback: {e}")
+            # End session on error
+            if self.session_active:
+                await self._end_session()
     
     async def _vad_timeout_handler(self) -> None:
         """Handle VAD timeout - end session gracefully if no speech detected"""

@@ -481,8 +481,34 @@ class OpenAIRealtimeClient:
             response_id = response_data.get("id", "unknown")
             status = response_data.get("status", "unknown")
             output_items = response_data.get("output", [])
+            status_details = response_data.get("status_details", {})
+            
             self.logger.info(f"[RESPONSE DONE] OpenAI completed response: {response_id}, status: {status}, outputs: {len(output_items)}")
             print(f"*** OPENAI RESPONSE COMPLETED: {response_id} (status: {status}, outputs: {len(output_items)}) ***")
+            
+            # CRITICAL: Log full error details if response failed
+            if status == "failed":
+                error_type = status_details.get("type", "unknown_error")
+                error_code = status_details.get("code", "")
+                error_message = status_details.get("message", "No error message provided")
+                
+                self.logger.error(f"[RESPONSE FAILED] Response {response_id} failed:")
+                self.logger.error(f"  Error Type: {error_type}")
+                self.logger.error(f"  Error Code: {error_code}")
+                self.logger.error(f"  Error Message: {error_message}")
+                self.logger.error(f"  Full status_details: {json.dumps(status_details, indent=2)}")
+                
+                print(f"*** RESPONSE FAILED: {error_type} ***")
+                print(f"*** ERROR: {error_message} ***")
+                print(f"*** FULL ERROR DETAILS: {json.dumps(status_details)} ***")
+                
+                # Emit error event for handling
+                await self._emit_event("response_failed", {
+                    "response_id": response_id,
+                    "error_type": error_type,
+                    "error_message": error_message,
+                    "status_details": status_details
+                })
             
             # Log output item types for debugging
             for i, item in enumerate(output_items):

@@ -5,6 +5,27 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Wake word audio gain configuration (fixed and dynamic modes)
+- Configurable gain values (1.0-5.0 range) with 3.5x default
+- Multi-turn conversation support with configurable timeout and turn limits
+- Natural conversation ending with phrase detection
+- Improved project organization (tools/ and docs/ directories)
+
+### Changed
+- Wake word sensitivity threshold increased to 0.004 (from 0.001)
+- Audio input volume increased to 5.0 for better VAD detection
+- Reorganized test scripts into tools/ directory
+- Reorganized documentation into docs/ directory structure
+
+### Fixed
+- Wake word model stuck at low confidence values
+- Audio buffer flushing mechanism for model reset
+- False positive wake word detections
+- Configuration synchronization between config.yaml and config.yaml.example
+
 ## [0.1.0] - 2024-12-07
 
 ### Added

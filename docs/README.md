@@ -2,6 +2,7 @@
 
 ## Project Documentation
 
+- [Configuration Guide](CONFIGURATION.md) - Complete configuration reference
 - [Wake Word Gain Tuning Guide](wake_word_gain_tuning.md) - Guide for configuring wake word detection sensitivity
 
 ## Troubleshooting Guides

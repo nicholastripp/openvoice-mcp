@@ -267,13 +267,13 @@ class AudioCapture:
         Returns:
             PCM16 audio data at 24kHz
         """
-        # Apply input volume gain
-        if self.volume != 1.0:
-            audio_data = audio_data * self.volume
-            # Log if clipping occurs
-            if np.any(np.abs(audio_data) > 1.0):
-                clipped_samples = np.sum(np.abs(audio_data) > 1.0)
-                self.logger.debug(f"Audio clipping detected: {clipped_samples} samples clipped with gain {self.volume}")
+        # NOTE: Input volume gain is already applied in _audio_callback
+        # Don't apply it again here to avoid double amplification
+        
+        # Log if clipping occurs from previous gain application
+        if np.any(np.abs(audio_data) > 1.0):
+            clipped_samples = np.sum(np.abs(audio_data) > 1.0)
+            self.logger.debug(f"Audio clipping detected: {clipped_samples} samples clipped")
         
         # Resample if needed
         if self.need_resampling:
@@ -290,7 +290,22 @@ class AudioCapture:
         resampled = np.clip(resampled, -1.0, 1.0)
         
         # Convert to int16
-        pcm16_data = (resampled * 32767).astype(np.int16)
+        # CRITICAL: Use 32768 for symmetric conversion with wake word detector
+        # Wake word detector normalizes with /32768, so we must use *32768 here
+        pcm16_data = (resampled * 32768).astype(np.int16)
+        
+        # Handle the edge case where 1.0 * 32768 would overflow int16
+        pcm16_data = np.clip(pcm16_data, -32768, 32767)
+        
+        # Debug: Log audio format conversion details periodically
+        if not hasattr(self, '_audio_format_log_counter'):
+            self._audio_format_log_counter = 0
+        self._audio_format_log_counter += 1
+        
+        if self._audio_format_log_counter % 500 == 0:  # Every 500 chunks
+            float_min, float_max = np.min(resampled), np.max(resampled)
+            pcm_min, pcm_max = np.min(pcm16_data), np.max(pcm16_data)
+            self.logger.debug(f"Audio format conversion - Float32[{float_min:.6f}, {float_max:.6f}] -> PCM16[{pcm_min}, {pcm_max}]")
         
         return pcm16_data.tobytes()
     

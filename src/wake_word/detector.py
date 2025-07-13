@@ -217,12 +217,26 @@ class WakeWordDetector:
         # Debug: Log that we're receiving audio
         self.logger.debug(f"process_audio called: {len(audio_data)} bytes at {input_sample_rate}Hz")
         
+        # Enhanced debug: Log raw PCM16 data statistics periodically
+        if not hasattr(self, '_pcm_format_log_counter'):
+            self._pcm_format_log_counter = 0
+        self._pcm_format_log_counter += 1
+        
+        if self._pcm_format_log_counter % 100 == 0:  # Every 100 chunks
+            # Analyze raw PCM16 bytes
+            raw_pcm16 = np.frombuffer(audio_data, dtype=np.int16)
+            pcm_min, pcm_max = np.min(raw_pcm16), np.max(raw_pcm16)
+            pcm_rms = np.sqrt(np.mean(raw_pcm16.astype(np.float32) ** 2))
+            self.logger.info(f"[AUDIO FORMAT] Raw PCM16 input - Range: [{pcm_min}, {pcm_max}], RMS: {pcm_rms:.1f}, Samples: {len(raw_pcm16)}")
+            print(f"   DETECTOR: RAW PCM16 INPUT - Range: [{pcm_min}, {pcm_max}], RMS: {pcm_rms:.1f}")
+        
         try:
             # Convert bytes to numpy array (assuming PCM16)
             audio_array = np.frombuffer(audio_data, dtype=np.int16)
             
             # Convert to float32 and normalize to [-1.0, 1.0] range (OpenWakeWord requirement)
             # FIX: Use symmetric normalization to avoid bias
+            # NOTE: We use 32768.0 for normalization, matching the * 32768 in audio capture
             audio_float = audio_array.astype(np.float32) / 32768.0
             
             # Remove DC bias for better signal quality
