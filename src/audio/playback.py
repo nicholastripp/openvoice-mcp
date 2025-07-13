@@ -60,7 +60,7 @@ class AudioPlayback:
         self.underrun_count = 0
         self.last_underrun_warning = 0
         self.consecutive_underruns = 0
-        self.max_consecutive_underruns = 5  # Force completion after 5 consecutive underruns
+        self.max_consecutive_underruns = 20  # Increased tolerance for network jitter
         
         # Audio completion tracking
         self.completion_callbacks = []
@@ -71,6 +71,10 @@ class AudioPlayback:
         self.completion_timeout = 3.0  # 3 seconds timeout for completion detection
         self.completion_timeout_task = None
         self.max_response_duration = 30.0  # 30 seconds maximum response duration
+        
+        # Pre-buffering for smooth playback start
+        self.pre_buffering = False
+        self.pre_buffer_threshold = int(self.device_sample_rate * 0.3)  # 300ms before starting playback
     
     async def start(self) -> None:
         """Start audio playback system"""
@@ -231,19 +235,26 @@ class AudioPlayback:
     def start_response(self) -> None:
         """Mark the start of a response for completion tracking"""
         self.is_response_active = True
+        self.pre_buffering = True  # Enable pre-buffering for smooth start
         self.silence_frames_count = 0
+        self.underrun_count = 0  # Reset underrun count for new response
+        self.consecutive_underruns = 0
         import time
         self.last_audio_time = time.time()
         
         # Start timeout task
         self._start_completion_timeout()
         
-        self.logger.debug("Started response audio tracking with timeout protection")
+        self.logger.debug("Started response audio tracking with pre-buffering enabled")
     
     def end_response(self) -> None:
         """Mark the end of a response (OpenAI finished sending)"""
         self.logger.debug("OpenAI finished sending audio - monitoring for completion")
         # Don't set is_response_active to False here - let completion detection handle it
+        
+        # Start a task to check for completion after a brief delay
+        import asyncio
+        asyncio.create_task(self._delayed_completion_check())
     
     def _notify_completion(self) -> None:
         """Notify all callbacks that audio playback has completed"""
@@ -318,6 +329,15 @@ class AudioPlayback:
         try:
             # Fill buffer from queue if needed
             self._fill_buffer_from_queue()
+            
+            # Handle pre-buffering - wait until we have enough audio before starting
+            if self.pre_buffering and self.is_response_active:
+                if len(self.audio_buffer) >= self.pre_buffer_threshold:
+                    self.pre_buffering = False
+                    self.logger.info(f"Pre-buffering complete: {len(self.audio_buffer)} samples ready")
+                else:
+                    # Still pre-buffering, output silence
+                    return
             
             # Check if we have enough buffered audio
             if len(self.audio_buffer) >= frames:
@@ -553,6 +573,35 @@ class AudioPlayback:
             pass
         except Exception as e:
             self.logger.error(f"Error in completion timeout handler: {e}")
+    
+    async def _delayed_completion_check(self) -> None:
+        """Check for completion after OpenAI finishes sending audio"""
+        import asyncio
+        
+        # Wait for buffer to drain
+        max_wait = 5.0  # Maximum 5 seconds
+        wait_interval = 0.1
+        elapsed = 0.0
+        
+        while elapsed < max_wait:
+            if not self.is_response_active:
+                # Already completed
+                return
+                
+            # Check if audio is still playing
+            if self.audio_queue.empty() and len(self.audio_buffer) < self.chunk_size:
+                # Buffer is nearly empty, audio should be finishing
+                self.logger.info("Audio buffer nearly empty - triggering completion")
+                self._notify_completion()
+                return
+                
+            await asyncio.sleep(wait_interval)
+            elapsed += wait_interval
+        
+        # Timeout - force completion
+        if self.is_response_active:
+            self.logger.warning("Delayed completion check timeout - forcing completion")
+            self._notify_completion()
     
     def _check_completion(self) -> None:
         """Check if audio playback has completed with comprehensive error handling"""

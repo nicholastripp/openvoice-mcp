@@ -660,6 +660,9 @@ class VoiceAssistant:
         
         # Response failed handler
         self.openai_client.on("response_failed", self._on_response_failed)
+        
+        # Response done handler (when OpenAI finishes creating response)
+        self.openai_client.on("response.done", self._on_response_done)
     
     async def _on_audio_captured_for_wake_word(self, audio_data: bytes) -> None:
         """Handle captured audio for wake word detection"""
@@ -1346,6 +1349,10 @@ class VoiceAssistant:
             self.logger.warning("Empty audio buffer - this is normal with server VAD")
             # Don't end session for this error - it's expected with server VAD
             return
+        elif error_type == 'conversation_already_has_active_response':
+            self.logger.warning("Conversation already has active response - ignoring duplicate request")
+            # Don't end session for this error - it's from our fallback timer
+            return
         elif error_type == 'connection_error':
             self.logger.warning("Connection error - attempting reconnection")
             try:
@@ -1356,6 +1363,21 @@ class VoiceAssistant:
         
         # End session on unrecoverable errors
         await self._end_session()
+    
+    async def _on_response_done(self, event_data: dict) -> None:
+        """Handle OpenAI response completion"""
+        response_data = event_data.get("response", {})
+        response_id = response_data.get("id", "unknown")
+        status = response_data.get("status", "unknown")
+        
+        self.logger.info(f"Response {response_id} completed with status: {status}")
+        
+        # Cancel response fallback timer since response completed
+        if self.response_fallback_task and not self.response_fallback_task.done():
+            self.response_fallback_task.cancel()
+            self.response_fallback_task = None
+            self.logger.info("Cancelled response fallback timer - response completed successfully")
+            print("*** RESPONSE FALLBACK TIMER CANCELLED - RESPONSE COMPLETED ***")
     
     async def _on_response_failed(self, event_data: dict) -> None:
         """Handle failed OpenAI response"""
