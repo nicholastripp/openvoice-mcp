@@ -983,7 +983,10 @@ class VoiceAssistant:
                 try:
                     future.result(timeout=5.0)  # 5 second timeout
                 except Exception as e:
+                    import traceback
                     self.logger.error(f"Error in audio completion handler: {e}")
+                    self.logger.error(f"Traceback: {traceback.format_exc()}")
+                    print(f"*** ERROR IN AUDIO COMPLETION: {e} ***")
                     # Fallback: force session end
                     self._schedule_fallback_session_end()
                     
@@ -998,46 +1001,65 @@ class VoiceAssistant:
     
     async def _handle_audio_completion(self) -> None:
         """Handle audio completion in async context"""
-        # Mark response as no longer active and restore normal VAD threshold
-        self.response_active = False
-        
-        # Restore enhanced VAD threshold for better speech detection
-        if self.openai_client:
-            await self.openai_client.update_vad_settings(threshold=0.2, silence_duration_ms=800)
-            self.logger.debug("Restored enhanced VAD threshold (0.2) after actual playback completion")
-        
-        # Check if multi-turn conversation mode is enabled
-        if self.config.session.conversation_mode == "multi_turn" and self.session_active:
-            # Check if the last response contained conversation end phrases
-            if self.last_user_input and self._contains_end_phrases(self.last_user_input):
-                self.logger.info("Conversation end phrase detected - ending session naturally")
-                print("*** CONVERSATION END PHRASE DETECTED - ENDING SESSION NATURALLY ***")
-                await self._end_session()
+        try:
+            # Mark response as no longer active and restore normal VAD threshold
+            self.response_active = False
+            
+            # Check if session is still active
+            if not self.session_active:
+                self.logger.warning("Audio completion called but session not active - ignoring")
                 return
             
-            # Increment conversation turn count
-            self.conversation_turn_count += 1
-            
-            # Check if we've reached the maximum number of turns
-            if self.conversation_turn_count >= self.config.session.multi_turn_max_turns:
-                self.logger.info(f"Maximum turns ({self.config.session.multi_turn_max_turns}) reached - ending session")
-                print(f"*** MAXIMUM TURNS ({self.config.session.multi_turn_max_turns}) REACHED - ENDING SESSION ***")
-                await self._end_session()
+            # Validate we're in a valid state for audio completion
+            if self.session_state not in [SessionState.AUDIO_PLAYING, SessionState.RESPONDING]:
+                self.logger.warning(f"Audio completion in unexpected state: {self.session_state.value} - ignoring")
                 return
             
-            # Transition to multi-turn listening state
-            self.logger.info(f"Multi-turn conversation active (turn {self.conversation_turn_count}/{self.config.session.multi_turn_max_turns})")
-            print(f"*** MULTI-TURN CONVERSATION ACTIVE (TURN {self.conversation_turn_count}/{self.config.session.multi_turn_max_turns}) ***")
-            print(f"*** LISTENING FOR FOLLOW-UP QUESTION (TIMEOUT: {self.config.session.multi_turn_timeout}s) ***")
+            # Restore enhanced VAD threshold for better speech detection
+            if self.openai_client:
+                await self.openai_client.update_vad_settings(threshold=0.2, silence_duration_ms=800)
+                self.logger.debug("Restored enhanced VAD threshold (0.2) after actual playback completion")
             
-            self._transition_to_state(SessionState.MULTI_TURN_LISTENING)
+            # Check if multi-turn conversation mode is enabled
+            conversation_mode = getattr(self.config.session, 'conversation_mode', 'single_turn')
+            self.logger.info(f"Audio completion - conversation mode: {conversation_mode}, session_active: {self.session_active}, state: {self.session_state.value}")
+            print(f"*** AUDIO COMPLETION - MODE: {conversation_mode}, ACTIVE: {self.session_active} ***")
             
-            # Set up timeout for multi-turn conversation
-            self.multi_turn_timeout_task = asyncio.create_task(self._handle_multi_turn_timeout())
-            self.logger.info(f"Created multi-turn timeout task (timeout: {self.config.session.multi_turn_timeout}s)")
-            print(f"*** MULTI-TURN TIMEOUT TASK CREATED: {self.config.session.multi_turn_timeout}s ***")
-            
-            return
+            if conversation_mode == "multi_turn" and self.session_active:
+                # Check if the last response contained conversation end phrases
+                if self.last_user_input and self._contains_end_phrases(self.last_user_input):
+                    self.logger.info("Conversation end phrase detected - ending session naturally")
+                    print("*** CONVERSATION END PHRASE DETECTED - ENDING SESSION NATURALLY ***")
+                    await self._end_session()
+                    return
+                
+                # Increment conversation turn count
+                self.conversation_turn_count += 1
+                
+                # Check if we've reached the maximum number of turns
+                max_turns = getattr(self.config.session, 'multi_turn_max_turns', 10)
+                if self.conversation_turn_count >= max_turns:
+                    self.logger.info(f"Maximum turns ({max_turns}) reached - ending session")
+                    print(f"*** MAXIMUM TURNS ({max_turns}) REACHED - ENDING SESSION ***")
+                    await self._end_session()
+                    return
+                
+                # Get timeout value safely
+                multi_turn_timeout = getattr(self.config.session, 'multi_turn_timeout', 30.0)
+                
+                # Transition to multi-turn listening state
+                self.logger.info(f"Multi-turn conversation active (turn {self.conversation_turn_count}/{max_turns})")
+                print(f"*** MULTI-TURN CONVERSATION ACTIVE (TURN {self.conversation_turn_count}/{max_turns}) ***")
+                print(f"*** LISTENING FOR FOLLOW-UP QUESTION (TIMEOUT: {multi_turn_timeout}s) ***")
+                
+                self._transition_to_state(SessionState.MULTI_TURN_LISTENING)
+                
+                # Set up timeout for multi-turn conversation
+                self.multi_turn_timeout_task = asyncio.create_task(self._handle_multi_turn_timeout())
+                self.logger.info(f"Created multi-turn timeout task (timeout: {multi_turn_timeout}s)")
+                print(f"*** MULTI-TURN TIMEOUT TASK CREATED: {multi_turn_timeout}s ***")
+                
+                return
         
         # Original single-turn logic
         # Check if we should auto-end the session
@@ -1052,8 +1074,16 @@ class VoiceAssistant:
         elif self.config.session.auto_end_after_response:
             # End session immediately if no cooldown delay
             self.logger.info("Auto-ending session after actual playback completion")
-            print("*** AUTO-ENDING SESSION AFTER ACTUAL PLAYBOOK COMPLETION ***")
+            print("*** AUTO-ENDING SESSION AFTER ACTUAL PLAYBACK COMPLETION ***")
             await self._end_session()
+        
+        except Exception as e:
+            import traceback
+            self.logger.error(f"Exception in _handle_audio_completion: {e}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            # Try to end session gracefully
+            if self.session_active:
+                await self._end_session()
     
     def _schedule_fallback_session_end(self) -> None:
         """Schedule fallback session end from thread context"""
