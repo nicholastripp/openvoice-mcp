@@ -31,30 +31,34 @@ audio:
 # Wake Word Configuration
 wake_word:
   enabled: true                   # Enable wake word detection
-  model: "alexa"                  # Wake word model (hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu)
-  sensitivity: 0.0008             # Detection sensitivity (0.0-1.0, lower = more sensitive, tuned for amplified audio)
+  engine: "porcupine"             # Wake word engine: "openwakeword" or "porcupine"
+  model: "picovoice"              # Wake word model (see below for options per engine)
+  sensitivity: 1.0                # Detection sensitivity (0.0-1.0)
+                                  # For Porcupine: 1.0 = maximum sensitivity (recommended)
+                                  # For OpenWakeWord: 0.5-0.7 typical, lower = fewer false positives
   timeout: 5.0                    # Session timeout after wake word (seconds)
-  vad_enabled: false              # Disable VAD (was causing 0.0 predictions with warm-up mechanism)
-  cooldown: 1.5                   # Seconds between wake word detections
-  
-  # Audio Gain Settings
-  audio_gain: 3.5                 # Audio amplification factor (1.0-5.0, default: 3.5)
+  vad_enabled: false              # Disable VAD (was causing 0.0 predictions)
+  cooldown: 2.0                   # Seconds between wake word detections
+  test_mode: false                # Normal operation mode
+  audio_gain: 1.0                 # Audio amplification factor (1.0-5.0, default: 1.0)
   audio_gain_mode: "fixed"        # Gain mode: "fixed" or "dynamic"
-  # dynamic_gain_min: 2.0         # Min gain for dynamic mode (optional)
-  # dynamic_gain_max: 5.0         # Max gain for dynamic mode (optional)
-  # dynamic_gain_target_rms: 0.04 # Target RMS for dynamic mode (optional)
   
-  # Model Download Settings
-  auto_download: true             # Automatically download models if missing
-  download_timeout: 300           # Download timeout in seconds
-  retry_downloads: 3              # Number of download retry attempts
+  # Porcupine-specific configuration
+  porcupine_access_key: ${PICOVOICE_ACCESS_KEY}  # From environment variable
   
-  # Noise Suppression Settings
-  speex_noise_suppression: true   # Enable Speex noise suppression if available
-                                  # Set to false if speexdsp_ns is not installed
-  
-  # Available models: hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu
-  # To download models manually: python download_wake_word_models.py --download-all
+  # Available models per engine:
+  # OpenWakeWord: hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu
+  # 
+  # Porcupine built-in keywords (use these exact names in 'model' field):
+  #   Voice Assistants: alexa, hey_google, ok_google, hey_siri
+  #   Picovoice: picovoice, hey_picovoice, ok_picovoice (aliases)
+  #   Fun wake words: americano, blueberry, bumblebee, grapefruit, 
+  #                   grasshopper, porcupine, terminator
+  #   Other: computer, hey_barista, pico_clock
+  # 
+  # IMPORTANT: 'jarvis' and 'hey_jarvis' are NOT built-in keywords!
+  # For custom wake words like 'jarvis', create them at https://console.picovoice.ai/
+  # Custom models require downloading the .ppn file and using keyword_paths instead
   
 # Session Configuration
 session:
