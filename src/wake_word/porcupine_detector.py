@@ -32,23 +32,35 @@ class PorcupineDetector:
     """
     
     # Mapping from config names to Porcupine built-in keywords
-    # NOTE: 'jarvis' is NOT a built-in Porcupine keyword, removed to prevent errors
+    # Based on Porcupine documentation and verified built-in keywords
     KEYWORD_MAPPING = {
+        # Popular voice assistants
         'alexa': 'alexa',
         'hey_google': 'hey google',
         'ok_google': 'ok google',
         'hey_siri': 'hey siri',
+        
+        # Picovoice keywords
         'picovoice': 'picovoice',
-        'bumblebee': 'bumblebee',
-        'grasshopper': 'grasshopper',
+        'hey_picovoice': 'picovoice',  # Alias
+        'ok_picovoice': 'picovoice',   # Alias
+        
+        # Fun wake words
         'americano': 'americano',
         'blueberry': 'blueberry',
+        'bumblebee': 'bumblebee',
         'grapefruit': 'grapefruit',
+        'grasshopper': 'grasshopper',
         'porcupine': 'porcupine',
         'terminator': 'terminator',
-        # Aliases for convenience
-        'hey_picovoice': 'picovoice',
-        'ok_picovoice': 'picovoice'
+        
+        # Additional documented keywords
+        'computer': 'computer',
+        'hey_barista': 'hey barista',
+        'pico_clock': 'pico clock',
+        
+        # NOTE: 'jarvis' and 'hey_jarvis' are NOT built-in Porcupine keywords
+        # They require custom wake word creation at https://console.picovoice.ai/
     }
     
     def __init__(self, config: WakeWordConfig):
@@ -80,9 +92,13 @@ class PorcupineDetector:
         self.detection_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
         
-        # Detection parameters
-        self.keywords = self._get_keywords()
-        self.sensitivities = self._get_sensitivities()
+        # Detection parameters - validate wake word early
+        try:
+            self.keywords = self._get_keywords()
+            self.sensitivities = self._get_sensitivities()
+        except ValueError as e:
+            self.logger.error(f"Wake word configuration error: {e}")
+            raise
         
         # Performance tracking
         self.last_detection_time = 0
@@ -97,12 +113,30 @@ class PorcupineDetector:
         
         # Map config name to Porcupine keyword
         if model_name in self.KEYWORD_MAPPING:
-            return [self.KEYWORD_MAPPING[model_name]]
+            keyword = self.KEYWORD_MAPPING[model_name]
+            self.logger.info(f"Using wake word '{keyword}' (mapped from config '{model_name}')")
+            return [keyword]
         elif model_name in self.KEYWORD_MAPPING.values():
+            self.logger.info(f"Using wake word '{model_name}' (direct match)")
             return [model_name]
         else:
-            self.logger.warning(f"Unknown wake word model: {model_name}, defaulting to 'picovoice'")
-            return ['picovoice']
+            # List available keywords for better error message
+            available_configs = sorted(self.KEYWORD_MAPPING.keys())
+            available_direct = sorted(set(self.KEYWORD_MAPPING.values()))
+            
+            error_msg = f"Invalid wake word: '{model_name}'"
+            self.logger.error(error_msg)
+            self.logger.error(f"Available config names: {', '.join(available_configs)}")
+            self.logger.error(f"Available direct keywords: {', '.join(available_direct)}")
+            self.logger.error("For custom wake words like 'jarvis', create them at https://console.picovoice.ai/")
+            
+            raise ValueError(
+                f"{error_msg}\n"
+                f"Available options:\n"
+                f"  Config names: {', '.join(available_configs)}\n"
+                f"  Direct keywords: {', '.join(available_direct)}\n"
+                f"  For custom wake words, visit https://console.picovoice.ai/"
+            )
     
     def _get_sensitivities(self) -> List[float]:
         """Get sensitivity values for each keyword"""

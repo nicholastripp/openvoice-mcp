@@ -48,7 +48,7 @@ Update your `config/config.yaml`:
 wake_word:
   enabled: true
   engine: "porcupine"              # Switch from "openwakeword"
-  model: "picovoice"               # Or: alexa, hey_google, jarvis, etc.
+  model: "picovoice"               # See list above for valid options
   sensitivity: 0.5                 # 0.0-1.0 (0.5 is a good default)
   porcupine_access_key: ${PICOVOICE_ACCESS_KEY}  # From environment
 ```
@@ -57,8 +57,32 @@ wake_word:
 
 Porcupine free tier includes these pre-trained models:
 
-- **Voice Assistants**: alexa, hey_google, ok_google, hey_siri, jarvis
-- **Custom Words**: picovoice, americano, blueberry, bumblebee, grapefruit, grasshopper, porcupine, terminator
+### Voice Assistants
+- `alexa`
+- `hey_google`
+- `ok_google`
+- `hey_siri`
+
+### Picovoice Brand
+- `picovoice`
+- `hey_picovoice` (alias for picovoice)
+- `ok_picovoice` (alias for picovoice)
+
+### Fun Wake Words
+- `americano`
+- `blueberry`
+- `bumblebee`
+- `grapefruit`
+- `grasshopper`
+- `porcupine`
+- `terminator`
+
+### Other Built-in Words
+- `computer`
+- `hey_barista`
+- `pico_clock`
+
+**Important:** 'jarvis' and 'hey_jarvis' are NOT built-in wake words! These require creating custom models.
 
 ## Testing
 
@@ -74,6 +98,12 @@ python tools/test_porcupine.py
 - Make sure your access key is valid
 - Check that PICOVOICE_ACCESS_KEY is set correctly
 - Ensure you're using the key from your Picovoice Console account
+
+### "Invalid wake word" Error
+- This happens when you specify a wake word that isn't built-in
+- Check the list above for valid wake words
+- Common mistake: 'jarvis' is NOT a built-in wake word
+- For custom wake words, you need to create them at console.picovoice.ai
 
 ### Audio Not Detected
 - Porcupine requires 16kHz audio at 512 samples per frame
