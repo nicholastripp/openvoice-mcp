@@ -10,7 +10,7 @@ import argparse
 import signal
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 from enum import Enum
 
 # Add src to path for imports
@@ -88,6 +88,11 @@ class VoiceAssistant:
         # Periodic cleanup task
         self.cleanup_task = None
         self.cleanup_interval = 30.0  # Check every 30 seconds
+        
+        # Device cache
+        self._device_cache = None
+        self._device_cache_time = None
+        self._device_cache_ttl = 300.0  # 5 minutes TTL for device cache
     
     async def start(self) -> None:
         """Start the voice assistant"""
@@ -221,47 +226,98 @@ class VoiceAssistant:
         base_prompt = self.personality.generate_prompt()
         
         try:
-            # Get device information from Home Assistant
-            self.logger.info("Fetching device information from Home Assistant...")
-            states = await self.ha_client.rest_client.get_states()
+            # Check if we have cached device data
+            current_time = asyncio.get_event_loop().time()
+            cache_valid = (
+                self._device_cache is not None and 
+                self._device_cache_time is not None and 
+                (current_time - self._device_cache_time) < self._device_cache_ttl
+            )
+            
+            if cache_valid:
+                self.logger.info(f"Using cached device data (age: {current_time - self._device_cache_time:.1f}s)")
+                states = self._device_cache
+            else:
+                # Get device information from Home Assistant
+                self.logger.info("Fetching fresh device information from Home Assistant...")
+                start_time = asyncio.get_event_loop().time()
+                
+                states = await self.ha_client.rest_client.get_states()
+                
+                fetch_time = asyncio.get_event_loop().time() - start_time
+                self.logger.info(f"Device fetch completed in {fetch_time:.2f}s")
+                
+                # Update cache
+                if states:
+                    self._device_cache = states
+                    self._device_cache_time = current_time
+                    self.logger.info(f"Device cache updated with {len(states)} devices")
+            
+            if not states:
+                self.logger.warning("No device states returned from Home Assistant")
+                return base_prompt
             
             # Group devices by domain for better organization
             device_groups = {}
+            total_device_count = 0
+            error_count = 0
+            
             for state in states:
-                entity_id = state.get("entity_id", "")
-                domain = entity_id.split(".")[0] if "." in entity_id else "unknown"
-                
-                if domain not in device_groups:
-                    device_groups[domain] = []
-                
-                # Include entity with friendly name if available
-                friendly_name = state.get("attributes", {}).get("friendly_name", entity_id)
-                device_groups[domain].append({
-                    "entity_id": entity_id,
-                    "name": friendly_name,
-                    "state": state.get("state", "unknown")
-                })
+                try:
+                    entity_id = state.get("entity_id", "")
+                    if not entity_id:
+                        self.logger.debug("Skipping state with no entity_id")
+                        error_count += 1
+                        continue
+                    
+                    domain = entity_id.split(".")[0] if "." in entity_id else "unknown"
+                    
+                    if domain not in device_groups:
+                        device_groups[domain] = []
+                    
+                    # Include entity with friendly name if available
+                    friendly_name = state.get("attributes", {}).get("friendly_name", entity_id)
+                    device_groups[domain].append({
+                        "entity_id": entity_id,
+                        "name": friendly_name,
+                        "state": state.get("state", "unknown")
+                    })
+                    total_device_count += 1
+                    
+                except Exception as e:
+                    self.logger.warning(f"Error processing state: {e}")
+                    error_count += 1
+            
+            # Log device loading summary
+            self.logger.info(f"Device loading complete: {total_device_count} devices loaded, {error_count} errors")
+            for domain, devices in device_groups.items():
+                self.logger.debug(f"  {domain}: {len(devices)} devices")
             
             # Create device context
             device_context = "\n\nAvailable devices in your smart home:\n"
+            device_count_in_prompt = 0
             
             # Prioritize common device types
             priority_domains = ["light", "switch", "climate", "media_player", "cover", "lock", "sensor"]
             
             for domain in priority_domains:
                 if domain in device_groups:
-                    devices = device_groups[domain][:10]  # Limit to 10 devices per domain
+                    devices = device_groups[domain]  # Include all devices - HA already manages exposure
                     device_context += f"\n{domain.title()}s ({len(devices)} available):\n"
                     for device in devices:
                         device_context += f"  - {device['name']} ({device['entity_id']}) - {device['state']}\n"
+                    device_count_in_prompt += len(devices)
+                    self.logger.debug(f"Added {len(devices)} {domain} devices to prompt")
             
-            # Add other domains (limited)
+            # Add other domains (include all - HA already manages exposure)
             other_domains = [d for d in device_groups.keys() if d not in priority_domains and d != "unknown"]
-            for domain in other_domains[:5]:  # Limit to 5 other domains
-                devices = device_groups[domain][:5]  # Limit to 5 devices per domain
+            for domain in other_domains:  # Include all domains exposed by HA
+                devices = device_groups[domain]  # Include all devices exposed by HA
                 device_context += f"\n{domain.title()}s ({len(devices)} available):\n"
                 for device in devices:
                     device_context += f"  - {device['name']} ({device['entity_id']}) - {device['state']}\n"
+                device_count_in_prompt += len(devices)
+                self.logger.debug(f"Added {len(devices)} {domain} devices to prompt")
             
             # Add helpful instructions
             device_context += "\nWhen users ask about controlling devices, you can help them by using the control_home_assistant function with natural language commands."
@@ -269,15 +325,86 @@ class VoiceAssistant:
             # Combine base prompt with device context
             enhanced_prompt = base_prompt + device_context
             
-            self.logger.info(f"Generated device-aware personality with {len(states)} total entities across {len(device_groups)} domains")
-            self.logger.debug(f"Device context preview: {device_context[:200]}...")
+            # Log final statistics
+            self.logger.info(f"Generated device-aware personality with {device_count_in_prompt} devices from {len(device_groups)} domains")
+            self.logger.info(f"Personality prompt size: {len(enhanced_prompt)} characters")
+            if len(device_groups) > 0:
+                self.logger.debug(f"Device domains included: {', '.join(sorted(device_groups.keys()))}")
             
             return enhanced_prompt
             
         except Exception as e:
-            self.logger.error(f"Failed to fetch device information: {e}")
+            self.logger.error(f"Failed to fetch device information: {e}", exc_info=True)
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             # Fall back to base personality if device fetch fails
+            # Clear cache on error to force fresh fetch next time
+            self._clear_device_cache()
             return base_prompt
+    
+    def _clear_device_cache(self) -> None:
+        """Clear the device cache to force fresh fetch on next request"""
+        self._device_cache = None
+        self._device_cache_time = None
+        self.logger.debug("Device cache cleared")
+    
+    async def diagnose_device_exposure(self) -> Dict[str, Any]:
+        """Diagnostic method to test device exposure and loading
+        
+        Returns:
+            Diagnostic information about device loading
+        """
+        diagnostics = {
+            "cache_status": {
+                "has_cache": self._device_cache is not None,
+                "cache_age": None,
+                "cache_ttl": self._device_cache_ttl
+            },
+            "device_counts": {},
+            "errors": [],
+            "fetch_time": None
+        }
+        
+        # Check cache age
+        if self._device_cache_time is not None:
+            cache_age = asyncio.get_event_loop().time() - self._device_cache_time
+            diagnostics["cache_status"]["cache_age"] = cache_age
+        
+        try:
+            # Force fresh fetch for diagnostics
+            self.logger.info("Running device exposure diagnostics - forcing fresh fetch")
+            self._clear_device_cache()
+            
+            start_time = asyncio.get_event_loop().time()
+            states = await self.ha_client.rest_client.get_states()
+            fetch_time = asyncio.get_event_loop().time() - start_time
+            diagnostics["fetch_time"] = fetch_time
+            
+            if not states:
+                diagnostics["errors"].append("No states returned from Home Assistant")
+                return diagnostics
+            
+            # Count devices by domain
+            domain_counts = {}
+            for state in states:
+                entity_id = state.get("entity_id", "")
+                if entity_id:
+                    domain = entity_id.split(".")[0] if "." in entity_id else "unknown"
+                    domain_counts[domain] = domain_counts.get(domain, 0) + 1
+            
+            diagnostics["device_counts"] = domain_counts
+            diagnostics["total_devices"] = sum(domain_counts.values())
+            
+            # Log summary
+            self.logger.info(f"Device diagnostics: {diagnostics['total_devices']} total devices across {len(domain_counts)} domains")
+            for domain, count in sorted(domain_counts.items(), key=lambda x: x[1], reverse=True)[:10]:
+                self.logger.info(f"  {domain}: {count} devices")
+            
+        except Exception as e:
+            diagnostics["errors"].append(f"Error during diagnostics: {str(e)}")
+            self.logger.error(f"Device diagnostics failed: {e}", exc_info=True)
+        
+        return diagnostics
     
     async def _initialize_components(self) -> None:
         """Initialize all components"""
@@ -583,6 +710,17 @@ class VoiceAssistant:
         if self.function_bridge:
             self.function_bridge.reset_conversation()
             self.logger.debug("Reset conversation context")
+        
+        # Refresh device list and update personality for this session
+        if self.openai_client and self.ha_client:
+            try:
+                self.logger.info("Refreshing Home Assistant device list for new session...")
+                updated_personality = await self._generate_device_aware_personality()
+                self.openai_client.update_personality(updated_personality)
+                self.logger.info("Updated personality with refreshed device list")
+            except Exception as e:
+                self.logger.error(f"Failed to refresh device list: {e}")
+                # Continue with existing personality if refresh fails
         
         # Start VAD timeout fallback
         self.vad_timeout_task = asyncio.create_task(self._vad_timeout_handler())
@@ -1369,6 +1507,13 @@ class VoiceAssistant:
                         self.audio_playback._notify_completion()
                     except Exception as e:
                         self.logger.error(f"Error during audio playback cleanup: {e}")
+                
+                # Check device cache age and clear if too old
+                if self._device_cache_time is not None:
+                    cache_age = current_time - self._device_cache_time
+                    if cache_age > self._device_cache_ttl * 2:  # Clear if cache is 2x TTL old
+                        self.logger.info(f"Device cache is very stale ({cache_age:.1f}s old), clearing")
+                        self._clear_device_cache()
                         
             except asyncio.CancelledError:
                 break
