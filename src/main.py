@@ -83,6 +83,7 @@ class VoiceAssistant:
         self.response_done_received = False
         self._audio_response_received = False
         self._response_create_sent = False  # Track if we've sent response.create
+        self._current_response_id = None  # Track current response ID for proper start_response calls
         
         # Periodic cleanup task
         self.cleanup_task = None
@@ -1026,6 +1027,7 @@ class VoiceAssistant:
             
             # Start audio response tracking
             if self.audio_playback:
+                self.logger.info(f"Calling start_response() for response {self._current_response_id}")
                 self.audio_playback.start_response()
         
         if self.audio_playback:
@@ -1549,6 +1551,17 @@ class VoiceAssistant:
         
         self.logger.info(f"Response {response_id} creation started")
         print(f"*** RESPONSE.CREATED RECEIVED: {response_id} ***")
+        
+        # Check if this is a new response
+        is_new_response = (self._current_response_id != response_id)
+        if is_new_response:
+            self.logger.info(f"New response detected: {response_id} (previous: {self._current_response_id})")
+            self._current_response_id = response_id
+            
+            # Force audio playback to start fresh for new response
+            if self.audio_playback:
+                self.logger.info("Forcing start_response for new response ID")
+                self.audio_playback.start_response()
         
         # Mark that we have an active response
         self.response_active = True

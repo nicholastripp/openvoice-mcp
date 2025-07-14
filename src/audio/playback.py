@@ -264,6 +264,7 @@ class AudioPlayback:
         
         self.logger.debug("Started response audio tracking with pre-buffering enabled (500ms threshold)")
         self.logger.info(f"Response started - is_response_active: True, completion_notified: False")
+        print(f"*** AUDIO PLAYBACK: start_response() called - completion_notified reset to False ***")
     
     def end_response(self) -> None:
         """Mark the end of a response (OpenAI finished sending)"""
