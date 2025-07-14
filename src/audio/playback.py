@@ -302,10 +302,14 @@ class AudioPlayback:
         completion_thread.start()
         self.logger.info("Started delayed completion check in separate thread")
     
-    def _notify_completion(self) -> None:
-        """Notify all callbacks that audio playback has completed"""
+    def _notify_completion(self, force: bool = False) -> None:
+        """Notify all callbacks that audio playback has completed
+        
+        Args:
+            force: If True, bypass duplicate notification check (use for emergency/stuck cases)
+        """
         # Check if we've already notified completion for this response
-        if hasattr(self, '_completion_notified') and self._completion_notified:
+        if not force and hasattr(self, '_completion_notified') and self._completion_notified:
             self.logger.debug("Completion already notified - skipping duplicate notification")
             return
             

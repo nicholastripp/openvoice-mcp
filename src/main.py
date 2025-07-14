@@ -519,15 +519,41 @@ class VoiceAssistant:
             max_response_time = 45.0  # 45 seconds max response time
             
             if response_duration > max_response_time:
-                self.logger.error(f"Audio response stuck for {response_duration:.1f}s - forcing completion")
+                # Track deferral count to prevent infinite loops
+                if not hasattr(self, '_stuck_audio_deferrals'):
+                    self._stuck_audio_deferrals = 0
+                self._stuck_audio_deferrals += 1
+                
+                self.logger.error(f"Audio response stuck for {response_duration:.1f}s - forcing completion (deferral #{self._stuck_audio_deferrals})")
                 print(f"*** AUDIO RESPONSE STUCK FOR {response_duration:.1f}S - FORCING COMPLETION ***")
                 
-                # Force audio completion
+                # If we've deferred too many times, force immediate cleanup
+                if self._stuck_audio_deferrals > 5:
+                    self.logger.error("Max deferrals reached - forcing immediate session cleanup")
+                    print("*** MAX DEFERRALS REACHED - FORCING IMMEDIATE CLEANUP ***")
+                    # Force immediate state change and cleanup
+                    self._transition_to_state(SessionState.IDLE)
+                    self.session_active = False
+                    self.response_active = False
+                    if self.audio_playback:
+                        self.audio_playback.is_response_active = False
+                        self.audio_playback._completion_notified = False
+                        self.audio_playback.clear_queue()
+                    return
+                
+                # Force audio completion with emergency flag
                 if self.audio_playback and self.audio_playback.is_response_active:
-                    self.audio_playback._notify_completion()
+                    # Reset completion flag first to ensure notification works
+                    self.audio_playback._completion_notified = False
+                    # Force notification even if already notified
+                    self.audio_playback._notify_completion(force=True)
                 else:
                     # Fallback: end session directly
                     await self._fallback_session_end()
+        else:
+            # Reset deferral counter when not in audio states
+            if hasattr(self, '_stuck_audio_deferrals'):
+                self._stuck_audio_deferrals = 0
     
     async def _start_session(self) -> None:
         """Start a voice session"""
@@ -1117,6 +1143,7 @@ class VoiceAssistant:
                 self._response_create_sent = False
                 self.response_done_received = False
                 self._audio_response_received = False
+                self.response_active = False  # Ensure response is marked inactive
                 
                 self._transition_to_state(SessionState.MULTI_TURN_LISTENING)
                 
@@ -1169,6 +1196,17 @@ class VoiceAssistant:
             
             # Force response to inactive
             self.response_active = False
+            
+            # Force audio playback state cleanup if stuck
+            if self.audio_playback:
+                self.audio_playback.is_response_active = False
+                self.audio_playback._completion_notified = False
+                self.audio_playback.clear_queue()
+            
+            # Force state transition out of AUDIO_PLAYING if stuck
+            if self.session_state == SessionState.AUDIO_PLAYING:
+                self.logger.warning("Forcing transition out of AUDIO_PLAYING state")
+                self._transition_to_state(SessionState.IDLE)
             
             # Restore enhanced VAD threshold
             if self.openai_client:
