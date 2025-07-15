@@ -430,6 +430,11 @@ class PorcupineDetector:
                 frame = self.audio_buffer[:self.frame_length]
                 self.audio_buffer = self.audio_buffer[self.frame_length:]
                 
+                # Validate frame before queuing
+                if len(frame) != self.frame_length:
+                    self.logger.error(f"Extracted frame size mismatch! Expected {self.frame_length}, got {len(frame)}")
+                    continue
+                
                 # Queue for processing
                 self.audio_queue.put(frame, block=False)
                 frames_queued += 1
@@ -478,7 +483,26 @@ class PorcupineDetector:
                     if frames_processed == 1:
                         print(f"DEBUG: Converted numpy array to list, length: {len(audio_frame)}", flush=True)
                 
-                keyword_index = self.porcupine.process(audio_frame)
+                # Validate frame size
+                if len(audio_frame) != self.frame_length:
+                    self.logger.error(f"Frame size mismatch! Expected {self.frame_length}, got {len(audio_frame)}")
+                    print(f"[ERROR] Frame size mismatch! Expected {self.frame_length}, got {len(audio_frame)} - skipping frame", flush=True)
+                    continue
+                
+                # Log frame details periodically for debugging
+                if frames_processed % 100 == 0 and frames_processed > 0:
+                    # Check audio data integrity
+                    frame_array = np.array(audio_frame, dtype=np.int16)
+                    frame_max = np.max(np.abs(frame_array)) if len(frame_array) > 0 else 0
+                    print(f"DEBUG: Frame #{frames_processed} - size: {len(audio_frame)}, max amplitude: {frame_max}", flush=True)
+                
+                # Process with Porcupine
+                try:
+                    keyword_index = self.porcupine.process(audio_frame)
+                except Exception as e:
+                    self.logger.error(f"Porcupine process error: {e}")
+                    print(f"[ERROR] Porcupine process failed: {e}", flush=True)
+                    continue
                 
                 # Log detection result periodically
                 if frames_processed % 50 == 0:
