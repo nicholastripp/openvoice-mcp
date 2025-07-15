@@ -8,8 +8,12 @@ The audio processing pipeline has multiple gain stages that can compound and cau
 
 ### 1. Input Capture Gain (`audio.input_volume`)
 - **Location**: Applied at audio capture in `src/audio/capture.py`
-- **Default**: 1.0 (no gain)
-- **Safe Range**: 1.0 - 2.0
+- **Default**: 1.0 (no change)
+- **Range**: 0.1 - 5.0
+  - **< 1.0**: Attenuates (reduces) volume - use for loud microphones
+  - **= 1.0**: No change to input level
+  - **> 1.0**: Amplifies volume - use for quiet microphones
+- **Safe Range**: 0.5 - 2.0
 - **Warning**: Values > 2.0 often cause clipping/distortion
 
 ### 2. Wake Word Gain (`wake_word.audio_gain`)
@@ -50,6 +54,12 @@ Example with high input_volume (problematic):
 2. Normal/loud speech doesn't trigger wake word
 3. OpenAI misunderstands commands
 4. Audio logs show frequent max values (32767)
+5. Clipping warnings in logs (e.g., "50% of samples clipped")
+
+### Symptoms of Microphone Too Loud (Even at 1.0 Gain):
+1. Clipping occurs even with input_volume: 1.0
+2. Wake word works better with soft speech
+3. Need to use input_volume < 1.0 to attenuate
 
 ### Recommended Settings:
 ```yaml
@@ -65,6 +75,12 @@ wake_word:
 2. Try input_volume: 1.5 or 2.0
 3. Only increase wake_word.audio_gain if input_volume alone isn't enough
 4. Never set input_volume > 3.0
+
+### If Audio is Too Loud (Clipping at 1.0):
+1. Your microphone gain may be set too high in the OS
+2. Try input_volume: 0.5 or 0.7 to attenuate
+3. Monitor logs for clipping warnings
+4. Adjust until clipping is minimal (<5%)
 
 ## Important Notes
 
