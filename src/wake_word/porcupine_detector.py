@@ -34,18 +34,9 @@ class PorcupineDetector:
     # Mapping from config names to Porcupine built-in keywords
     # Based on Porcupine documentation and verified built-in keywords
     KEYWORD_MAPPING = {
-        # Popular voice assistants
+        # Known working single-word keywords
         'alexa': 'alexa',
-        'hey_google': 'hey google',
-        'ok_google': 'ok google',
-        'hey_siri': 'hey siri',
-        
-        # Picovoice keywords
         'picovoice': 'picovoice',
-        'hey_picovoice': 'picovoice',  # Alias
-        'ok_picovoice': 'picovoice',   # Alias
-        
-        # Fun wake words
         'americano': 'americano',
         'blueberry': 'blueberry',
         'bumblebee': 'bumblebee',
@@ -53,12 +44,15 @@ class PorcupineDetector:
         'grasshopper': 'grasshopper',
         'porcupine': 'porcupine',
         'terminator': 'terminator',
-        
-        # Additional documented keywords
         'computer': 'computer',
-        'hey_barista': 'hey barista',
-        'pico_clock': 'pico clock',
         
+        # Aliases for picovoice
+        'hey_picovoice': 'picovoice',
+        'ok_picovoice': 'picovoice',
+        
+        # NOTE: Multi-word wake words like 'hey google', 'ok google', 'hey siri'
+        # may require special handling or might not be available as built-in keywords
+        # 
         # NOTE: 'jarvis' and 'hey_jarvis' are NOT built-in Porcupine keywords
         # They require custom wake word creation at https://console.picovoice.ai/
     }

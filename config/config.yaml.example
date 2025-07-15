@@ -50,11 +50,9 @@ wake_word:
   # OpenWakeWord: hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu
   # 
   # Porcupine built-in keywords (use these exact names in 'model' field):
-  #   Voice Assistants: alexa, hey_google, ok_google, hey_siri
-  #   Picovoice: picovoice, hey_picovoice, ok_picovoice (aliases)
-  #   Fun wake words: americano, blueberry, bumblebee, grapefruit, 
-  #                   grasshopper, porcupine, terminator
-  #   Other: computer, hey_barista, pico_clock
+  #   Known working: alexa, picovoice, computer, americano, blueberry, 
+  #                  bumblebee, grapefruit, grasshopper, porcupine, terminator
+  #   Aliases: hey_picovoice, ok_picovoice (both map to 'picovoice')
   # 
   # IMPORTANT: 'jarvis' and 'hey_jarvis' are NOT built-in keywords!
   # For custom wake words like 'jarvis', create them at https://console.picovoice.ai/

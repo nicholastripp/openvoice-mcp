@@ -57,18 +57,10 @@ wake_word:
 
 Porcupine free tier includes these pre-trained models:
 
-### Voice Assistants
+### Confirmed Working Keywords
 - `alexa`
-- `hey_google`
-- `ok_google`
-- `hey_siri`
-
-### Picovoice Brand
 - `picovoice`
-- `hey_picovoice` (alias for picovoice)
-- `ok_picovoice` (alias for picovoice)
-
-### Fun Wake Words
+- `computer`
 - `americano`
 - `blueberry`
 - `bumblebee`
@@ -77,12 +69,13 @@ Porcupine free tier includes these pre-trained models:
 - `porcupine`
 - `terminator`
 
-### Other Built-in Words
-- `computer`
-- `hey_barista`
-- `pico_clock`
+### Aliases
+- `hey_picovoice` (maps to picovoice)
+- `ok_picovoice` (maps to picovoice)
 
-**Important:** 'jarvis' and 'hey_jarvis' are NOT built-in wake words! These require creating custom models.
+**Important Notes:**
+- 'jarvis' and 'hey_jarvis' are NOT built-in wake words! These require creating custom models.
+- Multi-word wake words like 'hey google', 'ok google', 'hey siri' may not work as expected with the current implementation.
 
 ## Testing
 
