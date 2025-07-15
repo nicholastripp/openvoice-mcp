@@ -18,13 +18,13 @@ if requirements_path.exists():
 
 setup(
     name="ha-realtime-voice-assistant",
-    version="0.1.0",
+    version="0.2.0-beta",
     description="A standalone Raspberry Pi voice assistant for Home Assistant using OpenAI Realtime API",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Your Name",
-    author_email="your.email@example.com",
-    url="https://github.com/yourusername/ha-realtime-voice-assistant",
+    author="Nicholas Tripp",
+    author_email="",
+    url="https://github.com/nicholastripp/ha-realtime-assist",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     python_requires=">=3.9",
@@ -50,7 +50,7 @@ setup(
         ],
     },
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: End Users/Desktop",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
@@ -63,8 +63,8 @@ setup(
     ],
     keywords="home-assistant voice-assistant openai raspberry-pi smart-home",
     project_urls={
-        "Bug Reports": "https://github.com/yourusername/ha-realtime-voice-assistant/issues",
-        "Source": "https://github.com/yourusername/ha-realtime-voice-assistant",
-        "Documentation": "https://github.com/yourusername/ha-realtime-voice-assistant/wiki",
+        "Bug Reports": "https://github.com/nicholastripp/ha-realtime-assist/issues",
+        "Source": "https://github.com/nicholastripp/ha-realtime-assist",
+        "Documentation": "https://github.com/nicholastripp/ha-realtime-assist/wiki",
     },
 )

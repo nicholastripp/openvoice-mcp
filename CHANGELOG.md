@@ -5,42 +5,51 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0-beta] - 2025-01-15
 
 ### Added
+- **Multi-turn conversation support** - Natural back-and-forth conversations without re-triggering wake word
+- **Automatic Gain Control (AGC)** - Automatically adjusts input volume to prevent clipping and maintain optimal levels
+- **Porcupine wake word engine** - Support for Picovoice Porcupine with built-in wake words
+- **Audio diagnostics tools** - Comprehensive audio testing and debugging utilities
+- **Response ID tracking** - Ensures proper audio playback for multiple responses
+- **High-pass filter configuration** - Required for Porcupine, configurable cutoff frequency
+- **Volume attenuation support** - Input volume can now be set below 1.0 for loud microphones
+- **Language enforcement** - Explicit language instructions to prevent responses in wrong languages
 - Wake word audio gain configuration (fixed and dynamic modes)
-- Configurable gain values (1.0-5.0 range) with 3.5x default
-- Multi-turn conversation support with configurable timeout and turn limits
+- Configurable gain values (1.0-5.0 range)
 - Natural conversation ending with phrase detection
-- Improved project organization (tools/ and docs/ directories)
-- Audio pipeline test tool (tools/test_audio_pipeline.py)
 - Comprehensive audio tuning guide (docs/audio_tuning_guide.md)
 - Soft limiting for audio to prevent harsh distortion
 - Clipping detection and logging throughout audio pipeline
 
 ### Changed
-- Wake word sensitivity threshold increased to 0.004 (from 0.001)
-- Audio input volume increased to 5.0 for better VAD detection
-- Reorganized test scripts into tools/ directory
-- Reorganized documentation into docs/ directory structure
-- **BREAKING**: Reduced default audio gains to prevent distortion:
-  - Wake word audio_gain default: 2.0 → 1.0
-  - Dynamic gain range: 2.0-5.0 → 1.0-2.0
-  - OpenAI normalization target: 0.1 → 0.05
-  - OpenAI max gain: 10x → 3x
-- Consistent audio normalization using 32767 throughout pipeline
-- Improved audio quality validation thresholds
+- **Project structure** - Reorganized into clean directory structure:
+  - `examples/` - User-facing test utilities
+  - `tests/` - All test scripts and audio samples
+  - `docs/` - Consolidated documentation with archives
+- **Default audio settings** to prevent distortion:
+  - Wake word audio_gain default: 3.5 → 1.0
+  - Input volume supports values < 1.0 for attenuation
+  - Consistent audio normalization using 32767
+- **Development Status** - Updated from Alpha to Beta
 
 ### Fixed
+- **Audio completion hang** - Fixed infinite loop in audio completion callbacks causing "Audio underrun #2" errors
+- **Multi-turn response initialization** - Fixed start_response() not being called for follow-up responses
+- **Wake word detection issues**:
+  - Invalid wake word configurations (e.g., "hey_jarvis" not being built-in)
+  - Multi-word wake words with spaces breaking Porcupine
+  - Porcupine instance cleanup preventing reinitialization
+  - Audio gain causing distortion and preventing wake word detection
+- **Home Assistant device exposure** - Removed artificial limits on exposed devices
+- **Audio clipping with high gain** - Fixed integer overflow issues with gain multiplication
 - Wake word model stuck at low confidence values
 - Audio buffer flushing mechanism for model reset
 - False positive wake word detections
 - Configuration synchronization between config.yaml and config.yaml.example
-- **Critical**: Audio distortion causing wake word to only detect soft speech
-- **Critical**: Multiple gain stages causing audio clipping
-- **Critical**: OpenAI receiving distorted audio leading to misunderstanding
+- OpenAI receiving distorted audio leading to misunderstanding
 - Inconsistent normalization values causing DC bias
-- Hard clipping replaced with soft limiting for better audio quality
 
 ## [0.1.0] - 2024-12-07
 

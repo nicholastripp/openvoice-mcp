@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Convenient test runner script for HA Realtime Voice Assistant
-# Automatically uses the virtual environment
+# This script automatically uses the virtual environment - no need to activate it first
 
 set -e
 

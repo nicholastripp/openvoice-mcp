@@ -1,10 +1,15 @@
 # Home Assistant Realtime Voice Assistant
 
+![Version](https://img.shields.io/badge/version-0.2.0--beta-blue)
+![Status](https://img.shields.io/badge/status-beta-yellow)
+![Python](https://img.shields.io/badge/python-3.9+-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 A standalone Raspberry Pi voice assistant that provides natural, low-latency conversations for Home Assistant control using OpenAI's Realtime API.
 
-## 🚀 Project Status: Implementation Complete!
+## 🚀 Project Status: Beta Release!
 
-All core components have been implemented and validated. The system is ready for real-world testing on Raspberry Pi hardware.
+The assistant is now in beta with all core features implemented and tested. Ready for real-world use with ongoing improvements.
 
 ## Overview
 
@@ -12,21 +17,22 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 
 ## Key Features
 
-- 🎙️ **Natural Conversations**: Real-time bidirectional audio streaming
+- 🎙️ **Natural Conversations**: Real-time bidirectional audio streaming with multi-turn support
 - ⚡ **Low Latency**: <800ms voice-to-voice response time  
 - 🏠 **Full HA Control**: Uses Home Assistant's Conversation API
-- 👂 **Local Wake Words**: OpenWakeWord with multiple model support
+- 👂 **Dual Wake Word Engines**: Porcupine and OpenWakeWord support
+- 🔊 **Automatic Gain Control**: AGC prevents clipping and maintains optimal audio levels
 - 🌍 **Multi-Language**: Configurable language support
 - 🎭 **Personality**: Customizable assistant personality
-- 🔊 **Local Audio**: All audio processing happens on the Pi
 - 🚀 **Easy Setup**: Simple configuration and installation
 
 ## How It Works
 
-1. **Wake Word Detection**: Local detection using OpenWakeWord (hey_jarvis, alexa, etc.)
+1. **Wake Word Detection**: Local detection using Porcupine or OpenWakeWord
 2. **Audio Streaming**: Captures voice and streams to OpenAI Realtime API
 3. **Smart Control**: OpenAI understands intent and calls HA functions
 4. **Natural Response**: Speaks back with natural, conversational responses
+5. **Multi-turn Conversations**: Continue talking without repeating wake word
 
 ## Hardware Requirements
 
@@ -49,7 +55,7 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 git clone https://github.com/nicholastripp/ha-realtime-assist
 cd ha-realtime-assist
 
-# Install dependencies
+# Install dependencies and create virtual environment
 ./install.sh
 
 # Setup configuration files
@@ -59,9 +65,14 @@ cd ha-realtime-assist
 nano .env
 nano config/config.yaml
 
-# Start the assistant (use virtual environment)
-./venv/bin/python src/main.py
+# Activate the virtual environment (required for all Python commands)
+source venv/bin/activate
+
+# Start the assistant
+python src/main.py
 ```
+
+**Note**: Always activate the virtual environment (`source venv/bin/activate`) before running any Python commands. You'll see `(venv)` in your terminal prompt when it's active.
 
 ## Configuration
 
@@ -89,99 +100,57 @@ wake_word:
 
 ### Wake Word Setup
 
-The assistant uses OpenWakeWord for local wake word detection. Models are automatically downloaded on first run.
+The assistant supports two wake word engines:
 
-**Troubleshooting wake word issues:**
+1. **Porcupine** (Recommended) - More accurate, includes "picovoice", "alexa", "computer", etc.
+2. **OpenWakeWord** - Fully open source, includes "hey_jarvis", "alexa", etc.
 
-1. **Manual model download:**
-   ```bash
-   python download_wake_word_models.py --download-all
-   ```
+See the [Wake Word Setup Guide](docs/WAKE_WORD_SETUP.md) for detailed configuration.
 
-2. **Test wake word detection:**
-   ```bash
-   ./venv/bin/python examples/test_wake_word.py --interactive
-   ```
+### Audio Configuration
 
-3. **Check available models:**
-   ```bash
-   python download_wake_word_models.py --list
-   ```
+The assistant now includes **Automatic Gain Control (AGC)** to handle varying microphone levels:
 
-4. **Test model loading:**
-   ```bash
-   python download_wake_word_models.py --test
-   ```
-
-5. **If you see "No module named 'speexdsp_ns'" error:**
-   
-   **Option A (Quick Fix)**: Disable Speex noise suppression in config:
-   ```yaml
-   wake_word:
-     vad_enabled: true
-     speex_noise_suppression: false
-   ```
-   
-   **Option B (Full Feature)**: Install the optional dependency:
-   ```bash
-   # Install system dependency
-   sudo apt-get install libspeexdsp-dev
-   
-   # Install Python package
-   pip install speexdsp-ns
-   ```
-
-## Implementation Status
-
-✅ **Core Implementation Complete** - All major components are implemented and ready for testing.
-
-### Completed Components
-- [x] **OpenAI Integration** - Full WebSocket client with event handling and function calling
-- [x] **Audio System** - Capture/playback with resampling and device management
-- [x] **Wake Word Detection** - OpenWakeWord integration with multiple models
-- [x] **HA Integration** - REST and Conversation API clients
-- [x] **Personality System** - Configurable traits and custom prompts
-- [x] **Configuration** - YAML-based config with environment variables
-- [x] **Test Scripts** - Comprehensive testing utilities
-
-### Available Wake Words
-- `hey_jarvis` - Default wake word
-- `alexa` - Amazon Alexa compatible
-- `hey_mycroft` - Mycroft compatible
-- `hey_rhasspy` - Rhasspy compatible
-- `ok_nabu` - Nabu Casa compatible
-
-**Note**: Wake word models are automatically downloaded on first run. If you encounter issues, run:
-```bash
-python download_wake_word_models.py --download-all
+```yaml
+audio:
+  agc_enabled: true  # Enable automatic volume adjustment
+  input_volume: 1.0  # Manual gain (0.1-5.0, <1.0 reduces volume)
 ```
+
+See the [Audio Setup Guide](docs/AUDIO_SETUP.md) for optimal configuration.
+
+## What's New in v0.2.0-beta
+
+- ✨ **Multi-turn Conversations** - Natural back-and-forth without wake word
+- 🔊 **Automatic Gain Control** - Prevents audio clipping automatically
+- 🦔 **Porcupine Support** - More accurate wake word detection
+- 🔧 **Audio Diagnostics** - Tools to optimize your audio setup
+- 📚 **Better Documentation** - Comprehensive guides for all features
+
+See [CHANGELOG.md](CHANGELOG.md) for complete details.
 
 ### Testing & Validation
 
-**Important**: All test scripts must be run using the virtual environment:
+Run these tests to verify your setup:
 
 ```bash
+# First, activate the virtual environment
+source venv/bin/activate
+
 # Test wake word detection
-./venv/bin/python examples/test_wake_word.py --interactive
+python examples/test_wake_word.py --interactive
 
 # Test audio devices
-./venv/bin/python examples/test_audio_devices.py
+python examples/test_audio_devices.py
 
 # Test Home Assistant connection
-./venv/bin/python examples/test_ha_connection.py
+python examples/test_ha_connection.py
 
 # Test OpenAI connection
-./venv/bin/python examples/test_openai_connection.py
+python examples/test_openai_connection.py
 
 # Run the full assistant
-./venv/bin/python src/main.py --log-level DEBUG
-```
-
-**Alternative**: Activate the virtual environment first:
-```bash
-source venv/bin/activate
-python3 examples/test_audio_devices.py
-python3 src/main.py
+python src/main.py --log-level DEBUG
 ```
 
 **Convenient Test Runner**: Use the provided script to run tests easily:
@@ -199,10 +168,13 @@ python3 src/main.py
 
 ## Documentation
 
-- [CLAUDE.md](./CLAUDE.md) - Comprehensive technical documentation
-- [Configuration Guide](./docs/CONFIGURATION.md) - All configuration options
-- [Wake Word Tuning](./docs/wake_word_gain_tuning.md) - Wake word sensitivity tuning
-- [Troubleshooting](./docs/troubleshooting/) - Common issues and solutions
+- [Installation Guide](docs/INSTALLATION.md) - Step-by-step setup instructions
+- [Usage Guide](docs/USAGE.md) - How to use your assistant
+- [Configuration Guide](docs/CONFIGURATION.md) - All configuration options
+- [Audio Setup](docs/AUDIO_SETUP.md) - Microphone and speaker configuration
+- [Wake Word Setup](docs/WAKE_WORD_SETUP.md) - Wake word configuration
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [Technical Documentation](CLAUDE.md) - For developers
 
 ## Contributing
 

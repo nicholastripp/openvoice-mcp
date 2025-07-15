@@ -54,9 +54,20 @@ audio:
   sample_rate: 48000               # Device sample rate (48000, 44100, etc.)
   channels: 1                      # Audio channels (1=mono, 2=stereo)
   chunk_size: 1200                 # Audio chunk size (50ms at 24kHz)
-  input_volume: 5.0                # Input volume multiplier
+  input_volume: 1.0                # Input volume multiplier (0.1-5.0, <1.0 reduces)
   output_volume: 2.0               # Output volume multiplier
   feedback_prevention: true        # Prevent audio loops
+  feedback_threshold: 0.1          # Feedback detection threshold
+  mute_during_response: true       # Mute mic during assistant response
+  
+  # Automatic Gain Control (AGC) - new in v0.2.0
+  agc_enabled: false              # Enable automatic volume adjustment
+  agc_target_rms: 0.3            # Target audio level (0.0-1.0, 0.3 = 30% of max)
+  agc_max_gain: 3.0              # Maximum gain multiplier
+  agc_min_gain: 0.1              # Minimum gain multiplier
+  agc_attack_time: 0.5           # Seconds to reduce gain when clipping
+  agc_release_time: 2.0          # Seconds to increase gain when quiet
+  agc_clipping_threshold: 0.05   # Maximum acceptable clipping ratio (5%)
 ```
 
 ### Wake Word Configuration
@@ -64,17 +75,32 @@ audio:
 ```yaml
 wake_word:
   enabled: true                   # Enable wake word detection
-  model: "hey_jarvis"            # Wake word model
-  sensitivity: 0.004             # Detection sensitivity (0.0-1.0)
+  engine: "porcupine"            # Engine: "porcupine" or "openwakeword"
+  model: "picovoice"             # Wake word model (see docs for options)
+  sensitivity: 1.0               # Detection sensitivity (0.0-1.0)
   timeout: 5.0                   # Session timeout after wake word
   vad_enabled: false             # Voice activity detection
   cooldown: 2.0                  # Seconds between detections
-  audio_gain: 3.5                # Audio amplification (1.0-5.0)
+  audio_gain: 1.0                # Audio amplification (1.0-5.0)
   audio_gain_mode: "fixed"       # Gain mode: "fixed" or "dynamic"
+  
+  # Porcupine-specific settings
+  porcupine_access_key: ${PICOVOICE_ACCESS_KEY}  # From environment variable
+  highpass_filter_enabled: true   # Required for Porcupine
+  highpass_filter_cutoff: 80.0    # Hz - removes low frequency noise
 ```
 
 Available wake word models:
-- `hey_jarvis` - Default wake word
+
+**Porcupine** (built-in keywords):
+- `picovoice` - Default wake word
+- `alexa` - Amazon Alexa compatible
+- `computer` - Star Trek style
+- `terminator` - Sci-fi themed
+- Plus: americano, blueberry, bumblebee, grapefruit, grasshopper, porcupine
+
+**OpenWakeWord** (requires download):
+- `hey_jarvis` - Iron Man inspired
 - `alexa` - Amazon Alexa compatible
 - `hey_mycroft` - Mycroft compatible
 - `hey_rhasspy` - Rhasspy compatible
@@ -139,7 +165,11 @@ thinking = Let me think about that...
 To find available audio devices:
 
 ```bash
-./venv/bin/python tools/test_audio_devices.py
+# Activate virtual environment first
+source venv/bin/activate
+
+# Then list devices
+python tools/test_audio_devices.py
 ```
 
 Then update your config with the device name or index:
@@ -161,21 +191,38 @@ The wake word sensitivity determines how easily the assistant responds:
 To test and tune:
 
 ```bash
-./venv/bin/python tools/test_wake_word.py --interactive
+# Activate virtual environment first
+source venv/bin/activate
+
+# Then test wake word
+python tools/test_wake_word.py --interactive
 ```
 
-## Audio Gain Configuration
+## Audio Gain and AGC
 
-Adjust audio gain to improve wake word detection:
+### Manual Gain Control
+
+Adjust input volume for your microphone:
 
 ```yaml
-wake_word:
-  audio_gain: 3.5                # Amplification factor (1.0-5.0)
-  audio_gain_mode: "fixed"       # "fixed" or "dynamic"
+audio:
+  input_volume: 1.0              # 0.1-5.0 (<1.0 reduces, >1.0 amplifies)
 ```
 
-- **Fixed mode**: Constant amplification (recommended)
-- **Dynamic mode**: Automatic adjustment based on audio levels
+### Automatic Gain Control (AGC)
+
+Enable AGC for automatic volume adjustment:
+
+```yaml
+audio:
+  agc_enabled: true              # Automatically adjusts volume
+  agc_target_rms: 0.3           # Target level (30% of maximum)
+```
+
+AGC is recommended when:
+- Multiple people use the assistant
+- Microphone distance varies
+- Background noise levels change
 
 ## Multi-Language Support
 
@@ -208,8 +255,9 @@ audio:
   input_device: "Jabra Speak 410 USB"
   output_device: "Jabra Speak 410 USB"
   sample_rate: 48000
-  input_volume: 3.0
+  input_volume: 1.0
   output_volume: 1.5
+  agc_enabled: true  # Recommended for conference speakers
 ```
 
 ### Raspberry Pi with ReSpeaker HAT
@@ -228,9 +276,11 @@ system:
 
 ```yaml
 wake_word:
-  sensitivity: 0.002
-  audio_gain: 4.0
-  cooldown: 3.0  # Prevent rapid triggers
+  engine: "porcupine"
+  model: "computer"
+  sensitivity: 1.0      # Maximum for Porcupine
+  audio_gain: 1.5      # Slight boost
+  cooldown: 3.0        # Prevent rapid triggers
 ```
 
 ## Security Best Practices
