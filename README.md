@@ -174,7 +174,6 @@ python src/main.py --log-level DEBUG
 - [Audio Setup](docs/AUDIO_SETUP.md) - Microphone and speaker configuration
 - [Wake Word Setup](docs/WAKE_WORD_SETUP.md) - Wake word configuration
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
-- [Technical Documentation](CLAUDE.md) - For developers
 
 ## Contributing
 
