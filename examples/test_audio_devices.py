@@ -325,7 +325,7 @@ def diagnose_device(device_id):
         print("   If wake word detection still fails, check:")
         print("   - Audio gain settings (alsamixer)")
         print("   - Device selection in config")
-        print("   - OpenWakeWord sensitivity settings")
+        print("   - Porcupine sensitivity settings")
     else:
         print("[FAIL] Device has issues - try a different audio device")
     

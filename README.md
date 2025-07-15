@@ -20,7 +20,7 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 - 🎙️ **Natural Conversations**: Real-time bidirectional audio streaming with multi-turn support
 - ⚡ **Low Latency**: <800ms voice-to-voice response time  
 - 🏠 **Full HA Control**: Uses Home Assistant's Conversation API
-- 👂 **Dual Wake Word Engines**: Porcupine and OpenWakeWord support
+- 👂 **Porcupine Wake Words**: Accurate detection with built-in keywords
 - 🔊 **Automatic Gain Control**: AGC prevents clipping and maintains optimal audio levels
 - 🌍 **Multi-Language**: Configurable language support
 - 🎭 **Personality**: Customizable assistant personality
@@ -28,7 +28,7 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 
 ## How It Works
 
-1. **Wake Word Detection**: Local detection using Porcupine or OpenWakeWord
+1. **Wake Word Detection**: Local detection using Picovoice Porcupine
 2. **Audio Streaming**: Captures voice and streams to OpenAI Realtime API
 3. **Smart Control**: OpenAI understands intent and calls HA functions
 4. **Natural Response**: Speaks back with natural, conversational responses
@@ -93,17 +93,16 @@ home_assistant:
 
 wake_word:
   enabled: true
-  model: "hey_jarvis"
-  auto_download: true
-  sensitivity: 0.5
+  model: "picovoice"
+  sensitivity: 1.0
 ```
 
 ### Wake Word Setup
 
-The assistant supports two wake word engines:
-
-1. **Porcupine** (Recommended) - More accurate, includes "picovoice", "alexa", "computer", etc.
-2. **OpenWakeWord** - Fully open source, includes "hey_jarvis", "alexa", etc.
+The assistant uses Picovoice Porcupine for accurate wake word detection. Built-in keywords include:
+- "picovoice" (default)
+- "alexa", "computer", "jarvis"
+- And more!
 
 See the [Wake Word Setup Guide](docs/WAKE_WORD_SETUP.md) for detailed configuration.
 

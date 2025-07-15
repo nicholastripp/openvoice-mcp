@@ -1,204 +1,168 @@
 # Wake Word Setup Guide
 
-Configure wake word detection for reliable hands-free activation of your assistant.
+Configure wake word detection using Picovoice Porcupine for reliable hands-free activation.
 
-## Wake Word Engines
+## Overview
 
-The assistant supports two wake word engines:
+The assistant uses Picovoice Porcupine for wake word detection. Porcupine offers:
+- High accuracy with low false positive rates
+- Built-in keywords that work out of the box
+- Support for custom wake words
+- Optimized for Raspberry Pi
 
-### 1. Porcupine (Recommended)
-- **Pros**: More accurate, better noise handling, built-in keywords
-- **Cons**: Requires access key (free tier available)
-- **Keywords**: picovoice, alexa, computer, terminator, and more
+## Getting Started
 
-### 2. OpenWakeWord
-- **Pros**: Completely free, no API key needed
-- **Cons**: Requires model downloads, higher CPU usage
-- **Keywords**: hey_jarvis, alexa, hey_mycroft, ok_nabu
+### 1. Get a Picovoice Access Key
 
-## Basic Configuration
+Porcupine requires a free access key:
 
-### Using Porcupine (Default)
-
-1. Get a free access key from [console.picovoice.ai](https://console.picovoice.ai)
-
-2. Add to `.env`:
+1. Sign up at [console.picovoice.ai](https://console.picovoice.ai)
+2. Create a new project
+3. Copy your access key
+4. Add to `.env` file:
    ```bash
    PICOVOICE_ACCESS_KEY=your-access-key-here
    ```
 
-3. Configure in `config.yaml`:
-   ```yaml
-   wake_word:
-     enabled: true
-     engine: "porcupine"
-     model: "picovoice"  # or any built-in keyword
-     sensitivity: 1.0    # 0.0-1.0 (1.0 = most sensitive)
-   ```
+### 2. Basic Configuration
 
-### Using OpenWakeWord
+In `config/config.yaml`:
 
-1. Configure in `config.yaml`:
-   ```yaml
-   wake_word:
-     enabled: true
-     engine: "openwakeword"
-     model: "hey_jarvis"  # or other available model
-     sensitivity: 0.5     # 0.0-1.0 (0.5 = balanced)
-     auto_download: true  # Download models automatically
-   ```
+```yaml
+wake_word:
+  enabled: true
+  model: "picovoice"    # Built-in keyword
+  sensitivity: 1.0      # 0.0-1.0 (1.0 = most sensitive)
+```
 
-2. Models will download on first run, or manually:
-   ```bash
-   # Activate virtual environment first
-   source venv/bin/activate
-   
-   # Then download models
-   python download_wake_word_models.py --download-all
-   ```
+## Built-in Keywords
 
-## Available Wake Words
+Porcupine includes these keywords without any downloads:
 
-### Porcupine Built-in Keywords
-- `alexa` - "Alexa"
-- `americano` - "Americano" 
-- `blueberry` - "Blueberry"
-- `bumblebee` - "Bumblebee"
-- `computer` - "Computer"
-- `grapefruit` - "Grapefruit"
-- `grasshopper` - "Grasshopper"
-- `picovoice` - "Picovoice" (default)
-- `porcupine` - "Porcupine"
-- `terminator` - "Terminator"
-
-### OpenWakeWord Models
-- `alexa` - "Alexa"
-- `hey_jarvis` - "Hey Jarvis"
-- `hey_mycroft` - "Hey Mycroft"
-- `hey_rhasspy` - "Hey Rhasspy"
-- `ok_nabu` - "Ok Nabu"
+| Keyword | Example Phrase |
+|---------|----------------|
+| `alexa` | "Alexa" |
+| `americano` | "Americano" |
+| `blueberry` | "Blueberry" |
+| `bumblebee` | "Bumblebee" |
+| `computer` | "Computer" |
+| `grapefruit` | "Grapefruit" |
+| `grasshopper` | "Grasshopper" |
+| `hey google` | "Hey Google" |
+| `hey siri` | "Hey Siri" |
+| `jarvis` | "Jarvis" |
+| `ok google` | "Ok Google" |
+| `picovoice` | "Picovoice" (default) |
+| `porcupine` | "Porcupine" |
+| `terminator` | "Terminator" |
 
 ## Sensitivity Tuning
 
-### Understanding Sensitivity
+The sensitivity parameter controls how easily the wake word triggers:
 
-- **Higher sensitivity** (0.8-1.0): Triggers more easily, may have false positives
-- **Lower sensitivity** (0.1-0.3): Requires clearer pronunciation, fewer false triggers
-- **Balanced** (0.4-0.6): Good for most environments
+- **1.0** (Maximum): Most sensitive, may have occasional false positives
+- **0.5** (Balanced): Good balance for most environments
+- **0.1** (Minimum): Requires very clear pronunciation
 
-### Tuning Process
+### Testing Sensitivity
 
-1. Start with default sensitivity:
-   ```yaml
-   sensitivity: 1.0  # Porcupine
-   # or
-   sensitivity: 0.5  # OpenWakeWord
-   ```
+```bash
+# Activate virtual environment
+source venv/bin/activate
 
-2. Test in your environment:
-   ```bash
-   # Activate virtual environment first
-   source venv/bin/activate
-   
-   # Then test interactively
-   python examples/test_wake_word.py --interactive
-   ```
-
-3. Adjust based on results:
-   - **Too many false triggers**: Decrease by 0.1
-   - **Hard to trigger**: Increase by 0.1
-
-4. Test with different:
-   - Distances (1-10 feet)
-   - Background noise levels
-   - Different speakers/voices
-
-## Audio Settings for Wake Words
-
-### Porcupine-Specific Settings
-
-```yaml
-wake_word:
-  # Audio preprocessing
-  highpass_filter_enabled: true  # REQUIRED for Porcupine
-  highpass_filter_cutoff: 80.0   # Hz - removes low rumble
-  
-  # Gain settings
-  audio_gain: 1.0               # Amplification (1.0 = no change)
-  audio_gain_mode: "fixed"      # or "dynamic"
+# Test wake word detection
+python examples/test_wake_word.py
 ```
 
-### OpenWakeWord Settings
+Adjust sensitivity based on your environment:
+- Quiet room: 0.3 - 0.5
+- Normal environment: 0.5 - 0.7
+- Noisy environment: 0.7 - 1.0
+
+## Audio Configuration
+
+### High-Pass Filter (Required)
+
+Porcupine requires a high-pass filter to work properly:
 
 ```yaml
 wake_word:
-  # Noise suppression (if available)
-  speex_noise_suppression: true  # Requires speexdsp
-  vad_enabled: true             # Voice activity detection
-  
-  # Gain settings
-  audio_gain: 1.0
+  highpass_filter_enabled: true   # Must be true
+  highpass_filter_cutoff: 80.0    # Hz
+```
+
+This removes low-frequency noise and DC offset that can interfere with detection.
+
+### Audio Gain
+
+Adjust the wake word audio gain if needed:
+
+```yaml
+wake_word:
+  audio_gain: 1.0        # 1.0 = no change
   audio_gain_mode: "fixed"
 ```
 
+- Increase if wake word is hard to trigger
+- Decrease if you get false positives
+- Start with 1.0 and adjust as needed
+
 ## Custom Wake Words
 
-### Creating Custom Porcupine Wake Words
+### Creating Custom Keywords
 
 1. Visit [Picovoice Console](https://console.picovoice.ai)
-2. Click "Create Wake Word"
+2. Click "Train Custom Wake Word"
 3. Enter your phrase (e.g., "Hey Assistant")
-4. Train the model with voice samples
+4. Record training samples
 5. Download the `.ppn` file
-6. Place in `config/wake_words/`
-7. Update configuration:
-   ```yaml
-   wake_word:
-     model: "config/wake_words/Hey-Assistant_en_rpi_v2_1_0.ppn"
+
+### Using Custom Keywords
+
+1. Create directory for custom models:
+   ```bash
+   mkdir -p config/wake_words
    ```
 
-### Creating Custom OpenWakeWord Models
+2. Place your `.ppn` file in the directory
 
-Currently, OpenWakeWord doesn't support easy custom model creation. Use pre-trained models or consider Porcupine for custom words.
+3. Update configuration:
+   ```yaml
+   wake_word:
+     model: "config/wake_words/Hey-Assistant_en_raspberry-pi_v3_0_0.ppn"
+   ```
 
-## Troubleshooting Wake Word Detection
+## Troubleshooting
 
-### Problem: Wake Word Not Detecting
+### Wake Word Not Detecting
 
-**Check these in order**:
-
-1. **Audio Input Working**:
+1. **Check Access Key**:
    ```bash
-   # Activate virtual environment first
-   source venv/bin/activate
-   
-   # Then test audio
+   echo $PICOVOICE_ACCESS_KEY
+   ```
+   Ensure it's set in your `.env` file
+
+2. **Verify Audio Input**:
+   ```bash
    python examples/test_audio_devices.py
    ```
 
-2. **Wake Word Test Mode**:
+3. **Test with Maximum Sensitivity**:
    ```yaml
-   wake_word:
-     test_mode: true  # Prints detection scores
+   sensitivity: 1.0
+   audio_gain: 1.5
    ```
 
-3. **Audio Gain**:
-   ```yaml
-   wake_word:
-     audio_gain: 1.5  # Increase if too quiet
+4. **Check Logs**:
+   ```bash
+   grep -i porcupine logs/assistant.log
    ```
 
-4. **High-Pass Filter** (Porcupine only):
-   ```yaml
-   wake_word:
-     highpass_filter_enabled: true  # MUST be true
-   ```
+### Too Many False Positives
 
-### Problem: Too Many False Positives
-
-1. **Decrease Sensitivity**:
+1. **Reduce Sensitivity**:
    ```yaml
-   sensitivity: 0.3  # Lower values = fewer false triggers
+   sensitivity: 0.3
    ```
 
 2. **Increase Cooldown**:
@@ -206,145 +170,74 @@ Currently, OpenWakeWord doesn't support easy custom model creation. Use pre-trai
    cooldown: 3.0  # Seconds between detections
    ```
 
-3. **Try Different Wake Word**:
+3. **Try Different Keyword**:
    - Longer phrases work better
-   - Avoid common words
+   - Unique sounds reduce false positives
 
-### Problem: Specific Voice Not Working
+### Platform-Specific Issues
 
-1. **Test Multiple Speakers**:
-   - Different accents
-   - Male/female voices
-   - Children vs adults
+#### Raspberry Pi
+- Use keywords ending with `_raspberry-pi` for best performance
+- Ensure you have sufficient CPU headroom
+- Consider using a USB microphone for better quality
 
-2. **Adjust Audio Settings**:
-   ```yaml
-   audio:
-     input_volume: 1.5  # Boost quiet voices
-     agc_enabled: true  # Auto-adjust levels
-   ```
-
-3. **Consider Custom Wake Word**:
-   - Train with specific voice
-   - Include variations
+#### Access Key Errors
+- "Invalid access key": Check key is correct and active
+- "Exceeded quota": Free tier allows generous usage, check console
+- "Unsupported platform": Ensure using correct platform-specific model
 
 ## Performance Optimization
 
 ### CPU Usage
-
-Monitor CPU during detection:
-```bash
-top -p $(pgrep -f main.py)
-```
-
-Reduce CPU usage:
-```yaml
-wake_word:
-  # Reduce processing frequency
-  chunk_size: 1600  # Larger chunks = less CPU
-```
+- Porcupine uses ~5-10% CPU on Raspberry Pi 4
+- Less on more powerful systems
 
 ### Memory Usage
+- ~10MB per keyword
+- Very efficient compared to alternatives
 
-- Porcupine: ~10MB per keyword
-- OpenWakeWord: ~50MB per model
-
-### Latency
-
-Reduce detection latency:
+### Reduce Latency
 ```yaml
 wake_word:
-  # Smaller chunks = faster response
-  chunk_size: 960   # 60ms chunks
-  
-  # Disable unnecessary features
-  vad_enabled: false
-  speex_noise_suppression: false
-```
-
-## Advanced Configuration
-
-### Multiple Wake Words
-
-For Porcupine with multiple keywords:
-```yaml
-wake_word:
-  model: "picovoice,alexa,computer"  # Comma-separated
-  # Each can have different sensitivity
-```
-
-### Environment-Specific Settings
-
-Create different configs for different rooms:
-```yaml
-# config/kitchen.yaml - Noisy environment
-wake_word:
-  sensitivity: 0.8
-  audio_gain: 2.0
-  speex_noise_suppression: true
-
-# config/bedroom.yaml - Quiet environment  
-wake_word:
-  sensitivity: 0.3
-  audio_gain: 1.0
-```
-
-### Debugging Wake Word
-
-Enable detailed logging:
-```yaml
-system:
-  log_level: "DEBUG"
-
-wake_word:
-  test_mode: true  # Shows confidence scores
-```
-
-Watch the logs:
-```bash
-tail -f logs/assistant.log | grep -i wake
+  vad_enabled: false  # Disable if not needed
 ```
 
 ## Best Practices
 
-1. **Choose Distinctive Wake Words**: Avoid common words in conversation
-2. **Test Thoroughly**: Test with multiple people and environments
-3. **Start Sensitive**: Begin with high sensitivity and reduce if needed
-4. **Position Matters**: Place microphone centrally with clear line of sight
-5. **Regular Testing**: Periodically verify detection is working well
+1. **Choose Distinctive Keywords**: Avoid common words in conversation
+2. **Test in Your Environment**: What works in one room may not in another
+3. **Consider Multiple Users**: Test with different voices
+4. **Monitor Logs**: Check for false positives and missed detections
+5. **Start Conservative**: Begin with lower sensitivity and increase as needed
 
-## Quick Reference
+## Example Configurations
 
-### Porcupine Setup
+### Living Room Assistant
 ```yaml
 wake_word:
-  enabled: true
-  engine: "porcupine"
-  model: "computer"
-  sensitivity: 1.0
-  highpass_filter_enabled: true
-  porcupine_access_key: ${PICOVOICE_ACCESS_KEY}
+  model: "alexa"        # Familiar to family
+  sensitivity: 0.7      # Balanced for normal conversation
+  cooldown: 2.0
 ```
 
-### OpenWakeWord Setup
+### Workshop Assistant
 ```yaml
 wake_word:
-  enabled: true
-  engine: "openwakeword"
-  model: "hey_jarvis"
-  sensitivity: 0.5
-  auto_download: true
-  speex_noise_suppression: true
+  model: "computer"     # Clear, distinctive
+  sensitivity: 0.9      # High for noisy environment
+  audio_gain: 1.5       # Boost for distance
 ```
 
-## Getting Help
+### Bedroom Assistant
+```yaml
+wake_word:
+  model: "jarvis"       # Fun choice
+  sensitivity: 0.4      # Low to avoid false triggers
+  cooldown: 3.0         # Prevent accidental triggers
+```
 
-- Test wake word: 
-  ```bash
-  # Activate virtual environment first
-  source venv/bin/activate
-  python examples/test_wake_word.py
-  ```
-- Check [Audio Setup](AUDIO_SETUP.md) for microphone issues
-- Review [Troubleshooting Guide](TROUBLESHOOTING.md)
-- Enable debug logging for detailed diagnostics
+## Need Help?
+
+- Check the [Troubleshooting Guide](TROUBLESHOOTING.md)
+- Review [Audio Setup](AUDIO_SETUP.md) for microphone configuration
+- Visit [Picovoice Docs](https://picovoice.ai/docs/) for advanced features

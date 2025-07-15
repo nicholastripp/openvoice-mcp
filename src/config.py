@@ -54,11 +54,10 @@ class AudioConfig:
 
 @dataclass
 class WakeWordConfig:
-    """Wake word configuration"""
+    """Wake word configuration for Porcupine"""
     enabled: bool = True
-    engine: str = "openwakeword"  # Wake word engine: "openwakeword" or "porcupine"
-    model: str = "alexa"
-    sensitivity: float = 0.0001  # Reasonable default threshold for wake word detection
+    model: str = "picovoice"  # Porcupine built-in keyword
+    sensitivity: float = 1.0  # Detection sensitivity (0.0-1.0)
     timeout: float = 5.0
     vad_enabled: bool = True
     cooldown: float = 2.0
@@ -68,20 +67,12 @@ class WakeWordConfig:
     audio_gain: float = 1.0  # Audio amplification factor (1.0-5.0, default 1.0 to prevent clipping)
     audio_gain_mode: str = "fixed"  # Gain mode: "fixed" or "dynamic"
     
-    # Model download settings
-    auto_download: bool = True
-    download_timeout: int = 300
-    retry_downloads: int = 3
-    
-    # Noise suppression settings
-    speex_noise_suppression: bool = True  # Enable if speexdsp_ns is available
-    
-    # Porcupine-specific settings
+    # Porcupine settings
     porcupine_access_key: Optional[str] = None  # Picovoice access key
     
-    # High-pass filter settings for Porcupine
-    highpass_filter_enabled: bool = True   # Enable by default - required for Porcupine
-    highpass_filter_cutoff: float = 80.0   # Hz - original value that worked
+    # High-pass filter settings (required for Porcupine)
+    highpass_filter_enabled: bool = True   # Required for Porcupine to work properly
+    highpass_filter_cutoff: float = 80.0   # Hz - removes DC offset and low frequency noise
 
 
 @dataclass

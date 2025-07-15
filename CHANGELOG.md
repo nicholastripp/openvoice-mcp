@@ -5,6 +5,18 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **BREAKING**: Removed OpenWakeWord support - Porcupine is now the only wake word engine
+- Simplified wake word configuration by removing engine selection
+- Reduced dependencies by ~100MB (removed TensorFlow Lite, ONNX runtime)
+
+### Removed
+- OpenWakeWord engine and all related code
+- Wake word model download functionality
+- Engine selection from configuration
+
 ## [0.2.0-beta] - 2025-01-15
 
 ### Added

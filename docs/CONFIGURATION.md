@@ -75,8 +75,7 @@ audio:
 ```yaml
 wake_word:
   enabled: true                   # Enable wake word detection
-  engine: "porcupine"            # Engine: "porcupine" or "openwakeword"
-  model: "picovoice"             # Wake word model (see docs for options)
+  model: "picovoice"             # Porcupine built-in keyword
   sensitivity: 1.0               # Detection sensitivity (0.0-1.0)
   timeout: 5.0                   # Session timeout after wake word
   vad_enabled: false             # Voice activity detection
@@ -84,27 +83,19 @@ wake_word:
   audio_gain: 1.0                # Audio amplification (1.0-5.0)
   audio_gain_mode: "fixed"       # Gain mode: "fixed" or "dynamic"
   
-  # Porcupine-specific settings
+  # Porcupine settings
   porcupine_access_key: ${PICOVOICE_ACCESS_KEY}  # From environment variable
   highpass_filter_enabled: true   # Required for Porcupine
   highpass_filter_cutoff: 80.0    # Hz - removes low frequency noise
 ```
 
-Available wake word models:
-
-**Porcupine** (built-in keywords):
+Available Porcupine built-in keywords:
 - `picovoice` - Default wake word
 - `alexa` - Amazon Alexa compatible
 - `computer` - Star Trek style
+- `jarvis` - Iron Man inspired
 - `terminator` - Sci-fi themed
-- Plus: americano, blueberry, bumblebee, grapefruit, grasshopper, porcupine
-
-**OpenWakeWord** (requires download):
-- `hey_jarvis` - Iron Man inspired
-- `alexa` - Amazon Alexa compatible
-- `hey_mycroft` - Mycroft compatible
-- `hey_rhasspy` - Rhasspy compatible
-- `ok_nabu` - Nabu Casa compatible
+- Plus: americano, blueberry, bumblebee, grapefruit, grasshopper, hey google, hey siri, ok google, porcupine
 
 ### Session Configuration
 
@@ -276,9 +267,8 @@ system:
 
 ```yaml
 wake_word:
-  engine: "porcupine"
   model: "computer"
-  sensitivity: 1.0      # Maximum for Porcupine
+  sensitivity: 1.0      # Maximum sensitivity
   audio_gain: 1.5      # Slight boost
   cooldown: 3.0        # Prevent rapid triggers
 ```

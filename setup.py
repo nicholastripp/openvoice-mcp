@@ -36,12 +36,6 @@ setup(
             "black>=23.0.0",
             "flake8>=6.0.0",
             "mypy>=1.5.0"
-        ],
-        "wake-word": [
-            "openwakeword>=0.1.0"
-        ],
-        "porcupine": [
-            "pvporcupine>=3.0.0"
         ]
     },
     entry_points={

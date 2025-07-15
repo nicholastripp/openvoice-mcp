@@ -24,7 +24,7 @@ from ha_client.conversation import HomeAssistantConversationClient
 from audio.capture import AudioCapture
 from audio.playback import AudioPlayback
 from function_bridge import FunctionCallBridge
-from wake_word import create_wake_word_detector
+from wake_word import PorcupineDetector
 
 
 class SessionState(Enum):
@@ -58,7 +58,7 @@ class VoiceAssistant:
         self.audio_capture: Optional[AudioCapture] = None
         self.audio_playback: Optional[AudioPlayback] = None
         self.function_bridge: Optional[FunctionCallBridge] = None
-        self.wake_word_detector: Optional[WakeWordDetector] = None
+        self.wake_word_detector: Optional[PorcupineDetector] = None
         
         # Session state
         self.session_state = SessionState.IDLE
@@ -517,7 +517,7 @@ class VoiceAssistant:
         if self.config.wake_word.enabled:
             print("DEBUG: Wake word enabled, creating detector", flush=True)
             self.logger.info("Initializing wake word detector...")
-            self.wake_word_detector = create_wake_word_detector(self.config.wake_word)
+            self.wake_word_detector = PorcupineDetector(self.config.wake_word)
             print("DEBUG: About to start wake word detector", flush=True)
             await self.wake_word_detector.start()
             print("DEBUG: Wake word detector started", flush=True)

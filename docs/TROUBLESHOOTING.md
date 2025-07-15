@@ -109,14 +109,13 @@ python examples/test_wake_word.py --interactive
 
 1. **Check audio input**: Ensure microphone works (see Audio Issues)
 
-2. **Verify engine settings**:
+2. **Verify wake word is enabled**:
    ```yaml
    wake_word:
      enabled: true
-     engine: "porcupine"  # or "openwakeword"
    ```
 
-3. **For Porcupine - Enable high-pass filter**:
+3. **Enable high-pass filter (required)**:
    ```yaml
    wake_word:
      highpass_filter_enabled: true  # REQUIRED
@@ -126,9 +125,7 @@ python examples/test_wake_word.py --interactive
 4. **Adjust sensitivity**:
    ```yaml
    wake_word:
-     sensitivity: 1.0  # Increase for Porcupine
-     # or
-     sensitivity: 0.7  # Increase for OpenWakeWord
+     sensitivity: 1.0  # Maximum sensitivity
    ```
 
 5. **Increase audio gain**:
@@ -151,8 +148,8 @@ wake_word:
 **Cause**: Using non-existent wake word model
 
 **Solution**: Use built-in keywords:
-- Porcupine: `picovoice`, `alexa`, `computer`, `terminator`
-- OpenWakeWord: `hey_jarvis`, `alexa`, `hey_mycroft`
+- Porcupine: `picovoice`, `alexa`, `computer`, `jarvis`, `terminator`
+- Or create custom wake words at [console.picovoice.ai](https://console.picovoice.ai)
 
 ### OpenAI Connection Issues
 

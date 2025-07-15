@@ -40,16 +40,13 @@ audio:
 # Wake Word Configuration
 wake_word:
   enabled: true                   # Enable wake word detection
-  engine: "porcupine"             # Wake word engine: "openwakeword" or "porcupine"
-  model: "picovoice"              # Wake word model (see below for options per engine)
-  sensitivity: 1.0                # Detection sensitivity (0.0-1.0)
-                                  # For Porcupine: 1.0 = maximum sensitivity (recommended)
-                                  # For OpenWakeWord: 0.5-0.7 typical, lower = fewer false positives
+  model: "picovoice"              # Porcupine built-in keyword (see options below)
+  sensitivity: 1.0                # Detection sensitivity (0.0-1.0, 1.0 = maximum)
   timeout: 5.0                    # Session timeout after wake word (seconds)
-  vad_enabled: false              # Disable VAD (was causing 0.0 predictions)
+  vad_enabled: false              # Voice activity detection
   cooldown: 2.0                   # Seconds between wake word detections
-  test_mode: false                # Normal operation mode
-  audio_gain: 1.0                 # Audio amplification factor (1.0-5.0, default: 1.0)
+  test_mode: false                # Test mode (no OpenAI connection)
+  audio_gain: 1.0                 # Audio amplification factor (1.0-5.0)
   audio_gain_mode: "fixed"        # Gain mode: "fixed" or "dynamic"
   
   # Porcupine-specific configuration
@@ -57,17 +54,16 @@ wake_word:
   highpass_filter_enabled: true   # High-pass filter (REQUIRED for Porcupine to work properly)
   highpass_filter_cutoff: 80.0    # Filter cutoff frequency in Hz (80Hz removes DC offset/rumble)
   
-  # Available models per engine:
-  # OpenWakeWord: hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu
-  # 
-  # Porcupine built-in keywords (use these exact names in 'model' field):
-  #   Known working: alexa, picovoice, computer, americano, blueberry, 
-  #                  bumblebee, grapefruit, grasshopper, porcupine, terminator
-  #   Aliases: hey_picovoice, ok_picovoice (both map to 'picovoice')
-  # 
-  # IMPORTANT: 'jarvis' and 'hey_jarvis' are NOT built-in keywords!
-  # For custom wake words like 'jarvis', create them at https://console.picovoice.ai/
-  # Custom models require downloading the .ppn file and using keyword_paths instead
+  # Available Porcupine built-in keywords (use these exact names in 'model' field):
+  #   alexa, americano, blueberry, bumblebee, computer, grapefruit,
+  #   grasshopper, hey google, hey siri, jarvis, ok google, picovoice,
+  #   porcupine, terminator
+  #
+  # For custom wake words:
+  # 1. Create at https://console.picovoice.ai/
+  # 2. Download the .ppn file
+  # 3. Place in config/wake_words/
+  # 4. Set model to the file path
   
 # Session Configuration
 session:

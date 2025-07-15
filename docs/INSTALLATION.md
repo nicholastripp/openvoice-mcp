@@ -68,7 +68,6 @@ The installation script will set up the Python virtual environment and install a
 This script will:
 - Create a Python virtual environment
 - Install all required Python packages
-- Download OpenWakeWord models (if selected)
 - Set up the basic directory structure
 
 ### 4. Configure the Assistant
@@ -182,9 +181,9 @@ sudo systemctl status ha-voice-assistant
    - Run `python examples/test_audio_devices.py` to list devices
    - Update `config.yaml` with the correct device name or index
 
-3. **Wake word models not downloading**
-   - Activate venv: `source venv/bin/activate`
-   - Run manually: `python download_wake_word_models.py --download-all`
+3. **Wake word not working**
+   - Ensure Picovoice access key is set in `.env`
+   - Check that `highpass_filter_enabled: true` in config
 
 4. **Permission denied errors**
    - Add your user to the audio group: `sudo usermod -a -G audio $USER`
