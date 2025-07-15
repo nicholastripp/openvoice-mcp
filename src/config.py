@@ -69,6 +69,10 @@ class WakeWordConfig:
     
     # Porcupine-specific settings
     porcupine_access_key: Optional[str] = None  # Picovoice access key
+    
+    # High-pass filter settings for Porcupine
+    highpass_filter_enabled: bool = False  # Disabled by default for better detection
+    highpass_filter_cutoff: float = 50.0   # Hz - lowered from 80Hz for less aggressive filtering
 
 
 @dataclass

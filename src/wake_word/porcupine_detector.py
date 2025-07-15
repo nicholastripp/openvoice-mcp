@@ -100,6 +100,10 @@ class PorcupineDetector:
         
         # Audio gain configuration from config
         self.audio_gain = config.audio_gain if hasattr(config, 'audio_gain') else 1.0
+        
+        # High-pass filter configuration
+        self.highpass_filter_enabled = getattr(config, 'highpass_filter_enabled', False)
+        self.highpass_filter_cutoff = getattr(config, 'highpass_filter_cutoff', 50.0)
     
     def __del__(self):
         """Cleanup Porcupine on object destruction"""
@@ -369,17 +373,23 @@ class PorcupineDetector:
                 audio_float = np.clip(audio_float, -32768, 32767)
                 audio_array = audio_float.astype(np.int16)
             
-            # Apply high-pass filter to remove low-frequency noise (< 80Hz)
-            # This helps with wake word detection by removing rumble and DC offset
-            if not hasattr(self, '_highpass_sos'):
-                # Design a 4th order Butterworth high-pass filter at 80Hz
-                nyquist = input_sample_rate / 2
-                cutoff = 80 / nyquist
-                self._highpass_sos = signal.butter(4, cutoff, btype='high', output='sos')
-            
-            # Apply filter
-            audio_filtered = signal.sosfilt(self._highpass_sos, audio_array)
-            audio_array = audio_filtered.astype(np.int16)
+            # Apply high-pass filter if enabled
+            if self.highpass_filter_enabled and SCIPY_AVAILABLE:
+                # Log filter status on first call
+                if self._process_counter == 1:
+                    print(f"DEBUG: High-pass filter enabled at {self.highpass_filter_cutoff}Hz", flush=True)
+                
+                if not hasattr(self, '_highpass_sos'):
+                    # Design a 4th order Butterworth high-pass filter
+                    nyquist = input_sample_rate / 2
+                    cutoff = self.highpass_filter_cutoff / nyquist
+                    self._highpass_sos = signal.butter(4, cutoff, btype='high', output='sos')
+                
+                # Apply filter
+                audio_filtered = signal.sosfilt(self._highpass_sos, audio_array)
+                audio_array = audio_filtered.astype(np.int16)
+            elif self._process_counter == 1:
+                print(f"DEBUG: High-pass filter disabled for better wake word detection", flush=True)
             
             # Resample to 16kHz if needed
             if input_sample_rate != self.sample_rate:

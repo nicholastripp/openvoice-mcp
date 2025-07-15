@@ -45,6 +45,8 @@ wake_word:
   
   # Porcupine-specific configuration
   porcupine_access_key: ${PICOVOICE_ACCESS_KEY}  # From environment variable
+  highpass_filter_enabled: false  # High-pass filter (false = better detection, true = less noise)
+  highpass_filter_cutoff: 50.0    # Filter cutoff frequency in Hz (if enabled)
   
   # Available models per engine:
   # OpenWakeWord: hey_jarvis, alexa, hey_mycroft, hey_rhasspy, ok_nabu

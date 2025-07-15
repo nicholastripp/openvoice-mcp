@@ -97,6 +97,10 @@ class VoiceAssistant:
     async def start(self) -> None:
         """Start the voice assistant"""
         print("DEBUG: VoiceAssistant.start() called", flush=True)
+        
+        # Clear device cache on startup to ensure fresh data
+        self._clear_device_cache()
+        self.logger.info("Device cache cleared on startup for fresh data")
         self.logger.info("Starting Home Assistant Realtime Voice Assistant")
         
         try:
@@ -242,7 +246,12 @@ class VoiceAssistant:
                 self.logger.info("Fetching fresh device information from Home Assistant...")
                 start_time = asyncio.get_event_loop().time()
                 
-                states = await self.ha_client.rest_client.get_states()
+                try:
+                    states = await self.ha_client.rest_client.get_states()
+                except Exception as fetch_error:
+                    self.logger.error(f"Failed to fetch states from Home Assistant: {fetch_error}")
+                    self.logger.error(f"HA URL: {self.ha_client.rest_client.base_url}")
+                    states = None
                 
                 fetch_time = asyncio.get_event_loop().time() - start_time
                 self.logger.info(f"Device fetch completed in {fetch_time:.2f}s")
@@ -251,7 +260,19 @@ class VoiceAssistant:
                 if states:
                     self._device_cache = states
                     self._device_cache_time = current_time
-                    self.logger.info(f"Device cache updated with {len(states)} devices")
+                    self.logger.info(f"Device cache updated with {len(states)} total devices from Home Assistant")
+                    
+                    # Log device types for debugging
+                    device_types = {}
+                    for state in states:
+                        entity_id = state.get("entity_id", "")
+                        if entity_id:
+                            domain = entity_id.split(".")[0]
+                            device_types[domain] = device_types.get(domain, 0) + 1
+                    
+                    self.logger.info(f"Device breakdown: {', '.join([f'{d}: {c}' for d, c in sorted(device_types.items())])}")
+                else:
+                    self.logger.error("No states returned from Home Assistant - check connection and permissions")
             
             if not states:
                 self.logger.warning("No device states returned from Home Assistant")
@@ -289,9 +310,15 @@ class VoiceAssistant:
                     error_count += 1
             
             # Log device loading summary
-            self.logger.info(f"Device loading complete: {total_device_count} devices loaded, {error_count} errors")
-            for domain, devices in device_groups.items():
-                self.logger.debug(f"  {domain}: {len(devices)} devices")
+            self.logger.info(f"Device processing complete: {total_device_count} devices processed from {len(states)} total states")
+            if error_count > 0:
+                self.logger.warning(f"Encountered {error_count} errors while processing device states")
+            
+            # Log detailed device breakdown
+            domain_summary = []
+            for domain, devices in sorted(device_groups.items(), key=lambda x: len(x[1]), reverse=True):
+                domain_summary.append(f"{domain}: {len(devices)}")
+            self.logger.info(f"Devices by domain: {', '.join(domain_summary[:10])}{'...' if len(domain_summary) > 10 else ''}")
             
             # Create device context
             device_context = "\n\nAvailable devices in your smart home:\n"
@@ -322,14 +349,18 @@ class VoiceAssistant:
             # Add helpful instructions
             device_context += "\nWhen users ask about controlling devices, you can help them by using the control_home_assistant function with natural language commands."
             
-            # Combine base prompt with device context
-            enhanced_prompt = base_prompt + device_context
+            # Add explicit language instruction based on config
+            language_instruction = f"\n\nIMPORTANT: Always respond in {self.config.openai.language.upper()} (English) unless explicitly asked to use another language."
+            
+            # Combine base prompt with device context and language instruction
+            enhanced_prompt = base_prompt + device_context + language_instruction
             
             # Log final statistics
-            self.logger.info(f"Generated device-aware personality with {device_count_in_prompt} devices from {len(device_groups)} domains")
-            self.logger.info(f"Personality prompt size: {len(enhanced_prompt)} characters")
-            if len(device_groups) > 0:
-                self.logger.debug(f"Device domains included: {', '.join(sorted(device_groups.keys()))}")
+            self.logger.info(f"Personality prompt generated:")
+            self.logger.info(f"  - Devices in prompt: {device_count_in_prompt} (from {total_device_count} total processed)")
+            self.logger.info(f"  - Domains included: {len(device_groups)}")
+            self.logger.info(f"  - Prompt size: {len(enhanced_prompt)} characters")
+            self.logger.info(f"  - Language: {self.config.openai.language.upper()}")
             
             return enhanced_prompt
             
