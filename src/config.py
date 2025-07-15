@@ -41,6 +41,15 @@ class AudioConfig:
     feedback_prevention: bool = True
     feedback_threshold: float = 0.1
     mute_during_response: bool = True
+    
+    # Automatic Gain Control (AGC) settings
+    agc_enabled: bool = False  # Disabled by default for backward compatibility
+    agc_target_rms: float = 0.3  # Target RMS level (0-1 range, 0.3 = 30% of max)
+    agc_max_gain: float = 3.0    # Maximum gain multiplier allowed by AGC
+    agc_min_gain: float = 0.1    # Minimum gain multiplier allowed by AGC
+    agc_attack_time: float = 0.5  # Seconds to decrease gain (fast response to clipping)
+    agc_release_time: float = 2.0 # Seconds to increase gain (slow response to quiet)
+    agc_clipping_threshold: float = 0.05  # Maximum acceptable clipping ratio (5%)
 
 
 @dataclass

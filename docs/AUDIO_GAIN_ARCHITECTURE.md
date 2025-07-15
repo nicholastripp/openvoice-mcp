@@ -4,6 +4,34 @@
 
 The audio processing pipeline has multiple gain stages that can compound and cause distortion if not configured properly.
 
+## Automatic Gain Control (AGC)
+
+The system now includes Automatic Gain Control (AGC) that can automatically adjust input volume to:
+- Prevent clipping distortion
+- Maintain optimal audio levels
+- Adapt to different microphone types and environments
+
+### AGC Configuration
+```yaml
+audio:
+  agc_enabled: true        # Enable automatic gain adjustment
+  agc_target_rms: 0.3     # Target level (30% of max)
+  agc_max_gain: 3.0       # Maximum amplification allowed
+  agc_min_gain: 0.1       # Minimum gain (can attenuate to 10%)
+```
+
+### When to Use AGC
+- **Enable AGC** if:
+  - You're unsure about the correct input_volume setting
+  - Your environment has varying noise levels
+  - Multiple people with different voice levels use the system
+  - You want "set and forget" operation
+
+- **Disable AGC** if:
+  - You have a consistent environment
+  - You've already found the perfect input_volume
+  - You need predictable gain levels
+
 ## Gain Stages
 
 ### 1. Input Capture Gain (`audio.input_volume`)

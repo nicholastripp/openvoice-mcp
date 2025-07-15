@@ -11,6 +11,7 @@ import threading
 
 from config import AudioConfig
 from utils.logger import get_logger
+from .agc import AutomaticGainControl
 
 
 class AudioCapture:
@@ -30,6 +31,9 @@ class AudioCapture:
         self.chunk_size = config.chunk_size
         self.input_device = config.input_device
         self.volume = config.input_volume
+        
+        # Initialize AGC
+        self.agc = AutomaticGainControl(config, sample_rate=self.device_sample_rate)
         
         # State
         self.is_recording = False
@@ -207,16 +211,32 @@ class AudioCapture:
             # Copy data to prevent issues with the original buffer
             audio_data = indata.copy()
             
-            # Apply volume adjustment
-            if self.volume != 1.0:
-                audio_data *= self.volume
+            # Apply AGC or manual volume adjustment
+            if self.agc.enabled:
+                # Process with AGC
+                audio_data = self.agc.process_audio(audio_data)
                 
-                # Check for clipping after volume adjustment
-                if np.any(np.abs(audio_data) > 0.99):
-                    clipped_samples = np.sum(np.abs(audio_data) > 0.99)
-                    clipped_percent = (clipped_samples / len(audio_data)) * 100
-                    self.logger.warning(f"Audio clipping detected after volume adjustment: {clipped_samples} samples ({clipped_percent:.1f}%) clipped")
-                    print(f"*** AUDIO CLIPPING: {clipped_percent:.1f}% of samples clipped at input ***")
+                # Log AGC status periodically
+                if not hasattr(self, '_agc_log_counter'):
+                    self._agc_log_counter = 0
+                self._agc_log_counter += 1
+                
+                if self._agc_log_counter % 50 == 0:  # Every 50 chunks
+                    stats = self.agc.get_stats()
+                    if stats.last_clipping_ratio > 0.01:  # More than 1% clipping
+                        self.logger.warning(f"AGC: gain={stats.current_gain:.2f}, clipping={stats.last_clipping_ratio:.1%}")
+                        print(f"*** AGC ACTIVE: gain={stats.current_gain:.2f}, clipping={stats.last_clipping_ratio:.1%} ***")
+            else:
+                # Manual volume adjustment
+                if self.volume != 1.0:
+                    audio_data *= self.volume
+                    
+                    # Check for clipping after volume adjustment
+                    if np.any(np.abs(audio_data) > 0.99):
+                        clipped_samples = np.sum(np.abs(audio_data) > 0.99)
+                        clipped_percent = (clipped_samples / len(audio_data)) * 100
+                        self.logger.warning(f"Audio clipping detected after volume adjustment: {clipped_samples} samples ({clipped_percent:.1f}%) clipped")
+                        print(f"*** AUDIO CLIPPING: {clipped_percent:.1f}% of samples clipped at input ***")
             
             # Ensure mono
             if audio_data.ndim > 1:

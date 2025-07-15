@@ -28,6 +28,15 @@ audio:
   feedback_threshold: 0.1          # Feedback detection threshold
   mute_during_response: true       # Mute microphone during response playback
   
+  # Automatic Gain Control (AGC) - automatically adjusts input volume
+  agc_enabled: false               # Enable AGC (set to true for automatic volume adjustment)
+  agc_target_rms: 0.3             # Target audio level (0.3 = 30% of maximum)
+  agc_max_gain: 3.0               # Maximum gain allowed (prevent over-amplification)
+  agc_min_gain: 0.1               # Minimum gain allowed (prevent complete muting)
+  agc_attack_time: 0.5            # Seconds to reduce gain when clipping detected
+  agc_release_time: 2.0           # Seconds to increase gain when too quiet
+  agc_clipping_threshold: 0.05    # Maximum acceptable clipping (5% of samples)
+  
 # Wake Word Configuration
 wake_word:
   enabled: true                   # Enable wake word detection
