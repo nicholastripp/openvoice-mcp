@@ -83,6 +83,7 @@ billy-b-assistant/.env
 
 # Claude Development Files
 .claude/
+CLAUDE.md
 
 # Reference Materials (not for distribution)
 reference-code-billy-bass/
