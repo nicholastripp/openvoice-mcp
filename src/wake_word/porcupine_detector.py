@@ -101,6 +101,15 @@ class PorcupineDetector:
         # Audio gain configuration from config
         self.audio_gain = config.audio_gain if hasattr(config, 'audio_gain') else 1.0
     
+    def __del__(self):
+        """Cleanup Porcupine on object destruction"""
+        if hasattr(self, 'porcupine') and self.porcupine:
+            try:
+                self.porcupine.delete()
+                self.porcupine = None
+            except Exception:
+                pass  # Ignore errors during cleanup
+    
     def _get_keywords(self) -> List[str]:
         """Get list of keywords based on config"""
         model_name = self.config.model
@@ -154,6 +163,16 @@ class PorcupineDetector:
             self.logger.warning("Wake word detector already running")
             return
         
+        # Clean up any existing Porcupine instance before starting
+        if hasattr(self, 'porcupine') and self.porcupine:
+            self.logger.warning("Found existing Porcupine instance - cleaning up before restart")
+            print("DEBUG: Cleaning up existing Porcupine instance", flush=True)
+            try:
+                self.porcupine.delete()
+            except Exception as e:
+                self.logger.error(f"Error cleaning up existing Porcupine: {e}")
+            self.porcupine = None
+        
         try:
             # Check access key before initialization
             if not self.access_key:
@@ -165,33 +184,42 @@ class PorcupineDetector:
             self.logger.info(f"Access key length: {len(self.access_key) if self.access_key else 0}")
             self.logger.info(f"Keywords to detect: {self.keywords}")
             self.logger.info(f"Sensitivities: {self.sensitivities}")
+            print(f"DEBUG: self.porcupine status before init: {self.porcupine is not None}", flush=True)
             
-            # Initialize Porcupine with timeout
-            self.logger.info("Creating Porcupine instance (this may take a moment)...")
-            
-            # Create Porcupine in a separate thread to allow timeout
-            loop = asyncio.get_event_loop()
-            
-            def create_porcupine():
-                return pvporcupine.create(
-                    access_key=self.access_key,
-                    keywords=self.keywords,
-                    sensitivities=self.sensitivities
-                )
-            
-            # Use ThreadPoolExecutor to run blocking call with timeout
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = loop.run_in_executor(executor, create_porcupine)
-                try:
-                    # Wait up to 30 seconds for initialization
-                    self.porcupine = await asyncio.wait_for(future, timeout=30.0)
-                except asyncio.TimeoutError:
-                    self.logger.error("Porcupine initialization timed out after 30 seconds")
-                    self.logger.error("This may indicate:")
-                    self.logger.error("  - Invalid access key")
-                    self.logger.error("  - Network connectivity issues")
-                    self.logger.error("  - Firewall blocking Picovoice servers")
-                    raise TimeoutError("Porcupine initialization timed out")
+            # Initialize Porcupine only if it doesn't exist
+            if not self.porcupine:
+                self.logger.info("Creating Porcupine instance (this may take a moment)...")
+                print("DEBUG: Starting Porcupine initialization", flush=True)
+                
+                # Create Porcupine in a separate thread to allow timeout
+                loop = asyncio.get_event_loop()
+                
+                def create_porcupine():
+                    print("DEBUG: Inside create_porcupine()", flush=True)
+                    return pvporcupine.create(
+                        access_key=self.access_key,
+                        keywords=self.keywords,
+                        sensitivities=self.sensitivities
+                    )
+                
+                # Use ThreadPoolExecutor to run blocking call with timeout
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = loop.run_in_executor(executor, create_porcupine)
+                    try:
+                        # Wait up to 30 seconds for initialization
+                        print("DEBUG: Waiting for Porcupine creation...", flush=True)
+                        self.porcupine = await asyncio.wait_for(future, timeout=30.0)
+                        print("DEBUG: Porcupine creation completed", flush=True)
+                    except asyncio.TimeoutError:
+                        self.logger.error("Porcupine initialization timed out after 30 seconds")
+                        self.logger.error("This may indicate:")
+                        self.logger.error("  - Invalid access key")
+                        self.logger.error("  - Network connectivity issues")
+                        self.logger.error("  - Firewall blocking Picovoice servers")
+                        raise TimeoutError("Porcupine initialization timed out")
+            else:
+                self.logger.warning("Porcupine already initialized - skipping creation")
+                print("DEBUG: Skipping Porcupine creation - already exists", flush=True)
             
             # Log successful initialization
             self.logger.info("Porcupine initialized successfully!")
