@@ -102,10 +102,10 @@ class WakeWordDetector:
         # Audio gain configuration from config
         self.use_fixed_gain = (config.audio_gain_mode == "fixed")
         self.fixed_gain = config.audio_gain  # Use configured gain value
-        # Keep these as hardcoded defaults for dynamic mode
-        self.dynamic_gain_min = 2.0  # Minimum gain for bounded dynamic mode
-        self.dynamic_gain_max = 5.0  # Maximum gain for bounded dynamic mode
-        self.dynamic_gain_target_rms = 0.04  # Target RMS for bounded dynamic mode
+        # Reduced gain ranges to prevent distortion
+        self.dynamic_gain_min = 1.0  # Minimum gain for bounded dynamic mode (reduced from 2.0)
+        self.dynamic_gain_max = 2.0  # Maximum gain for bounded dynamic mode (reduced from 5.0)
+        self.dynamic_gain_target_rms = 0.02  # Target RMS for bounded dynamic mode (reduced from 0.04)
         
         # Prediction failure tracking (no more ThreadPoolExecutor)
         self.failed_predictions = 0
@@ -235,9 +235,8 @@ class WakeWordDetector:
             audio_array = np.frombuffer(audio_data, dtype=np.int16)
             
             # Convert to float32 and normalize to [-1.0, 1.0] range (OpenWakeWord requirement)
-            # FIX: Use symmetric normalization to avoid bias
-            # NOTE: We use 32768.0 for normalization, matching the * 32768 in audio capture
-            audio_float = audio_array.astype(np.float32) / 32768.0
+            # Use 32767.0 for proper symmetric normalization
+            audio_float = audio_array.astype(np.float32) / 32767.0
             
             # Remove DC bias for better signal quality
             audio_float = audio_float - np.mean(audio_float)
@@ -313,7 +312,13 @@ class WakeWordDetector:
                     gain = np.clip(self.dynamic_gain_target_rms / pre_amp_rms, 
                                  self.dynamic_gain_min, self.dynamic_gain_max)
                 
-                audio_float = np.clip(audio_float * gain, -1.0, 1.0).astype(np.float32)
+                # Apply gain
+                audio_float = audio_float * gain
+                
+                # Soft limiting using tanh to prevent harsh clipping
+                # This preserves more of the waveform shape than hard clipping
+                audio_float = np.tanh(audio_float * 0.8) / 0.8  # Soft limit at ~80% to leave headroom
+                audio_float = audio_float.astype(np.float32)
                 
                 gain_mode = "fixed" if self.use_fixed_gain else "dynamic"
                 self.logger.debug(f"ZCR: {zcr:.3f}, likely_speech: {is_likely_speech}, gain: {gain:.2f}x ({gain_mode}), input RMS: {pre_amp_rms:.6f}")
@@ -341,7 +346,8 @@ class WakeWordDetector:
                     # Normalize after filtering to maintain levels
                     filtered_rms = np.sqrt(np.mean(audio_float ** 2))
                     if filtered_rms > 0.001:
-                        audio_float = audio_float * (target_rms / filtered_rms)
+                        # Don't re-normalize after filtering, it can cause distortion
+                        # Just ensure we're within valid range
                         audio_float = np.clip(audio_float, -1.0, 1.0).astype(np.float32)
                     
                     self.logger.debug("Applied band-pass filter for speech frequencies")
@@ -371,8 +377,8 @@ class WakeWordDetector:
             # Immediate debug feedback with enhanced info
             print(f"   DETECTOR: audio_level={audio_level:.3f}, samples={len(audio_float)}, ZCR={zcr:.3f}, speech={is_likely_speech}", flush=True)
             
-            # Lower threshold to allow speech audio (was 0.005)
-            if audio_level > 0.001:  # Much lower threshold for legitimate audio activity
+            # Lower threshold to allow speech audio
+            if audio_level > 0.0001:  # Very low threshold to allow quiet speech through
                 # Add to buffer instead of directly queuing
                 self.audio_buffer = np.concatenate([self.audio_buffer, audio_float])
                 

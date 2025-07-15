@@ -210,6 +210,13 @@ class AudioCapture:
             # Apply volume adjustment
             if self.volume != 1.0:
                 audio_data *= self.volume
+                
+                # Check for clipping after volume adjustment
+                if np.any(np.abs(audio_data) > 0.99):
+                    clipped_samples = np.sum(np.abs(audio_data) > 0.99)
+                    clipped_percent = (clipped_samples / len(audio_data)) * 100
+                    self.logger.warning(f"Audio clipping detected after volume adjustment: {clipped_samples} samples ({clipped_percent:.1f}%) clipped")
+                    print(f"*** AUDIO CLIPPING: {clipped_percent:.1f}% of samples clipped at input ***")
             
             # Ensure mono
             if audio_data.ndim > 1:
@@ -290,12 +297,11 @@ class AudioCapture:
         resampled = np.clip(resampled, -1.0, 1.0)
         
         # Convert to int16
-        # CRITICAL: Use 32768 for symmetric conversion with wake word detector
-        # Wake word detector normalizes with /32768, so we must use *32768 here
-        pcm16_data = (resampled * 32768).astype(np.int16)
+        # Use 32767 for proper symmetric conversion
+        # This prevents the slight DC bias from using 32768
+        pcm16_data = (resampled * 32767).astype(np.int16)
         
-        # Handle the edge case where 1.0 * 32768 would overflow int16
-        pcm16_data = np.clip(pcm16_data, -32768, 32767)
+        # Clipping is already handled by the multiplication with 32767
         
         # Debug: Log audio format conversion details periodically
         if not hasattr(self, '_audio_format_log_counter'):

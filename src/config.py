@@ -56,7 +56,7 @@ class WakeWordConfig:
     test_mode: bool = False  # Test wake word detection without OpenAI connection
     
     # Audio gain settings
-    audio_gain: float = 2.0  # Audio amplification factor (1.0-5.0, reduced to prevent clipping)
+    audio_gain: float = 1.0  # Audio amplification factor (1.0-5.0, default 1.0 to prevent clipping)
     audio_gain_mode: str = "fixed"  # Gain mode: "fixed" or "dynamic"
     
     # Model download settings

@@ -1084,24 +1084,24 @@ class OpenAIRealtimeClient:
             self.logger.debug(f"Audio levels - RMS (normalized): {rms_normalized:.6f}, RMS (int16): {np.sqrt(np.mean(audio_array ** 2)):.1f}, Max: {max_amplitude}")
             
             # BALANCED NORMALIZATION for OpenAI VAD detection
-            # Target RMS of 0.1 in normalized range (about 3277 in int16 range)
-            # Reduced from 0.15 to prevent over-amplification
-            target_rms_normalized = 0.1
+            # Target RMS of 0.05 in normalized range (about 1638 in int16 range)
+            # Reduced from 0.1 to prevent over-amplification
+            target_rms_normalized = 0.05
             
             if rms_normalized > 0:
                 # Calculate required gain
                 gain = target_rms_normalized / rms_normalized
                 
                 # Conservative gain limits to prevent distortion
-                # Reduced from 50x to 10x max gain
-                gain = np.clip(gain, 0.5, 10.0)
+                # Reduced from 10x to 3x max gain
+                gain = np.clip(gain, 0.5, 3.0)
                 
                 # Apply gain to normalized audio
                 audio_normalized *= gain
                 
-                # Simple hard clipping instead of tanh to avoid distortion
-                # This preserves more of the original waveform shape
-                audio_normalized = np.clip(audio_normalized, -1.0, 1.0)
+                # Soft limiting using tanh for smoother clipping
+                # This prevents harsh distortion while still limiting peaks
+                audio_normalized = np.tanh(audio_normalized * 0.9) / 0.9
                 
                 # Calculate actual RMS after processing
                 final_rms_normalized = np.sqrt(np.mean(audio_normalized ** 2))

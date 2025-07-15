@@ -13,18 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-turn conversation support with configurable timeout and turn limits
 - Natural conversation ending with phrase detection
 - Improved project organization (tools/ and docs/ directories)
+- Audio pipeline test tool (tools/test_audio_pipeline.py)
+- Comprehensive audio tuning guide (docs/audio_tuning_guide.md)
+- Soft limiting for audio to prevent harsh distortion
+- Clipping detection and logging throughout audio pipeline
 
 ### Changed
 - Wake word sensitivity threshold increased to 0.004 (from 0.001)
 - Audio input volume increased to 5.0 for better VAD detection
 - Reorganized test scripts into tools/ directory
 - Reorganized documentation into docs/ directory structure
+- **BREAKING**: Reduced default audio gains to prevent distortion:
+  - Wake word audio_gain default: 2.0 → 1.0
+  - Dynamic gain range: 2.0-5.0 → 1.0-2.0
+  - OpenAI normalization target: 0.1 → 0.05
+  - OpenAI max gain: 10x → 3x
+- Consistent audio normalization using 32767 throughout pipeline
+- Improved audio quality validation thresholds
 
 ### Fixed
 - Wake word model stuck at low confidence values
 - Audio buffer flushing mechanism for model reset
 - False positive wake word detections
 - Configuration synchronization between config.yaml and config.yaml.example
+- **Critical**: Audio distortion causing wake word to only detect soft speech
+- **Critical**: Multiple gain stages causing audio clipping
+- **Critical**: OpenAI receiving distorted audio leading to misunderstanding
+- Inconsistent normalization values causing DC bias
+- Hard clipping replaced with soft limiting for better audio quality
 
 ## [0.1.0] - 2024-12-07
 
