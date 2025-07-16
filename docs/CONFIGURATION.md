@@ -60,7 +60,7 @@ audio:
   feedback_threshold: 0.1          # Feedback detection threshold
   mute_during_response: true       # Mute mic during assistant response
   
-  # Automatic Gain Control (AGC) - new in v0.2.0
+  # Automatic Gain Control (AGC)
   agc_enabled: false              # Enable automatic volume adjustment
   agc_target_rms: 0.3            # Target audio level (0.0-1.0, 0.3 = 30% of max)
   agc_max_gain: 3.0              # Maximum gain multiplier

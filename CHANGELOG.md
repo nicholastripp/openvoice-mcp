@@ -5,6 +5,27 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0-beta] - 2025-01-16
+
+### Added
+- **Custom Wake Word Support** - Use custom Picovoice wake words (.ppn files)
+- **Connection Diagnostics** - New `test_connection()` method with detailed error analysis
+- **Retry Logic** - Automatic retry with exponential backoff for transient failures
+- **Connection Test Script** - `examples/test_connection_error_handling.py` for debugging
+- **Skip HA Check Flag** - `--skip-ha-check` to run without Home Assistant connection
+- **Wake Words Directory** - `config/wake_words/` for storing custom wake word files
+
+### Changed
+- **Enhanced Error Messages** - User-friendly error messages with troubleshooting steps
+- **Improved Setup Process** - `setup_config.sh` now handles persona.ini copying
+- **Better URL Validation** - Validates Home Assistant URL format before connection
+- **Updated Documentation** - Clearer quickstart instructions and custom wake word guide
+
+### Fixed
+- **Setup Instructions** - README now correctly documents copying example files
+- **Wake Word Documentation** - Corrected list of built-in Porcupine keywords
+- **Error Handling** - Graceful failures instead of crashes on connection errors
+
 ## [0.3.0] - 2025-01-15
 
 ### Changed

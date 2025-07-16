@@ -1,6 +1,6 @@
 # Home Assistant Realtime Voice Assistant
 
-![Version](https://img.shields.io/badge/version-0.3.0-blue)
+![Version](https://img.shields.io/badge/version-0.4.0--beta-blue)
 ![Status](https://img.shields.io/badge/status-beta-yellow)
 ![Python](https://img.shields.io/badge/python-3.9+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -125,12 +125,13 @@ audio:
 
 See the [Audio Setup Guide](docs/AUDIO_SETUP.md) for optimal configuration.
 
-## What's New in v0.3.0
+## What's New in v0.4.0-beta
 
-- 🚀 **Simplified Wake Word** - Removed OpenWakeWord, Porcupine is now the only engine
-- 🎯 **Smaller Install** - Reduced dependencies by ~100MB
-- 🛡️ **Better Error Handling** - Graceful failures with helpful messages for HA connection issues
-- 🔧 **Improved Setup** - setup_config.sh now handles all configuration files
+- 🎤 **Custom Wake Words** - Create your own wake words like "Jarvis" with Picovoice Console
+- 🛡️ **Robust Error Handling** - Graceful failures with helpful troubleshooting for connection issues
+- 🔄 **Connection Retry Logic** - Automatic retry with exponential backoff for transient failures
+- 📁 **Better Setup Process** - Automated configuration file setup including persona.ini
+- 🔧 **Improved Diagnostics** - New connection testing tools and detailed error messages
 
 See [CHANGELOG.md](CHANGELOG.md) for complete details.
 

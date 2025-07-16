@@ -18,7 +18,7 @@ if requirements_path.exists():
 
 setup(
     name="ha-realtime-voice-assistant",
-    version="0.3.0",
+    version="0.4.0-beta",
     description="A standalone Raspberry Pi voice assistant for Home Assistant using OpenAI Realtime API",
     long_description=long_description,
     long_description_content_type="text/markdown",
