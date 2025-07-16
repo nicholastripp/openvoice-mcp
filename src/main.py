@@ -445,28 +445,27 @@ class VoiceAssistant:
     
     async def _initialize_components(self) -> None:
         """Initialize all components"""
-        print("DEBUG: _initialize_components() started", flush=True)
+        self.logger.debug("_initialize_components() started")
         self.logger.info("Initializing components...")
         
         # Check for wake word only mode early
         wake_word_only_mode = self.config.wake_word.enabled and getattr(self.config.wake_word, 'test_mode', False)
-        print(f"DEBUG: wake_word_only_mode = {wake_word_only_mode}", flush=True)
+        self.logger.debug(f"wake_word_only_mode = {wake_word_only_mode}")
         
         if wake_word_only_mode:
             self.logger.info("WAKE WORD TEST MODE: Skipping Home Assistant and OpenAI initialization")
-            print("*** WAKE WORD TEST MODE: MINIMAL INITIALIZATION ***")
-            print(f"*** TEST MODE VALUE: {self.config.wake_word.test_mode} ***")
+            self.logger.info(f"TEST MODE VALUE: {self.config.wake_word.test_mode}")
             self.ha_client = None
             self.function_bridge = None
             self.openai_client = None
         else:
-            print("DEBUG: About to initialize Home Assistant client", flush=True)
+            self.logger.debug("About to initialize Home Assistant client")
             # Initialize Home Assistant client with graceful failure handling
             self.logger.info("Initializing Home Assistant client...")
             try:
                 self.ha_client = HomeAssistantConversationClient(self.config.home_assistant)
                 await self.ha_client.start()
-                print("DEBUG: Home Assistant client initialized", flush=True)
+                self.logger.debug("Home Assistant client initialized")
                 
                 # Initialize function bridge
                 self.function_bridge = FunctionCallBridge(self.ha_client)
@@ -522,12 +521,12 @@ class VoiceAssistant:
                     raise SystemExit(1)
         
         if not wake_word_only_mode:
-            print("DEBUG: About to initialize OpenAI client", flush=True)
+            self.logger.debug("About to initialize OpenAI client")
             # Initialize OpenAI client with device-aware personality
             self.logger.info("Initializing OpenAI client...")
             personality_prompt = await self._generate_device_aware_personality()
             self.openai_client = OpenAIRealtimeClient(self.config.openai, personality_prompt)
-            print("DEBUG: OpenAI client created", flush=True)
+            self.logger.debug("OpenAI client created")
         
         if not wake_word_only_mode and self.function_bridge:
             # Register function handlers (only if HA is connected)
@@ -975,7 +974,7 @@ class VoiceAssistant:
         # Debug audio flow
         if not hasattr(self, '_audio_flow_counter'):
             self._audio_flow_counter = 0
-            print(f"DEBUG: Audio callback registered, first audio data received: {len(audio_data)} bytes", flush=True)
+            self.logger.debug(f"Audio callback registered, first audio data received: {len(audio_data)} bytes")
         
         self._audio_flow_counter += 1
         
@@ -1026,9 +1025,9 @@ class VoiceAssistant:
                 # Log every 50th chunk with enhanced info
                 if self._audio_flow_counter % 50 == 0:
                     duration_seconds = self._wake_word_stats['total_bytes'] / (actual_sample_rate * 2)  # PCM16 = 2 bytes per sample
-                    print(f"DEBUG: Wake word listening - chunk #{self._audio_flow_counter}, "
-                          f"{duration_seconds:.1f}s processed, "
-                          f"{self._wake_word_stats.get('detection_attempts', 0)} detections", flush=True)
+                    self.logger.debug(f"Wake word listening - chunk #{self._audio_flow_counter}, "
+                                    f"{duration_seconds:.1f}s processed, "
+                                    f"{self._wake_word_stats.get('detection_attempts', 0)} detections")
                 
                 # Process audio for wake word detection
                 result = self.wake_word_detector.process_audio(audio_data, input_sample_rate=actual_sample_rate)

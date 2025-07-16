@@ -201,9 +201,9 @@ class OpenAIRealtimeClient:
             asyncio.create_task(self._event_loop())
             
             # Send session configuration
-            print("DEBUG: About to send session update...")
+            self.logger.debug("About to send session update...")
             await self._send_session_update()
-            print("DEBUG: Session update sent successfully")
+            self.logger.debug("Session update sent successfully")
             
             return True
             
@@ -422,6 +422,10 @@ class OpenAIRealtimeClient:
         }
         
         self.session_config["tools"].append(tool)
+        
+        # Initialize logger if needed (lazy initialization)
+        if self.logger is None:
+            self.logger = get_logger("OpenAIRealtimeClient")
         self.logger.info(f"Registered function: {name}")
     
     def on(self, event_type: str, handler: Callable) -> None:
@@ -444,8 +448,7 @@ class OpenAIRealtimeClient:
                 try:
                     # Sanitize Unicode characters in the message for safe printing/logging
                     safe_message = sanitize_unicode_text(message)
-                    print(f"DEBUG WEBSOCKET RECV: {safe_message[:200]}...")  # First 200 chars
-                    self.logger.info(f"WEBSOCKET RECV: {safe_message}")
+                    self.logger.debug(f"WEBSOCKET RECV: {safe_message[:200]}...")  # First 200 chars
                     
                     event_data = json.loads(message)
                     event = RealtimeEvent(
@@ -618,9 +621,8 @@ class OpenAIRealtimeClient:
             }
             
             safe_error_info = {k: sanitize_unicode_text(str(v)) for k, v in error_info.items()}
-            print(f"DEBUG: Received error event: {safe_error_info}")
+            self.logger.debug(f"Received error event: {safe_error_info}")
             self.logger.error(f"OpenAI error - Type: {error_info['type']}, Message: {error_info['message']}, Code: {error_info['code']}")
-            self.logger.debug(f"Full error data: {safe_error_info}")
             # Pass just the error data, not the wrapper
             await self._emit_event("error", error_data)
         
@@ -710,8 +712,7 @@ class OpenAIRealtimeClient:
         message = json.dumps(event)
         # Sanitize Unicode for safe printing/logging
         safe_message = sanitize_unicode_text(message)
-        print(f"DEBUG WEBSOCKET SEND: {safe_message[:200]}...")  # First 200 chars
-        self.logger.info(f"WEBSOCKET SEND: {safe_message}")
+        self.logger.debug(f"WEBSOCKET SEND: {safe_message[:200]}...")  # First 200 chars
         await self.websocket.send(message)
     
     async def _send_session_update(self) -> None:

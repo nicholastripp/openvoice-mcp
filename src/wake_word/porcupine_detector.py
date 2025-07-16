@@ -373,7 +373,8 @@ class PorcupineDetector:
         # Debug logging
         if not hasattr(self, '_process_counter'):
             self._process_counter = 0
-            print(f"DEBUG: Porcupine process_audio first call - input_rate: {input_sample_rate}Hz, data: {len(audio_data)} bytes", flush=True)
+            if self.logger:
+                self.logger.debug(f"Porcupine process_audio first call - input_rate: {input_sample_rate}Hz, data: {len(audio_data)} bytes")
         
         self._process_counter += 1
         
@@ -384,7 +385,8 @@ class PorcupineDetector:
             # Log audio characteristics every 50th call
             if self._process_counter % 50 == 0:
                 audio_level = np.max(np.abs(audio_array)) if len(audio_array) > 0 else 0
-                print(f"DEBUG: Porcupine process #{self._process_counter} - samples: {len(audio_array)}, max level: {audio_level}, rate: {input_sample_rate}Hz", flush=True)
+                if self.logger:
+                    self.logger.debug(f"Porcupine process #{self._process_counter} - samples: {len(audio_array)}, max level: {audio_level}, rate: {input_sample_rate}Hz")
             
             # Apply gain if configured
             if self.audio_gain != 1.0:
@@ -437,7 +439,8 @@ class PorcupineDetector:
             if self.highpass_filter_enabled and SCIPY_AVAILABLE:
                 # Log filter status on first call
                 if self._process_counter == 1:
-                    print(f"DEBUG: High-pass filter enabled at {self.highpass_filter_cutoff}Hz", flush=True)
+                    if self.logger:
+                        self.logger.debug(f"High-pass filter enabled at {self.highpass_filter_cutoff}Hz")
                 
                 if not hasattr(self, '_highpass_sos'):
                     # Design a 4th order Butterworth high-pass filter
@@ -449,14 +452,16 @@ class PorcupineDetector:
                 audio_filtered = signal.sosfilt(self._highpass_sos, audio_array)
                 audio_array = audio_filtered.astype(np.int16)
             elif self._process_counter == 1:
-                print(f"DEBUG: High-pass filter disabled for better wake word detection", flush=True)
+                if self.logger:
+                    self.logger.debug(f"High-pass filter disabled for better wake word detection")
             
             # Resample to 16kHz if needed
             if input_sample_rate != self.sample_rate:
                 # Log resampling and audio levels
                 if self._process_counter % 50 == 0:
                     pre_resample_level = np.max(np.abs(audio_array)) if len(audio_array) > 0 else 0
-                    print(f"DEBUG: Resampling from {input_sample_rate}Hz to {self.sample_rate}Hz, level after gain: {pre_resample_level}", flush=True)
+                    if self.logger:
+                        self.logger.debug(f"Resampling from {input_sample_rate}Hz to {self.sample_rate}Hz, level after gain: {pre_resample_level}")
                 
                 # Calculate resampling parameters
                 resample_ratio = self.sample_rate / input_sample_rate
@@ -464,21 +469,24 @@ class PorcupineDetector:
                 
                 # Log the conversion
                 if self._process_counter % 50 == 0:
-                    print(f"DEBUG: Resampling {len(audio_array)} samples to {new_length} samples (ratio: {resample_ratio})", flush=True)
+                    if self.logger:
+                        self.logger.debug(f"Resampling {len(audio_array)} samples to {new_length} samples (ratio: {resample_ratio})")
                 
                 # Use scipy for high-quality resampling if available
                 if SCIPY_AVAILABLE:
                     # Use scipy's resample for better quality
                     audio_array = signal.resample(audio_array, new_length).astype(np.int16)
                     if self._process_counter == 1:
-                        print("DEBUG: Using scipy.signal.resample for high-quality resampling", flush=True)
+                        if self.logger:
+                            self.logger.debug("Using scipy.signal.resample for high-quality resampling")
                 else:
                     # Fallback to linear interpolation
                     old_indices = np.arange(len(audio_array))
                     new_indices = np.linspace(0, len(audio_array) - 1, new_length)
                     audio_array = np.interp(new_indices, old_indices, audio_array).astype(np.int16)
                     if self._process_counter == 1:
-                        print("DEBUG: Using numpy.interp for resampling (install scipy for better quality)", flush=True)
+                        if self.logger:
+                            self.logger.debug("Using numpy.interp for resampling (install scipy for better quality)")
             
             # Add to buffer
             self.audio_buffer = np.concatenate([self.audio_buffer, audio_array])
@@ -501,7 +509,8 @@ class PorcupineDetector:
             
             # Log queuing activity
             if frames_queued > 0 and self._process_counter % 10 == 0:
-                print(f"DEBUG: Queued {frames_queued} frames, buffer remaining: {len(self.audio_buffer)}, queue size: {self.audio_queue.qsize()}", flush=True)
+                if self.logger:
+                    self.logger.debug(f"Queued {frames_queued} frames, buffer remaining: {len(self.audio_buffer)}, queue size: {self.audio_queue.qsize()}")
             
         except Exception as e:
             self.logger.error(f"Error processing audio: {e}")
