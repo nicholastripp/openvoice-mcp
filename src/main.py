@@ -615,7 +615,10 @@ class VoiceAssistant:
     
     async def _main_loop(self) -> None:
         """Main application loop"""
-        self.logger.info("Voice assistant started and listening...")
+        if self.config.wake_word.enabled:
+            self.logger.info(f"✓ Ready - Listening for wake word '{self.config.wake_word.model}'")
+        else:
+            self.logger.info("✓ Ready - Wake word detection disabled, listening continuously")
         
         try:
             while self.running:
@@ -1015,9 +1018,9 @@ class VoiceAssistant:
                         'detection_attempts': 0,
                         'last_detection_time': None
                     }
-                    # Log the critical fix
-                    print(f"*** CRITICAL FIX APPLIED: Using actual sample rate {actual_sample_rate}Hz instead of device rate {self.config.audio.sample_rate}Hz ***")
-                    self.logger.info(f"Wake word detection using corrected sample rate: {actual_sample_rate}Hz (was incorrectly using {self.config.audio.sample_rate}Hz)")
+                    # Log the sample rate adjustment
+                    self.logger.debug(f"Using actual sample rate {actual_sample_rate}Hz instead of device rate {self.config.audio.sample_rate}Hz")
+                    self.logger.debug(f"Wake word detection using corrected sample rate: {actual_sample_rate}Hz")
                 
                 self._wake_word_stats['chunks_processed'] += 1
                 self._wake_word_stats['total_bytes'] += len(audio_data)

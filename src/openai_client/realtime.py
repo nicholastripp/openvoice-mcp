@@ -180,13 +180,16 @@ class OpenAIRealtimeClient:
                     connected = True
                     break
                 except (TypeError, AttributeError, ValueError) as attempt_error:
-                    self.logger.warning(f"Attempt {i+1} failed with parameter error: {type(attempt_error).__name__}: {attempt_error}")
+                    self.logger.debug(f"Attempt {i+1} failed with parameter error: {type(attempt_error).__name__}: {attempt_error}")
                     continue
                 except Exception as attempt_error:
-                    self.logger.error(f"Attempt {i+1} failed: {type(attempt_error).__name__}: {attempt_error}")
-                    # Log more details for the last attempt
                     if i == len(connection_attempts) - 1:
-                        self.logger.error(f"Final attempt details - URL: {url[:50]}..., Headers keys: {list(headers.keys())}")
+                        # Only log as error for the final attempt
+                        self.logger.error(f"Final connection attempt failed: {type(attempt_error).__name__}: {attempt_error}")
+                        self.logger.error(f"Connection details - URL: {url[:50]}..., Headers keys: {list(headers.keys())}")
+                    else:
+                        # Log intermediate failures as debug
+                        self.logger.debug(f"Attempt {i+1} failed: {type(attempt_error).__name__}: {attempt_error}")
                     continue
             
             if not connected:
