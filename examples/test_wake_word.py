@@ -343,59 +343,59 @@ def main():
             handlers=[logging.StreamHandler(sys.stdout)]
         )
         print("DEBUG: Logging configured", file=sys.stderr)
-    
-    async def run_tests():
-        if args.installation:
-            await test_wake_word_installation()
-        elif args.models:
-            await test_wake_word_models()
-        elif args.detection:
-            await test_wake_word_detection(args.config, args.detection)
-        elif args.switch:
-            await test_model_switching()
-        elif args.interactive:
-            await interactive_test(args.config, args.sensitivity, args.model)
-        else:
-            # Run basic tests
-            logger = get_logger("WakeWordTest")
-            logger.info("Running wake word tests...")
-            
-            success1 = await test_wake_word_installation()
-            if success1:
-                # Test the user's configured model first
-                logger.info("\n" + "="*50)
-                logger.info("Testing your configuration")
-                logger.info("="*50)
-                
-                config = load_config(args.config)
-                configured_model = config.wake_word.model
-                logger.info(f"Your configured wake word: '{configured_model}'")
-                
-                # Test configured model
-                success = await test_specific_model(configured_model)
-                if success:
-                    logger.info(f"✓ Configured wake word '{configured_model}' is working correctly")
-                else:
-                    logger.warning(f"⚠ There was an issue with your configured wake word '{configured_model}'")
-                    logger.info("  Check the error message above for details")
-                
-                # Run other tests
-                logger.info("\n" + "="*50)
-                logger.info("Running additional tests")
-                logger.info("="*50)
-                
+        
+        async def run_tests():
+            if args.installation:
+                await test_wake_word_installation()
+            elif args.models:
                 await test_wake_word_models()
+            elif args.detection:
+                await test_wake_word_detection(args.config, args.detection)
+            elif args.switch:
                 await test_model_switching()
-                
-                logger.info("\n" + "="*50)
-                logger.info("Test Summary")
-                logger.info("="*50)
-                logger.info("Basic tests completed. For interactive testing with microphone, run:")
-                logger.info(f"  python examples/test_wake_word.py --interactive")
-                logger.info(f"Or test a specific model:")
-                logger.info(f"  python examples/test_wake_word.py --interactive --model {configured_model}")
+            elif args.interactive:
+                await interactive_test(args.config, args.sensitivity, args.model)
             else:
-                logger.error("Installation test failed - cannot proceed with other tests")
+                # Run basic tests
+                logger = get_logger("WakeWordTest")
+                logger.info("Running wake word tests...")
+                
+                success1 = await test_wake_word_installation()
+                if success1:
+                    # Test the user's configured model first
+                    logger.info("\n" + "="*50)
+                    logger.info("Testing your configuration")
+                    logger.info("="*50)
+                    
+                    config = load_config(args.config)
+                    configured_model = config.wake_word.model
+                    logger.info(f"Your configured wake word: '{configured_model}'")
+                    
+                    # Test configured model
+                    success = await test_specific_model(configured_model)
+                    if success:
+                        logger.info(f"✓ Configured wake word '{configured_model}' is working correctly")
+                    else:
+                        logger.warning(f"⚠ There was an issue with your configured wake word '{configured_model}'")
+                        logger.info("  Check the error message above for details")
+                    
+                    # Run other tests
+                    logger.info("\n" + "="*50)
+                    logger.info("Running additional tests")
+                    logger.info("="*50)
+                    
+                    await test_wake_word_models()
+                    await test_model_switching()
+                    
+                    logger.info("\n" + "="*50)
+                    logger.info("Test Summary")
+                    logger.info("="*50)
+                    logger.info("Basic tests completed. For interactive testing with microphone, run:")
+                    logger.info(f"  python examples/test_wake_word.py --interactive")
+                    logger.info(f"Or test a specific model:")
+                    logger.info(f"  python examples/test_wake_word.py --interactive --model {configured_model}")
+                else:
+                    logger.error("Installation test failed - cannot proceed with other tests")
     
         # Run tests
         try:
