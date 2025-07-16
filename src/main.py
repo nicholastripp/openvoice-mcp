@@ -98,7 +98,7 @@ class VoiceAssistant:
         """Start the voice assistant"""
         # Initialize logger now that logging system is configured
         if self.logger is None:
-            self.logger = get_logger("VoiceAssistant")
+            self.logger = get_logger("ha_voice_assistant")
         self.logger.debug("VoiceAssistant.start() called")
         
         # Clear device cache on startup to ensure fresh data
