@@ -116,8 +116,8 @@ async def test_model_switching():
     """Test switching between different wake word models"""
     logger = get_logger("WakeWordTest")
     
-    # Test Porcupine built-in keywords
-    models_to_test = ["picovoice", "alexa", "computer", "jarvis"]
+    # Test Porcupine built-in keywords (only valid ones)
+    models_to_test = ["picovoice", "alexa", "computer"]
     
     logger.info(f"Testing Porcupine keywords: {models_to_test}")
     
@@ -135,6 +135,22 @@ async def test_model_switching():
         except Exception as e:
             logger.error(f"  [ERROR] {model_name}: {e}")
             # Don't fail the whole test, just continue with next model
+
+
+async def test_specific_model(model_name):
+    """Test a specific wake word model"""
+    logger = get_logger("WakeWordTest")
+    
+    try:
+        config = WakeWordConfig(model=model_name)
+        detector = PorcupineDetector(config)
+        await detector.start()
+        logger.info(f"Successfully initialized '{model_name}'")
+        await detector.stop()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to initialize '{model_name}': {e}")
+        return False
 
 
 async def interactive_test(config_path, sensitivity=None, model_override=None):
@@ -336,10 +352,38 @@ def main():
             
             success1 = await test_wake_word_installation()
             if success1:
+                # Test the user's configured model first
+                logger.info("\n" + "="*50)
+                logger.info("Testing your configuration")
+                logger.info("="*50)
+                
+                config = load_config(args.config)
+                configured_model = config.wake_word.model
+                logger.info(f"Your configured wake word: '{configured_model}'")
+                
+                # Test configured model
+                success = await test_specific_model(configured_model)
+                if success:
+                    logger.info(f"✓ Configured wake word '{configured_model}' is working correctly")
+                else:
+                    logger.warning(f"⚠ There was an issue with your configured wake word '{configured_model}'")
+                    logger.info("  Check the error message above for details")
+                
+                # Run other tests
+                logger.info("\n" + "="*50)
+                logger.info("Running additional tests")
+                logger.info("="*50)
+                
                 await test_wake_word_models()
                 await test_model_switching()
-                logger.info("\nBasic tests completed. For interactive testing with microphone, run:")
-                logger.info("  python examples/test_wake_word.py --interactive --model picovoice")
+                
+                logger.info("\n" + "="*50)
+                logger.info("Test Summary")
+                logger.info("="*50)
+                logger.info("Basic tests completed. For interactive testing with microphone, run:")
+                logger.info(f"  python examples/test_wake_word.py --interactive")
+                logger.info(f"Or test a specific model:")
+                logger.info(f"  python examples/test_wake_word.py --interactive --model {configured_model}")
             else:
                 logger.error("Installation test failed - cannot proceed with other tests")
     
