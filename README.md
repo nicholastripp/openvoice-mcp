@@ -55,20 +55,20 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 git clone https://github.com/nicholastripp/ha-realtime-assist
 cd ha-realtime-assist
 
-# Install dependencies and create virtual environment
+# Install dependencies and set up configuration
 ./install.sh
 
-# Setup configuration files (copies examples to working files)
-./setup_config.sh
-
-# Edit your API keys
+# Edit your API keys and settings
 nano .env
+# Add:
+#   OPENAI_API_KEY=sk-...
+#   HA_URL=http://homeassistant.local:8123
+#   HA_TOKEN=your_home_assistant_token
+#   PICOVOICE_ACCESS_KEY=your_picovoice_key
 
-# Edit Home Assistant URL and other settings
-nano config/config.yaml
-
-# (Optional) Customize assistant personality
-nano config/persona.ini
+# (Optional) Customize additional settings
+nano config/config.yaml  # Audio settings, wake word, etc.
+nano config/persona.ini  # Assistant personality
 
 # Activate the virtual environment (required for all Python commands)
 source venv/bin/activate
@@ -81,22 +81,33 @@ python src/main.py
 
 ## Configuration
 
-The project includes example configuration files (`.example` suffix) that are copied to working files by `setup_config.sh`. Always edit the copies, not the example files.
+The project includes example configuration files (`.example` suffix) that are automatically copied to working files during installation. Always edit the copies, not the example files.
 
-### Required Settings
-- **OpenAI API Key**: Get from [OpenAI Platform](https://platform.openai.com)
-- **Home Assistant URL**: Your HA instance address
-- **HA Long-Lived Token**: Generate in HA Profile settings
+### Required Settings in .env
+All user-specific settings are managed in the `.env` file:
+- **OPENAI_API_KEY**: Get from [OpenAI Platform](https://platform.openai.com)
+- **HA_URL**: Your Home Assistant instance URL
+- **HA_TOKEN**: Long-lived access token (generate in HA Profile settings)
+- **PICOVOICE_ACCESS_KEY**: Get from [Picovoice Console](https://console.picovoice.ai)
 
-### Example config.yaml
+### Example .env
+```bash
+OPENAI_API_KEY=sk-...
+HA_URL=http://homeassistant.local:8123
+HA_TOKEN=eyJ0eXAiOiJKV1...
+PICOVOICE_ACCESS_KEY=your_key_here
+```
+
+### config.yaml Settings
+The `config.yaml` file contains application settings that typically don't need to be changed:
 ```yaml
 openai:
-  api_key: ${OPENAI_API_KEY}
+  api_key: ${OPENAI_API_KEY}  # Uses value from .env
   voice: "nova"
 
 home_assistant:
-  url: "http://homeassistant.local:8123"
-  token: ${HA_TOKEN}
+  url: ${HA_URL}               # Uses value from .env
+  token: ${HA_TOKEN}           # Uses value from .env
 
 wake_word:
   enabled: true

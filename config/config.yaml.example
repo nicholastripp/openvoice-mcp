@@ -10,8 +10,8 @@ openai:
   
 # Home Assistant Configuration  
 home_assistant:
-  url: "http://homeassistant.local:8123"  # Your HA instance URL
-  token: ${HA_TOKEN}                      # Long-lived access token
+  url: ${HA_URL}                          # Your HA instance URL (from .env)
+  token: ${HA_TOKEN}                      # Long-lived access token (from .env)
   language: "en"                          # Must match OpenAI language
   timeout: 10                             # API timeout in seconds
   

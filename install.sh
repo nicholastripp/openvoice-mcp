@@ -73,71 +73,107 @@ pip install --upgrade websockets>=12.0
 echo -e "${GREEN}✓ Dependencies installed${NC}"
 
 # Create configuration files
-echo -e "${YELLOW}Setting up configuration...${NC}"
+echo ""
+echo -e "${YELLOW}Setting up configuration files...${NC}"
 
+# Copy config files if they don't exist
 if [ ! -f "config/config.yaml" ]; then
-    cp config/config.yaml.example config/config.yaml
-    echo -e "${GREEN}✓ Created config/config.yaml${NC}"
-    echo -e "${YELLOW}  Please edit this file with your settings${NC}"
+    if [ -f "config/config.yaml.example" ]; then
+        cp config/config.yaml.example config/config.yaml
+        echo -e "${GREEN}✓ Created config/config.yaml${NC}"
+    else
+        echo -e "${RED}✗ config/config.yaml.example not found${NC}"
+        exit 1
+    fi
 else
-    echo -e "${YELLOW}  config.yaml already exists${NC}"
-fi
-
-if [ ! -f "config/persona.ini" ]; then
-    cp config/persona.ini.example config/persona.ini
-    echo -e "${GREEN}✓ Created config/persona.ini${NC}"
-else
-    echo -e "${YELLOW}  persona.ini already exists${NC}"
+    echo -e "${YELLOW}  config/config.yaml already exists${NC}"
 fi
 
 if [ ! -f ".env" ]; then
-    cp .env.example .env
-    echo -e "${GREEN}✓ Created .env file${NC}"
-    echo -e "${YELLOW}  Please edit this file with your API keys${NC}"
+    if [ -f ".env.example" ]; then
+        cp .env.example .env
+        echo -e "${GREEN}✓ Created .env${NC}"
+    else
+        echo -e "${RED}✗ .env.example not found${NC}"
+        exit 1
+    fi
 else
     echo -e "${YELLOW}  .env already exists${NC}"
 fi
 
+if [ ! -f "config/persona.ini" ]; then
+    if [ -f "config/persona.ini.example" ]; then
+        cp config/persona.ini.example config/persona.ini
+        echo -e "${GREEN}✓ Created config/persona.ini${NC}"
+    else
+        echo -e "${RED}✗ config/persona.ini.example not found${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}  config/persona.ini already exists${NC}"
+fi
+
 # Create logs directory
 mkdir -p logs
-
-# Note about wake word configuration
-echo -e "${YELLOW}Wake word uses Picovoice Porcupine${NC}"
-echo -e "${YELLOW}Remember to add your Picovoice access key to .env${NC}"
+echo -e "${GREEN}✓ Created logs directory${NC}"
 
 # Test basic functionality
+echo ""
 echo -e "${YELLOW}Testing installation...${NC}"
-echo -e "${YELLOW}Running test: ./venv/bin/python src/main.py --help${NC}"
-if ./venv/bin/python src/main.py --help; then
+if ./venv/bin/python src/main.py --help > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Installation test passed${NC}"
 else
     echo -e "${RED}✗ Installation test failed${NC}"
-    echo -e "${RED}Error details shown above${NC}"
+    echo -e "${RED}Please check the error messages above${NC}"
     exit 1
 fi
 
 echo ""
-echo "========================================"
+echo "================================================"
 echo -e "${GREEN}Installation completed successfully!${NC}"
-echo "========================================"
+echo "================================================"
 echo ""
-echo "Next steps:"
-echo "1. Edit configuration files:"
-echo "   - config/config.yaml"
-echo "   - .env"
+echo -e "${BLUE}Configuration files created successfully!${NC}"
 echo ""
-echo "2. Add your API keys:"
-echo "   - OpenAI API key in .env"
-echo "   - Home Assistant token in .env"
-echo "   - Picovoice access key in .env"
+echo "================================================"
+echo "Next Steps:"
+echo "================================================"
 echo ""
-echo "3. Test the installation:"
+echo -e "${YELLOW}1. Configure your API keys:${NC}"
+echo "   Edit the .env file and add your keys:"
+echo "   nano .env"
+echo ""
+echo "   Required keys:"
+echo "   - OPENAI_API_KEY=sk-..."
+echo "   - HA_URL=http://homeassistant.local:8123"
+echo "   - HA_TOKEN=your_home_assistant_token"
+echo "   - PICOVOICE_ACCESS_KEY=your_picovoice_key"
+echo ""
+
+echo -e "${YELLOW}2. (Optional) Customize your assistant:${NC}"
+echo "   Edit the configuration files:"
+echo "   nano config/config.yaml      # Audio settings, wake word, etc."
+echo "   nano config/persona.ini      # Assistant personality"
+echo ""
+
+echo -e "${YELLOW}3. Test your setup:${NC}"
+echo "   Activate the virtual environment:"
 echo "   source venv/bin/activate"
-echo "   python3 src/main.py --help"
 echo ""
-echo "4. Run the assistant:"
-echo "   python3 src/main.py"
+echo "   Run individual tests:"
+echo "   python examples/test_audio_devices.py    # Test audio devices"
+echo "   python examples/test_wake_word.py        # Test wake word"
 echo ""
-echo "For help, see README.md or visit:"
-echo "https://github.com/yourusername/ha-realtime-voice-assistant"
+
+echo -e "${YELLOW}4. Run the voice assistant:${NC}"
+echo "   source venv/bin/activate"
+echo "   python src/main.py"
+echo ""
+
+echo "================================================"
+echo -e "${GREEN}Setup complete!${NC}"
+echo "================================================"
+echo ""
+echo "For detailed documentation, see README.md"
+echo "GitHub: https://github.com/nicholastripp/ha-realtime-assist"
 echo ""
