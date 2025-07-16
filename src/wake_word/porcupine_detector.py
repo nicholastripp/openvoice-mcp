@@ -98,7 +98,8 @@ class PorcupineDetector:
             
             self.sensitivities = self._get_sensitivities()
         except ValueError as e:
-            self.logger.error(f"Wake word configuration error: {e}")
+            if self.logger:
+                self.logger.error(f"Wake word configuration error: {e}")
             raise
         
         # Performance tracking
@@ -168,10 +169,11 @@ class PorcupineDetector:
             available_direct = sorted(set(self.KEYWORD_MAPPING.values()))
             
             error_msg = f"Invalid wake word: '{model_name}'"
-            self.logger.error(error_msg)
-            self.logger.error(f"Available config names: {', '.join(available_configs)}")
-            self.logger.error(f"Available direct keywords: {', '.join(available_direct)}")
-            self.logger.error("For custom wake words, create a .ppn file at https://console.picovoice.ai/")
+            if self.logger:
+                self.logger.error(error_msg)
+                self.logger.error(f"Available config names: {', '.join(available_configs)}")
+                self.logger.error(f"Available direct keywords: {', '.join(available_direct)}")
+                self.logger.error("For custom wake words, create a .ppn file at https://console.picovoice.ai/")
             
             raise ValueError(
                 f"{error_msg}\n"
@@ -191,11 +193,13 @@ class PorcupineDetector:
         # Validate and clamp sensitivity to valid range
         sensitivity = self.config.sensitivity
         if sensitivity < 0.0 or sensitivity > 1.0:
-            self.logger.warning(f"Sensitivity {sensitivity} is outside valid range [0.0, 1.0], clamping")
+            if self.logger:
+                self.logger.warning(f"Sensitivity {sensitivity} is outside valid range [0.0, 1.0], clamping")
             sensitivity = max(0.0, min(1.0, sensitivity))
         
         # Log the actual sensitivity being used
-        self.logger.debug(f"Using sensitivity value: {sensitivity} (original: {self.config.sensitivity})")
+        if self.logger:
+            self.logger.debug(f"Using sensitivity value: {sensitivity} (original: {self.config.sensitivity})")
         
         # Use the same sensitivity for all keywords or keyword paths
         if self.keyword_paths:

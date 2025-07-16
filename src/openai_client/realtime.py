@@ -167,7 +167,9 @@ class OpenAIRealtimeClient:
                 # Basic connection without ping interval
                 {"extra_headers": headers, "max_size": None},
                 # Minimal parameters but with headers
-                {"extra_headers": headers}
+                {"extra_headers": headers},
+                # Final fallback - no headers at all (will fail auth but helps diagnose)
+                {}
             ]
             
             for i, attempt_params in enumerate(connection_attempts):
