@@ -30,7 +30,8 @@ async def test_wake_word_installation():
     try:
         # Check if we can import pvporcupine
         import pvporcupine
-        logger.info(f"[OK] Porcupine version: {pvporcupine.__version__}")
+        version = pvporcupine.__version__ if hasattr(pvporcupine, '__version__') else "Unknown"
+        logger.info(f"[OK] Porcupine installed (version: {version})")
         return True
     except ImportError as e:
         logger.error(f"[ERROR] Porcupine not installed: {e}")
