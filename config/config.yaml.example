@@ -76,7 +76,7 @@ session:
   
   # Multi-turn conversation settings
   conversation_mode: "multi_turn"  # "single_turn" or "multi_turn"
-  multi_turn_timeout: 6.0          # Seconds to wait for follow-up questions
+  multi_turn_timeout: 8.0          # Seconds to wait for follow-up questions
   multi_turn_max_turns: 20         # Maximum conversation turns per session
   multi_turn_end_phrases:          # Phrases to end multi-turn conversation
     - "goodbye"
