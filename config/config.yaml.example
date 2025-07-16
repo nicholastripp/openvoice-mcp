@@ -29,7 +29,7 @@ audio:
   mute_during_response: true       # Mute microphone during response playback
   
   # Automatic Gain Control (AGC) - automatically adjusts input volume
-  agc_enabled: false               # Enable AGC (set to true for automatic volume adjustment)
+  agc_enabled: true               # Enable AGC (set to true for automatic volume adjustment)
   agc_target_rms: 0.3             # Target audio level (0.3 = 30% of maximum)
   agc_max_gain: 3.0               # Maximum gain allowed (prevent over-amplification)
   agc_min_gain: 0.1               # Minimum gain allowed (prevent complete muting)
@@ -41,7 +41,7 @@ audio:
 wake_word:
   enabled: true                   # Enable wake word detection
   model: "picovoice"              # Porcupine built-in keyword (see options below)
-  sensitivity: 1.0                # Detection sensitivity (0.0-1.0, 1.0 = maximum)
+  sensitivity: 1.0                # Detection sensitivity (0.0-1.0, 1.0 = maximum); try adjusting input volume first
   timeout: 5.0                    # Session timeout after wake word (seconds)
   vad_enabled: false              # Voice activity detection
   cooldown: 2.0                   # Seconds between wake word detections
@@ -76,8 +76,8 @@ session:
   
   # Multi-turn conversation settings
   conversation_mode: "multi_turn"  # "single_turn" or "multi_turn"
-  multi_turn_timeout: 30.0         # Seconds to wait for follow-up questions
-  multi_turn_max_turns: 10         # Maximum conversation turns per session
+  multi_turn_timeout: 6.0          # Seconds to wait for follow-up questions
+  multi_turn_max_turns: 20         # Maximum conversation turns per session
   multi_turn_end_phrases:          # Phrases to end multi-turn conversation
     - "goodbye"
     - "stop"
