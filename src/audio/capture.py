@@ -22,7 +22,7 @@ class AudioCapture:
     
     def __init__(self, config: AudioConfig):
         self.config = config
-        self.logger = get_logger("AudioCapture")
+        self.logger = None  # Will be initialized in start()
         
         # Audio parameters
         self.device_sample_rate = config.sample_rate
@@ -45,7 +45,7 @@ class AudioCapture:
         self.need_resampling = self.device_sample_rate != self.target_sample_rate
         if self.need_resampling:
             self.resampling_ratio = self.target_sample_rate / self.device_sample_rate
-            self.logger.info(f"Will resample from {self.device_sample_rate}Hz to {self.target_sample_rate}Hz")
+            # Logger not yet available - will log in start()
         
         # Threading and async handling
         self.processing_thread: Optional[threading.Thread] = None
@@ -54,6 +54,14 @@ class AudioCapture:
     
     async def start(self) -> None:
         """Start audio capture"""
+        # Initialize logger now that logging system is configured
+        if self.logger is None:
+            self.logger = get_logger("AudioCapture")
+            
+        # Log resampling info now that logger is available
+        if self.need_resampling:
+            self.logger.info(f"Will resample from {self.device_sample_rate}Hz to {self.target_sample_rate}Hz")
+            
         if self.is_recording:
             self.logger.warning("Audio capture already started")
             return

@@ -52,7 +52,7 @@ class OpenAIRealtimeClient:
         self.config = config
         self.personality_prompt = personality_prompt
         self.text_only = text_only
-        self.logger = get_logger("OpenAIRealtimeClient")
+        self.logger = None  # Will be initialized in connect()
         
         # Connection state
         self.state = ConnectionState.DISCONNECTED
@@ -94,11 +94,7 @@ class OpenAIRealtimeClient:
             self.session_config["tool_choice"] = "auto"  # Allow OpenAI to choose when to use tools
             self.session_config["max_response_output_tokens"] = "inf"  # Allow full responses
             
-            # Log audio configuration for debugging
-            self.logger.info(f"Audio session config: input_format={self.session_config['input_audio_format']}, output_format={self.session_config['output_audio_format']}")
-            self.logger.info(f"Server VAD enabled: threshold={self.session_config['turn_detection']['threshold']}, silence_duration={self.session_config['turn_detection']['silence_duration_ms']}ms")
-            self.logger.info("[WARNING] Server VAD mode: Do NOT manually call commit_audio() - server will auto-commit when speech stops")
-            self.logger.info("Enhanced session config: tool_choice=auto, max_response_output_tokens=inf for better audio responses")
+            # Audio configuration will be logged in connect() when logger is available
         else:
             # Text-only mode: explicitly disable VAD to prevent audio buffer operations
             self.session_config["turn_detection"] = None
@@ -124,13 +120,24 @@ class OpenAIRealtimeClient:
         Returns:
             True if connected successfully, False otherwise
         """
-        print(f"DEBUG: connect() called, current state: {self.state}, text_only: {self.text_only}")
+        # Initialize logger now that logging system is configured
+        if self.logger is None:
+            self.logger = get_logger("OpenAIRealtimeClient")
+            
+        # Log audio configuration now that logger is available
+        if not self.text_only:
+            self.logger.info(f"Audio session config: input_format={self.session_config['input_audio_format']}, output_format={self.session_config['output_audio_format']}")
+            self.logger.info(f"Server VAD enabled: threshold={self.session_config['turn_detection']['threshold']}, silence_duration={self.session_config['turn_detection']['silence_duration_ms']}ms")
+            self.logger.info("[WARNING] Server VAD mode: Do NOT manually call commit_audio() - server will auto-commit when speech stops")
+            self.logger.info("Enhanced session config: tool_choice=auto, max_response_output_tokens=inf for better audio responses")
+            
+        self.logger.debug(f"connect() called, current state: {self.state}, text_only: {self.text_only}")
         if self.state in [ConnectionState.CONNECTED, ConnectionState.CONNECTING]:
             return True
             
         self.state = ConnectionState.CONNECTING
         self.logger.info("Connecting to OpenAI Realtime API...")
-        print("DEBUG: Starting connection to OpenAI Realtime API...")
+        self.logger.debug("Starting connection to OpenAI Realtime API...")
         
         # Log websockets version for debugging
         if WEBSOCKETS_VERSION:

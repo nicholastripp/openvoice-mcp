@@ -16,10 +16,17 @@ class FunctionCallBridge:
     
     def __init__(self, ha_client: HomeAssistantConversationClient):
         self.ha_client = ha_client
-        self.logger = get_logger("FunctionBridge")
+        self._logger = None  # Lazy initialization
         
         # Track conversation context
         self.conversation_id: Optional[str] = None
+        
+    @property
+    def logger(self):
+        """Lazy logger initialization"""
+        if self._logger is None:
+            self._logger = get_logger("FunctionBridge")
+        return self._logger
     
     def get_function_definitions(self) -> list[Dict[str, Any]]:
         """

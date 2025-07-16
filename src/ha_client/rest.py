@@ -17,7 +17,7 @@ class HomeAssistantRestClient:
     
     def __init__(self, config: HomeAssistantConfig):
         self.config = config
-        self.logger = get_logger("HARestClient")
+        self.logger = None  # Will be initialized in start()
         self.session: Optional[aiohttp.ClientSession] = None
         self.base_url = config.url.rstrip('/')
         
@@ -29,6 +29,10 @@ class HomeAssistantRestClient:
     
     async def start(self) -> None:
         """Initialize the HTTP session"""
+        # Initialize logger now that logging system is configured
+        if self.logger is None:
+            self.logger = get_logger("HARestClient")
+            
         if self.session is None:
             timeout = aiohttp.ClientTimeout(total=self.config.timeout)
             self.session = aiohttp.ClientSession(

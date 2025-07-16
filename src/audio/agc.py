@@ -43,7 +43,7 @@ class AutomaticGainControl:
             config: Audio configuration with AGC settings
             sample_rate: Audio sample rate for timing calculations
         """
-        self.logger = get_logger("AGC")
+        self._logger = None  # Lazy initialization
         
         # AGC settings
         self.enabled = config.agc_enabled
@@ -77,12 +77,24 @@ class AutomaticGainControl:
         self.last_update_time = time.time()
         self.frames_processed = 0
         
-        if self.enabled:
-            self.logger.info(f"AGC initialized - target_rms: {self.target_rms}, "
-                           f"gain_range: [{self.min_gain}, {self.max_gain}], "
-                           f"clipping_threshold: {self.clipping_threshold:.1%}")
-        else:
-            self.logger.info("AGC disabled - using fixed gain")
+        # Log initialization message when logger is available
+        self._log_init_message = True
+        
+    @property
+    def logger(self):
+        """Lazy logger initialization"""
+        if self._logger is None:
+            self._logger = get_logger("AGC")
+            # Log initialization message on first access
+            if hasattr(self, '_log_init_message') and self._log_init_message:
+                if self.enabled:
+                    self._logger.info(f"AGC initialized - target_rms: {self.target_rms}, "
+                                   f"gain_range: [{self.min_gain}, {self.max_gain}], "
+                                   f"clipping_threshold: {self.clipping_threshold:.1%}")
+                else:
+                    self._logger.info("AGC disabled - using fixed gain")
+                self._log_init_message = False
+        return self._logger
     
     def process_audio(self, audio_data: np.ndarray) -> np.ndarray:
         """

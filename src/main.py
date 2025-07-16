@@ -42,11 +42,10 @@ class VoiceAssistant:
     """Main voice assistant application"""
     
     def __init__(self, config: AppConfig, personality: PersonalityProfile, skip_ha_check: bool = False):
-        print("DEBUG: VoiceAssistant.__init__() called", flush=True)
         self.config = config
         self.personality = personality
         self.skip_ha_check = skip_ha_check
-        self.logger = get_logger("VoiceAssistant")
+        self.logger = None  # Will be initialized in start()
         self.running = False
         self._shutdown_event = asyncio.Event()
         
@@ -97,7 +96,10 @@ class VoiceAssistant:
     
     async def start(self) -> None:
         """Start the voice assistant"""
-        print("DEBUG: VoiceAssistant.start() called", flush=True)
+        # Initialize logger now that logging system is configured
+        if self.logger is None:
+            self.logger = get_logger("VoiceAssistant")
+        self.logger.debug("VoiceAssistant.start() called")
         
         # Clear device cache on startup to ensure fresh data
         self._clear_device_cache()
@@ -105,15 +107,15 @@ class VoiceAssistant:
         self.logger.info("Starting Home Assistant Realtime Voice Assistant")
         
         try:
-            print("DEBUG: About to call _initialize_components()", flush=True)
+            self.logger.debug("About to call _initialize_components()")
             # Initialize components
             await self._initialize_components()
             
-            print("DEBUG: Components initialized, creating cleanup task", flush=True)
+            self.logger.debug("Components initialized, creating cleanup task")
             # Start periodic cleanup task
             self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
             
-            print("DEBUG: Starting main loop", flush=True)
+            self.logger.debug("Starting main loop")
             # Start main loop
             self.running = True
             await self._main_loop()

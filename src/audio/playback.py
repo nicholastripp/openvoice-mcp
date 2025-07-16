@@ -21,7 +21,7 @@ class AudioPlayback:
     
     def __init__(self, config: AudioConfig):
         self.config = config
-        self.logger = get_logger("AudioPlayback")
+        self.logger = None  # Will be initialized in start()
         
         # Audio parameters
         self.device_sample_rate = config.sample_rate
@@ -46,8 +46,7 @@ class AudioPlayback:
         self.need_resampling = self.device_sample_rate != self.source_sample_rate
         if self.need_resampling:
             self.resampling_ratio = self.device_sample_rate / self.source_sample_rate
-            self.logger.info(f"Will resample from {self.source_sample_rate}Hz to {self.device_sample_rate}Hz")
-        self.logger.info(f"Enhanced Pi buffer configuration: min={self.min_buffer_size} samples ({self.min_buffer_size/self.device_sample_rate*1000:.0f}ms), target={self.target_buffer_size} samples ({self.target_buffer_size/self.device_sample_rate*1000:.0f}ms), max={self.max_buffer_size} samples ({self.max_buffer_size/self.device_sample_rate*1000:.0f}ms)")
+            # Logger not yet available - will log in start()
         
         # Threading
         self.playback_thread: Optional[threading.Thread] = None
@@ -85,6 +84,15 @@ class AudioPlayback:
     
     async def start(self) -> None:
         """Start audio playback system"""
+        # Initialize logger now that logging system is configured
+        if self.logger is None:
+            self.logger = get_logger("AudioPlayback")
+            
+        # Log resampling and buffer info now that logger is available
+        if self.need_resampling:
+            self.logger.info(f"Will resample from {self.source_sample_rate}Hz to {self.device_sample_rate}Hz")
+        self.logger.info(f"Enhanced Pi buffer configuration: min={self.min_buffer_size} samples ({self.min_buffer_size/self.device_sample_rate*1000:.0f}ms), target={self.target_buffer_size} samples ({self.target_buffer_size/self.device_sample_rate*1000:.0f}ms), max={self.max_buffer_size} samples ({self.max_buffer_size/self.device_sample_rate*1000:.0f}ms)")
+            
         if self.is_playing:
             self.logger.warning("Audio playback already started")
             return

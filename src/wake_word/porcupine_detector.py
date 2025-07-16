@@ -59,7 +59,7 @@ class PorcupineDetector:
     
     def __init__(self, config: WakeWordConfig):
         self.config = config
-        self.logger = get_logger("PorcupineDetector")
+        self.logger = None  # Will be initialized in start()
         
         if not PORCUPINE_AVAILABLE:
             raise ImportError("Porcupine not available. Install with: pip install pvporcupine")
@@ -147,17 +147,20 @@ class PorcupineDetector:
                     f"  3. Place it in config/wake_words/{model_name}"
                 )
             
-            self.logger.info(f"Using custom wake word from: {keyword_path}")
+            if self.logger:
+                self.logger.info(f"Using custom wake word from: {keyword_path}")
             # Return tuple: (keywords=None, keyword_paths=[path])
             return (None, [keyword_path])
         
         # Handle built-in keywords
         if model_name in self.KEYWORD_MAPPING:
             keyword = self.KEYWORD_MAPPING[model_name]
-            self.logger.info(f"Using wake word '{keyword}' (mapped from config '{model_name}')")
+            if self.logger:
+                self.logger.info(f"Using wake word '{keyword}' (mapped from config '{model_name}')")
             return [keyword]
         elif model_name in self.KEYWORD_MAPPING.values():
-            self.logger.info(f"Using wake word '{model_name}' (direct match)")
+            if self.logger:
+                self.logger.info(f"Using wake word '{model_name}' (direct match)")
             return [model_name]
         else:
             # List available keywords for better error message
@@ -202,6 +205,9 @@ class PorcupineDetector:
     
     async def start(self) -> None:
         """Start wake word detection"""
+        # Initialize logger now that logging system is configured
+        if self.logger is None:
+            self.logger = get_logger("PorcupineDetector")
         self.logger.debug("PorcupineDetector.start() called")
         if self.is_running:
             self.logger.warning("Wake word detector already running")

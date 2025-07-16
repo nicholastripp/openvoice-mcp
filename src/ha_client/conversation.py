@@ -48,11 +48,15 @@ class HomeAssistantConversationClient:
     
     def __init__(self, config: HomeAssistantConfig):
         self.config = config
-        self.logger = get_logger("HAConversationClient")
+        self.logger = None  # Will be initialized in start()
         self.rest_client = HomeAssistantRestClient(config)
         
     async def start(self) -> None:
         """Initialize the conversation client"""
+        # Initialize logger now that logging system is configured
+        if self.logger is None:
+            self.logger = get_logger("HAConversationClient")
+            
         await self.rest_client.start()
         
         # Test the connection with detailed diagnostics
