@@ -318,21 +318,31 @@ async def interactive_test(config_path, sensitivity=None, model_override=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test wake word detection")
-    parser.add_argument("--config", default="config/config.yaml", help="Configuration file path")
-    parser.add_argument("--installation", action="store_true", help="Test installation only")
-    parser.add_argument("--models", action="store_true", help="Test available models")
-    parser.add_argument("--detection", type=int, metavar="DURATION", help="Test detection for N seconds")
-    parser.add_argument("--switch", action="store_true", help="Test model switching")
-    parser.add_argument("--interactive", action="store_true", help="Interactive testing mode")
-    parser.add_argument("--sensitivity", type=float, help="Override wake word sensitivity (0.0-1.0, try 0.1 for permissive testing)")
-    parser.add_argument("--model", type=str, help="Override wake word model (picovoice, alexa, computer, jarvis, etc.)")
-    parser.add_argument("--log-level", default="INFO", help="Set logging level (DEBUG, INFO, WARNING, ERROR)")
+    print("DEBUG: test_wake_word.py main() started", file=sys.stderr)
     
-    args = parser.parse_args()
-    
-    # Setup logging
-    setup_logging(args.log_level, console=True)
+    try:
+        parser = argparse.ArgumentParser(description="Test wake word detection")
+        parser.add_argument("--config", default="config/config.yaml", help="Configuration file path")
+        parser.add_argument("--installation", action="store_true", help="Test installation only")
+        parser.add_argument("--models", action="store_true", help="Test available models")
+        parser.add_argument("--detection", type=int, metavar="DURATION", help="Test detection for N seconds")
+        parser.add_argument("--switch", action="store_true", help="Test model switching")
+        parser.add_argument("--interactive", action="store_true", help="Interactive testing mode")
+        parser.add_argument("--sensitivity", type=float, help="Override wake word sensitivity (0.0-1.0, try 0.1 for permissive testing)")
+        parser.add_argument("--model", type=str, help="Override wake word model (picovoice, alexa, computer, jarvis, etc.)")
+        parser.add_argument("--log-level", default="INFO", help="Set logging level (DEBUG, INFO, WARNING, ERROR)")
+        
+        args = parser.parse_args()
+        print(f"DEBUG: Arguments parsed: {args}", file=sys.stderr)
+        
+        # Setup logging - use a simpler approach for test scripts
+        import logging
+        logging.basicConfig(
+            level=getattr(logging, args.log_level.upper()),
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[logging.StreamHandler(sys.stdout)]
+        )
+        print("DEBUG: Logging configured", file=sys.stderr)
     
     async def run_tests():
         if args.installation:
@@ -387,11 +397,23 @@ def main():
             else:
                 logger.error("Installation test failed - cannot proceed with other tests")
     
-    # Run tests
-    try:
-        asyncio.run(run_tests())
-    except KeyboardInterrupt:
-        print("\nTest interrupted by user")
+        # Run tests
+        try:
+            print("DEBUG: About to run tests", file=sys.stderr)
+            asyncio.run(run_tests())
+        except KeyboardInterrupt:
+            print("\nTest interrupted by user")
+        except Exception as e:
+            print(f"ERROR: Test failed with exception: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            sys.exit(1)
+            
+    except Exception as e:
+        print(f"ERROR: Failed to initialize test script: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
