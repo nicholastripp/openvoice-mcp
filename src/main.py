@@ -202,7 +202,6 @@ class VoiceAssistant:
         # If not in an active session, only allow transitions from IDLE
         if not self.session_active and old_state != SessionState.IDLE:
             self.logger.debug(f"Invalid transition from {old_state.value} to {new_state.value} - session not active")
-            print(f"Invalid state transition: {old_state.value} -> {new_state.value}")
             return False
         
         # Define valid transitions
@@ -221,7 +220,6 @@ class VoiceAssistant:
         
         if not is_valid:
             self.logger.debug(f"Invalid transition from {old_state.value} to {new_state.value}. Allowed: {[s.value for s in allowed_transitions]}")
-            print(f"Invalid state transition: {old_state.value} -> {new_state.value}")
         
         return is_valid
     
@@ -548,36 +546,36 @@ class VoiceAssistant:
             # Setup OpenAI event handlers
             self._setup_openai_handlers()
             
-            print("DEBUG: About to connect to OpenAI", flush=True)
+            self.logger.debug("About to connect to OpenAI")
             # Connect to OpenAI
             success = await self.openai_client.connect()
             if not success:
                 raise RuntimeError("Failed to connect to OpenAI Realtime API")
-            print("DEBUG: OpenAI connection successful", flush=True)
+            self.logger.debug("OpenAI connection successful")
         
-        print("DEBUG: About to initialize audio components", flush=True)
+        self.logger.debug("About to initialize audio components")
         # Initialize audio components
         self.logger.info("Initializing audio components...")
         self.audio_capture = AudioCapture(self.config.audio)
         self.audio_playback = AudioPlayback(self.config.audio)
         
-        print("DEBUG: Starting audio capture", flush=True)
+        self.logger.debug("Starting audio capture")
         await self.audio_capture.start()
-        print("DEBUG: Starting audio playback", flush=True)
+        self.logger.debug("Starting audio playback")
         await self.audio_playback.start()
-        print("DEBUG: Audio components started", flush=True)
+        self.logger.debug("Audio components started")
         
         # Setup audio completion callback
         self.audio_playback.add_completion_callback(self._on_audio_playback_complete)
         
         # Initialize wake word detector
         if self.config.wake_word.enabled:
-            print("DEBUG: Wake word enabled, creating detector", flush=True)
+            self.logger.debug("Wake word enabled, creating detector")
             self.logger.info("Initializing wake word detector...")
             self.wake_word_detector = PorcupineDetector(self.config.wake_word)
-            print("DEBUG: About to start wake word detector", flush=True)
+            self.logger.debug("About to start wake word detector")
             await self.wake_word_detector.start()
-            print("DEBUG: Wake word detector started", flush=True)
+            self.logger.debug("Wake word detector started")
             
             # Setup wake word detection callback
             self.wake_word_detector.add_detection_callback(self._on_wake_word_detected)
@@ -1946,16 +1944,7 @@ class VoiceAssistant:
     
     def _on_wake_word_detected(self, model_name: str, confidence: float) -> None:
         """Handle wake word detection"""
-        # ENHANCED: Add prominent visual banner
-        print("\n" + "="*70)
-        print("[MIC]  WAKE WORD DETECTED!  [MIC]".center(70))
-        print("="*70)
-        print(f"Wake Word: {model_name}".center(70))
-        print(f"Confidence: {confidence:.6f}".center(70))
-        print("="*70)
-        print()
-        
-        self.logger.info(f"Wake word '{model_name}' detected with confidence {confidence:.6f}")
+        self.logger.info(f"Wake word detected: {model_name}")
         
         # Increment wake word detection counter
         if not hasattr(self, '_wake_word_detection_count'):
@@ -2056,6 +2045,16 @@ async def main():
         help="Override log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"
     )
     parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose output (sets console log level to DEBUG)"
+    )
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        help="Quiet mode (only show errors)"
+    )
+    parser.add_argument(
         "--daemon",
         action="store_true",
         help="Run as daemon (no console output)"
@@ -2081,6 +2080,13 @@ async def main():
         if args.log_level:
             config.system.log_level = args.log_level
         
+        # Handle verbose/quiet flags
+        console_level = config.system.console_log_level
+        if args.verbose:
+            console_level = "DEBUG"
+        elif args.quiet:
+            console_level = "ERROR"
+        
         # Override daemon mode if specified
         if args.daemon:
             config.system.daemon = True
@@ -2093,8 +2099,11 @@ async def main():
         # Setup logging
         logger = setup_logging(
             level=config.system.log_level,
-            log_file=config.system.log_file,
-            console=not config.system.daemon
+            log_file=config.system.log_file if config.system.log_to_file else None,
+            console=not config.system.daemon,
+            console_level=console_level,
+            max_bytes=config.system.log_max_size_mb * 1024 * 1024,
+            backup_count=config.system.log_backup_count
         )
         
         # Load personality
@@ -2110,15 +2119,15 @@ async def main():
         logger.info(f"HA URL: {config.home_assistant.url}")
         logger.info(f"Assistant Name: {personality.backstory.name}")
         
-        print("DEBUG: About to create VoiceAssistant instance", flush=True)
+        logger.debug("About to create VoiceAssistant instance")
         # Create and start assistant
         assistant = VoiceAssistant(config, personality, skip_ha_check=args.skip_ha_check)
         
-        print("DEBUG: About to setup signal handlers", flush=True)
+        logger.debug("About to setup signal handlers")
         # Setup signal handlers
         setup_signal_handlers(assistant)
         
-        print("DEBUG: About to start assistant", flush=True)
+        logger.debug("About to start assistant")
         # Start the assistant
         await assistant.start()
         

@@ -1,6 +1,6 @@
 # Home Assistant Realtime Voice Assistant
 
-![Version](https://img.shields.io/badge/version-0.4.0--beta-blue)
+![Version](https://img.shields.io/badge/version-0.5.0--beta-blue)
 ![Status](https://img.shields.io/badge/status-beta-yellow)
 ![Python](https://img.shields.io/badge/python-3.9+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -109,6 +109,7 @@ wake_word:
 The assistant uses Picovoice Porcupine for accurate wake word detection. Built-in keywords include:
 - "picovoice" (default)
 - "alexa", "computer", "jarvis"
+- Custom wake words via .ppn files from Picovoice Console
 - And more!
 
 See the [Wake Word Setup Guide](docs/WAKE_WORD_SETUP.md) for detailed configuration.
@@ -125,8 +126,11 @@ audio:
 
 See the [Audio Setup Guide](docs/AUDIO_SETUP.md) for optimal configuration.
 
-## What's New in v0.4.0-beta
+## What's New in v0.5.0-beta
 
+- 🎯 **Improved Logging System** - Clean, minimal console output with separate file logging
+- 🎮 **Console Output Control** - New `--verbose` and `--quiet` flags for output customization
+- 📊 **Smart Formatting** - Contextual prefixes (✓, ●, ►, ✗, ⚠) for better readability
 - 🎤 **Custom Wake Words** - Create your own wake words like "Jarvis" with Picovoice Console
 - 🛡️ **Robust Error Handling** - Graceful failures with helpful troubleshooting for connection issues
 - 🔄 **Connection Retry Logic** - Automatic retry with exponential backoff for transient failures
@@ -134,6 +138,51 @@ See the [Audio Setup Guide](docs/AUDIO_SETUP.md) for optimal configuration.
 - 🔧 **Improved Diagnostics** - New connection testing tools and detailed error messages
 
 See [CHANGELOG.md](CHANGELOG.md) for complete details.
+
+## Logging & Output Control
+
+The assistant now features a clean, minimal console output by default:
+
+```bash
+# Normal operation (clean output)
+python src/main.py
+
+# Verbose mode (includes debug information)
+python src/main.py --verbose
+# or
+python src/main.py -v
+
+# Quiet mode (errors only)
+python src/main.py --quiet
+# or
+python src/main.py -q
+
+# Custom log level
+python src/main.py --log-level DEBUG
+```
+
+**Console Output Examples:**
+```
+✓ Home Assistant Voice Assistant v0.5.0-beta
+✓ Connected to Home Assistant 2024.1.0
+✓ Listening for wake word 'picovoice'
+
+► Wake word detected: picovoice
+● Listening...
+● Processing...
+● Responding...
+✓ Ready
+```
+
+**Logging Configuration** (in `config.yaml`):
+```yaml
+system:
+  log_level: "INFO"         # File logging level
+  console_log_level: "INFO"  # Console output level
+  log_to_file: true          # Enable file logging
+  log_max_size_mb: 10        # Max log file size
+  log_backup_count: 3        # Number of rotated files
+```
 
 ### Testing & Validation
 
@@ -156,7 +205,7 @@ python examples/test_ha_connection.py
 python examples/test_openai_connection.py
 
 # Run the full assistant
-python src/main.py --log-level DEBUG
+python src/main.py
 ```
 
 **Convenient Test Runner**: Use the provided script to run tests easily:

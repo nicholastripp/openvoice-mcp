@@ -87,8 +87,12 @@ session:
   
 # System Configuration
 system:
-  log_level: "INFO"              # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  log_level: "INFO"              # File logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  console_log_level: "INFO"      # Console output level (can be different from file)
   log_file: "logs/assistant.log" # Log file path
+  log_to_file: true              # Enable/disable file logging
+  log_max_size_mb: 10            # Maximum log file size before rotation
+  log_backup_count: 3            # Number of rotated log files to keep
   led_gpio: null                 # GPIO pin for status LED (optional)
   daemon: false                  # Run as daemon process
   

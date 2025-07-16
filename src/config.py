@@ -103,6 +103,10 @@ class SystemConfig:
     """System configuration"""
     log_level: str = "INFO"
     log_file: str = "logs/assistant.log"
+    console_log_level: str = "INFO"
+    log_to_file: bool = True
+    log_max_size_mb: int = 10
+    log_backup_count: int = 3
     led_gpio: Optional[int] = None
     daemon: bool = False
 

@@ -103,15 +103,6 @@ class HomeAssistantConversationClient:
                 result["connected"] = True
                 result["ha_version"] = api_status.get("version", "Unknown")
                 
-                # Step 3: Test conversation agent availability
-                try:
-                    agents = await self.rest_client.get("/api/conversation/agents")
-                    result["conversation_agents"] = len(agents) if isinstance(agents, list) else 0
-                    self.logger.debug(f"Found {result['conversation_agents']} conversation agents")
-                except Exception as e:
-                    self.logger.warning(f"Could not check conversation agents: {e}")
-                    result["conversation_agents"] = "Unknown"
-                
                 return result
             else:
                 raise ValueError("Invalid API response - may not be Home Assistant")

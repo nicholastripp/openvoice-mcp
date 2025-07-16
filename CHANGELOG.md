@@ -5,6 +5,23 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta] - 2025-01-16
+
+### Added
+- **Improved Logging System** - Separate console and file log levels for better user experience
+- **Console Output Control** - New CLI flags: `--verbose` for debug output, `--quiet` for errors only
+- **Smart Console Formatting** - Clean, minimal output with contextual prefixes (✓, ●, ►, ✗, ⚠)
+- **Log Rotation** - Configurable log file size limits and automatic rotation
+- **Memory Bank Documentation** - Comprehensive project state tracking in `.claude/memory/`
+
+### Changed
+- **Cleaner Default Output** - Replaced verbose debug prints with concise status messages
+- **Logging Configuration** - Added `console_log_level`, `log_to_file`, `log_max_size_mb`, `log_backup_count` options
+- **Debug Information** - All technical details now go to log file, shown on console only with --verbose
+
+### Fixed
+- **Invalid API Call** - Removed call to non-existent `/api/conversation/agents` endpoint
+
 ## [0.4.0-beta] - 2025-01-16
 
 ### Added

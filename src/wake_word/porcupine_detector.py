@@ -192,7 +192,7 @@ class PorcupineDetector:
             sensitivity = max(0.0, min(1.0, sensitivity))
         
         # Log the actual sensitivity being used
-        print(f"DEBUG: Using sensitivity value: {sensitivity} (original: {self.config.sensitivity})", flush=True)
+        self.logger.debug(f"Using sensitivity value: {sensitivity} (original: {self.config.sensitivity})")
         
         # Use the same sensitivity for all keywords or keyword paths
         if self.keyword_paths:
@@ -202,7 +202,7 @@ class PorcupineDetector:
     
     async def start(self) -> None:
         """Start wake word detection"""
-        print("DEBUG: PorcupineDetector.start() called", flush=True)
+        self.logger.debug("PorcupineDetector.start() called")
         if self.is_running:
             self.logger.warning("Wake word detector already running")
             return
@@ -210,7 +210,6 @@ class PorcupineDetector:
         # Clean up any existing Porcupine instance before starting
         if hasattr(self, 'porcupine') and self.porcupine:
             self.logger.warning("Found existing Porcupine instance - cleaning up before restart")
-            print("DEBUG: Cleaning up existing Porcupine instance", flush=True)
             try:
                 self.porcupine.delete()
             except Exception as e:
@@ -231,27 +230,27 @@ class PorcupineDetector:
             else:
                 self.logger.info(f"Keywords to detect: {self.keywords}")
             self.logger.info(f"Sensitivities: {self.sensitivities}")
-            print(f"DEBUG: self.porcupine status before init: {self.porcupine is not None}", flush=True)
+            self.logger.debug(f"self.porcupine status before init: {self.porcupine is not None}")
             
             # Initialize Porcupine only if it doesn't exist
             if not self.porcupine:
                 self.logger.info("Creating Porcupine instance (this may take a moment)...")
-                print("DEBUG: Starting Porcupine initialization", flush=True)
+                self.logger.debug("Starting Porcupine initialization")
                 
                 # Create Porcupine in a separate thread to allow timeout
                 loop = asyncio.get_event_loop()
                 
                 def create_porcupine():
-                    print("DEBUG: Inside create_porcupine()", flush=True)
+                    self.logger.debug("Inside create_porcupine()")
                     if self.keyword_paths:
-                        print(f"DEBUG: Creating Porcupine with custom keyword paths: {self.keyword_paths}", flush=True)
+                        self.logger.debug(f"Creating Porcupine with custom keyword paths: {self.keyword_paths}")
                         return pvporcupine.create(
                             access_key=self.access_key,
                             keyword_paths=self.keyword_paths,
                             sensitivities=self.sensitivities
                         )
                     else:
-                        print(f"DEBUG: Creating Porcupine with built-in keywords: {self.keywords}", flush=True)
+                        self.logger.debug(f"Creating Porcupine with built-in keywords: {self.keywords}")
                         return pvporcupine.create(
                             access_key=self.access_key,
                             keywords=self.keywords,
@@ -263,9 +262,9 @@ class PorcupineDetector:
                     future = loop.run_in_executor(executor, create_porcupine)
                     try:
                         # Wait up to 30 seconds for initialization
-                        print("DEBUG: Waiting for Porcupine creation...", flush=True)
+                        self.logger.debug("Waiting for Porcupine creation...")
                         self.porcupine = await asyncio.wait_for(future, timeout=30.0)
-                        print("DEBUG: Porcupine creation completed", flush=True)
+                        self.logger.debug("Porcupine creation completed")
                     except asyncio.TimeoutError:
                         self.logger.error("Porcupine initialization timed out after 30 seconds")
                         self.logger.error("This may indicate:")
@@ -275,7 +274,7 @@ class PorcupineDetector:
                         raise TimeoutError("Porcupine initialization timed out")
             else:
                 self.logger.warning("Porcupine already initialized - skipping creation")
-                print("DEBUG: Skipping Porcupine creation - already exists", flush=True)
+                self.logger.debug("Skipping Porcupine creation - already exists")
             
             # Log successful initialization
             self.logger.info("Porcupine initialized successfully!")
@@ -284,14 +283,14 @@ class PorcupineDetector:
             self.logger.info(f"Version: {self.porcupine.version}")
             
             # Model verification logging
-            print("DEBUG: Model verification:", flush=True)
-            print(f"  Config model name: {self.config.model}", flush=True)
+            self.logger.debug("Model verification:")
+            self.logger.debug(f"  Config model name: {self.config.model}")
             if self.keyword_paths:
-                print(f"  Custom keyword paths: {self.keyword_paths}", flush=True)
+                self.logger.debug(f"  Custom keyword paths: {self.keyword_paths}")
             else:
-                print(f"  Mapped keywords: {self.keywords}", flush=True)
-            print(f"  Sensitivities: {self.sensitivities}", flush=True)
-            print(f"  Audio gain: {self.audio_gain}", flush=True)
+                self.logger.debug(f"  Mapped keywords: {self.keywords}")
+            self.logger.debug(f"  Sensitivities: {self.sensitivities}")
+            self.logger.debug(f"  Audio gain: {self.audio_gain}")
             
             # Start detection thread
             self.stop_event.clear()
@@ -414,15 +413,15 @@ class PorcupineDetector:
                     self._clip_stats['soft_limited_frames'] += 1
                     if self._clip_stats['soft_limited_frames'] % 10 == 0:
                         limit_percentage = (self._clip_stats['soft_limited_frames'] / self._clip_stats['total_frames']) * 100
-                        print(f"INFO: Soft limiting active - {self._clip_stats['soft_limited_frames']} frames limited ({limit_percentage:.1f}%) with gain {self.audio_gain}", flush=True)
+                        self.logger.info(f"Soft limiting active - {self._clip_stats['soft_limited_frames']} frames limited ({limit_percentage:.1f}%) with gain {self.audio_gain}")
                 
                 # Log stats periodically
                 if self._process_counter % 50 == 0:
                     if self._clip_stats['soft_limited_frames'] > 0:
                         limit_percentage = (self._clip_stats['soft_limited_frames'] / self._clip_stats['total_frames']) * 100
-                        print(f"DEBUG: Audio stats - Max: {max_val:.3f}, Soft limited: {limit_percentage:.1f}% ({self._clip_stats['soft_limited_frames']}/{self._clip_stats['total_frames']} frames)", flush=True)
+                        self.logger.debug(f"Audio stats - Max: {max_val:.3f}, Soft limited: {limit_percentage:.1f}% ({self._clip_stats['soft_limited_frames']}/{self._clip_stats['total_frames']} frames)")
                     else:
-                        print(f"DEBUG: Audio stats - Max: {max_val:.3f}, No limiting needed (gain={self.audio_gain})", flush=True)
+                        self.logger.debug(f"Audio stats - Max: {max_val:.3f}, No limiting needed (gain={self.audio_gain})")
                 
                 # Final safety clip (should rarely be needed with soft limiting)
                 audio_float = np.clip(audio_float, -32768, 32767)
@@ -505,9 +504,9 @@ class PorcupineDetector:
         """Background thread for wake word detection"""
         self.logger.debug("Porcupine detection thread started")
         if self.keyword_paths:
-            print(f"DEBUG: Porcupine detection loop started - listening for custom wake words from: {self.keyword_paths}", flush=True)
+            self.logger.debug(f"Porcupine detection loop started - listening for custom wake words from: {self.keyword_paths}")
         else:
-            print(f"DEBUG: Porcupine detection loop started - listening for: {self.keywords}", flush=True)
+            self.logger.debug(f"Porcupine detection loop started - listening for: {self.keywords}")
         
         frames_processed = 0
         
@@ -523,28 +522,27 @@ class PorcupineDetector:
                 
                 # Log processing activity
                 if frames_processed == 1:
-                    print(f"DEBUG: First frame received in detection loop, shape: {audio_frame.shape}, dtype: {audio_frame.dtype}", flush=True)
+                    self.logger.debug(f"First frame received in detection loop, shape: {audio_frame.shape}, dtype: {audio_frame.dtype}")
                 elif frames_processed % 100 == 0:
                     audio_level = np.max(np.abs(audio_frame)) if len(audio_frame) > 0 else 0
-                    print(f"DEBUG: Detection loop processed {frames_processed} frames, current level: {audio_level}, queue: {self.audio_queue.qsize()}", flush=True)
+                    self.logger.debug(f"Detection loop processed {frames_processed} frames, current level: {audio_level}, queue: {self.audio_queue.qsize()}")
                 
                 # Process with Porcupine
                 # Debug: Check frame type
                 if frames_processed == 1:
-                    print(f"DEBUG: Frame type: {type(audio_frame)}, is numpy: {type(audio_frame).__module__ == 'numpy'}", flush=True)
+                    self.logger.debug(f"Frame type: {type(audio_frame)}, is numpy: {type(audio_frame).__module__ == 'numpy'}")
                     if hasattr(audio_frame, 'dtype'):
-                        print(f"DEBUG: Frame dtype: {audio_frame.dtype}", flush=True)
+                        self.logger.debug(f"Frame dtype: {audio_frame.dtype}")
                 
                 # Ensure frame is a list of integers (Porcupine requirement)
                 if isinstance(audio_frame, np.ndarray):
                     audio_frame = audio_frame.tolist()
                     if frames_processed == 1:
-                        print(f"DEBUG: Converted numpy array to list, length: {len(audio_frame)}", flush=True)
+                        self.logger.debug(f"Converted numpy array to list, length: {len(audio_frame)}")
                 
                 # Validate frame size
                 if len(audio_frame) != self.frame_length:
                     self.logger.error(f"Frame size mismatch! Expected {self.frame_length}, got {len(audio_frame)}")
-                    print(f"[ERROR] Frame size mismatch! Expected {self.frame_length}, got {len(audio_frame)} - skipping frame", flush=True)
                     continue
                 
                 # Log frame details periodically for debugging
@@ -552,19 +550,18 @@ class PorcupineDetector:
                     # Check audio data integrity
                     frame_array = np.array(audio_frame, dtype=np.int16)
                     frame_max = np.max(np.abs(frame_array)) if len(frame_array) > 0 else 0
-                    print(f"DEBUG: Frame #{frames_processed} - size: {len(audio_frame)}, max amplitude: {frame_max}", flush=True)
+                    self.logger.debug(f"Frame #{frames_processed} - size: {len(audio_frame)}, max amplitude: {frame_max}")
                 
                 # Process with Porcupine
                 try:
                     keyword_index = self.porcupine.process(audio_frame)
                 except Exception as e:
                     self.logger.error(f"Porcupine process error: {e}")
-                    print(f"[ERROR] Porcupine process failed: {e}", flush=True)
                     continue
                 
                 # Log detection result periodically
                 if frames_processed % 50 == 0:
-                    print(f"DEBUG: Porcupine process result: {keyword_index} (>= 0 means detection)", flush=True)
+                    self.logger.debug(f"Porcupine process result: {keyword_index} (>= 0 means detection)")
                 
                 # Check for detection
                 if keyword_index >= 0:
@@ -576,14 +573,8 @@ class PorcupineDetector:
                     else:
                         keyword = self.keywords[keyword_index] if keyword_index < len(self.keywords) else 'unknown'
                     
-                    # PROMINENT DETECTION LOGGING
-                    print("\n" + "="*70, flush=True)
-                    print("[TARGET] PORCUPINE WAKE WORD DETECTED! [TARGET]".center(70), flush=True)
-                    print("="*70, flush=True)
-                    print(f"Keyword: {keyword}".center(70), flush=True)
-                    print(f"Index: {keyword_index}".center(70), flush=True)
-                    print(f"Frame: {frames_processed}".center(70), flush=True)
-                    print("="*70 + "\n", flush=True)
+                    # Log wake word detection
+                    self.logger.info(f"Porcupine wake word detected: {keyword} (index: {keyword_index})")
                     
                     current_time = time.time()
                     time_since_last = current_time - self.last_detection_time
@@ -592,22 +583,19 @@ class PorcupineDetector:
                     if time_since_last >= self.detection_cooldown:
                         sensitivity = self.sensitivities[keyword_index]
                         
-                        self.logger.info(f"Wake word detected: {keyword} (index: {keyword_index})")
-                        print(f"[OK] WAKE WORD ACTIVE: '{keyword}' (sensitivity: {sensitivity}, cooldown OK: {time_since_last:.2f}s)", flush=True)
+                        self.logger.info(f"Wake word active: {keyword}")
                         self.last_detection_time = current_time
                         
                         # Call detection callbacks
                         # Porcupine doesn't provide confidence scores, so we use sensitivity as a proxy
-                        print(f"[ANNOUNCE] Triggering {len(self.detection_callbacks)} detection callbacks...", flush=True)
+                        self.logger.debug(f"Triggering {len(self.detection_callbacks)} detection callbacks")
                         for callback in self.detection_callbacks:
                             try:
                                 callback(keyword, sensitivity)
-                                print(f"[OK] Callback executed successfully", flush=True)
+                                self.logger.debug("Callback executed successfully")
                             except Exception as e:
                                 self.logger.error(f"Error in detection callback: {e}")
-                                print(f"[ERROR] Callback error: {e}", flush=True)
                     else:
-                        print(f"[PAUSE] COOLDOWN ACTIVE: Wake word detected but waiting ({time_since_last:.1f}s < {self.detection_cooldown}s)", flush=True)
                         self.logger.debug(f"Wake word detected but in cooldown period ({time_since_last:.1f}s < {self.detection_cooldown}s)")
                 
                 # Log progress periodically
