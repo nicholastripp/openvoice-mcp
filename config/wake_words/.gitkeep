@@ -1,0 +1,7 @@
+# This directory is for custom Picovoice Porcupine wake word files (.ppn)
+# 
+# To use custom wake words:
+# 1. Create your wake word at https://console.picovoice.ai/
+# 2. Download the .ppn file
+# 3. Place it in this directory
+# 4. Set model to the filename in config.yaml (e.g., model: "my_wake_word.ppn")

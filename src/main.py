@@ -41,10 +41,11 @@ class SessionState(Enum):
 class VoiceAssistant:
     """Main voice assistant application"""
     
-    def __init__(self, config: AppConfig, personality: PersonalityProfile):
+    def __init__(self, config: AppConfig, personality: PersonalityProfile, skip_ha_check: bool = False):
         print("DEBUG: VoiceAssistant.__init__() called", flush=True)
         self.config = config
         self.personality = personality
+        self.skip_ha_check = skip_ha_check
         self.logger = get_logger("VoiceAssistant")
         self.running = False
         self._shutdown_event = asyncio.Event()
@@ -228,6 +229,11 @@ class VoiceAssistant:
         """Generate personality prompt with device information"""
         # Start with base personality
         base_prompt = self.personality.generate_prompt()
+        
+        # If Home Assistant is not connected, return base prompt
+        if not self.ha_client:
+            self.logger.warning("Home Assistant not connected - using base personality without device awareness")
+            return base_prompt
         
         try:
             # Check if we have cached device data
@@ -455,14 +461,65 @@ class VoiceAssistant:
             self.openai_client = None
         else:
             print("DEBUG: About to initialize Home Assistant client", flush=True)
-            # Initialize Home Assistant client
+            # Initialize Home Assistant client with graceful failure handling
             self.logger.info("Initializing Home Assistant client...")
-            self.ha_client = HomeAssistantConversationClient(self.config.home_assistant)
-            await self.ha_client.start()
-            print("DEBUG: Home Assistant client initialized", flush=True)
-            
-            # Initialize function bridge
-            self.function_bridge = FunctionCallBridge(self.ha_client)
+            try:
+                self.ha_client = HomeAssistantConversationClient(self.config.home_assistant)
+                await self.ha_client.start()
+                print("DEBUG: Home Assistant client initialized", flush=True)
+                
+                # Initialize function bridge
+                self.function_bridge = FunctionCallBridge(self.ha_client)
+                
+            except ConnectionError as e:
+                # User-friendly error message already formatted by conversation client
+                self.logger.error("Home Assistant connection failed")
+                print("\n" + "="*70)
+                print("HOME ASSISTANT CONNECTION FAILED")
+                print("="*70)
+                print(str(e))
+                print("="*70 + "\n")
+                
+                if self.skip_ha_check:
+                    print("WARNING: --skip-ha-check flag is set, continuing without Home Assistant")
+                    print("Home Assistant functionality will not be available")
+                    self.ha_client = None
+                    self.function_bridge = None
+                else:
+                    # Check if user wants to continue in wake word only mode
+                    if self.config.wake_word.enabled:
+                        print("Wake word detection is enabled. You can:")
+                        print("  1. Fix the configuration and restart")
+                        print("  2. Run with --test-mode flag for wake word only testing")
+                        print("  3. Run with --skip-ha-check to continue without HA (limited functionality)")
+                        print("  4. Set wake_word.test_mode: true in config.yaml")
+                    else:
+                        print("\nPlease fix the configuration and try again.")
+                        print("Or run with --skip-ha-check to continue without Home Assistant (limited functionality)")
+                    
+                    raise SystemExit(1)
+                
+            except Exception as e:
+                # Unexpected error - provide generic guidance
+                self.logger.error(f"Unexpected error initializing Home Assistant: {e}")
+                print("\n" + "="*70)
+                print("UNEXPECTED ERROR")
+                print("="*70)
+                print(f"Failed to initialize Home Assistant client: {e}")
+                print("\nPlease check:")
+                print("  1. Your config.yaml file is properly formatted")
+                print("  2. Home Assistant is running and accessible")
+                print("  3. Your access token is valid")
+                print("="*70 + "\n")
+                
+                if self.skip_ha_check:
+                    print("WARNING: --skip-ha-check flag is set, continuing without Home Assistant")
+                    print("Home Assistant functionality will not be available")
+                    self.ha_client = None
+                    self.function_bridge = None
+                else:
+                    print("\nOr run with --skip-ha-check to continue without Home Assistant (limited functionality)")
+                    raise SystemExit(1)
         
         if not wake_word_only_mode:
             print("DEBUG: About to initialize OpenAI client", flush=True)
@@ -472,8 +529,8 @@ class VoiceAssistant:
             self.openai_client = OpenAIRealtimeClient(self.config.openai, personality_prompt)
             print("DEBUG: OpenAI client created", flush=True)
         
-        if not wake_word_only_mode:
-            # Register function handlers
+        if not wake_word_only_mode and self.function_bridge:
+            # Register function handlers (only if HA is connected)
             for func_def in self.function_bridge.get_function_definitions():
                 # Create a wrapper function that calls the bridge with the correct arguments
                 def create_wrapper(func_name):
@@ -2008,6 +2065,11 @@ async def main():
         action="store_true",
         help="Run in wake word test mode (no OpenAI/HA connection)"
     )
+    parser.add_argument(
+        "--skip-ha-check",
+        action="store_true",
+        help="Skip Home Assistant connection check (for testing only)"
+    )
     
     args = parser.parse_args()
     
@@ -2050,7 +2112,7 @@ async def main():
         
         print("DEBUG: About to create VoiceAssistant instance", flush=True)
         # Create and start assistant
-        assistant = VoiceAssistant(config, personality)
+        assistant = VoiceAssistant(config, personality, skip_ha_check=args.skip_ha_check)
         
         print("DEBUG: About to setup signal handlers", flush=True)
         # Setup signal handlers

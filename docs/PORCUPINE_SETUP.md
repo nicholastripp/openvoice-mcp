@@ -96,7 +96,12 @@ python tools/test_porcupine.py
 - This happens when you specify a wake word that isn't built-in
 - Check the list above for valid wake words
 - Common mistake: 'jarvis' is NOT a built-in wake word
-- For custom wake words, you need to create them at console.picovoice.ai
+- For custom wake words, see the Custom Wake Words section below
+
+### "Custom wake word file not found" Error
+- Make sure your `.ppn` file is in `config/wake_words/`
+- Check that the filename in config.yaml matches exactly (case-sensitive)
+- Ensure the file has the `.ppn` extension
 
 ### Audio Not Detected
 - Porcupine requires 16kHz audio at 512 samples per frame
@@ -109,14 +114,45 @@ python tools/test_porcupine.py
 
 ## Custom Wake Words (Advanced)
 
-The free tier allows training custom wake words:
-1. Log into Picovoice Console
-2. Click "Create Wake Word"
-3. Enter your phrase and select "Raspberry Pi" as platform
-4. Download the model file
-5. Use the custom model path in your config
+The free tier allows training custom wake words. Here's how to use them:
 
-Note: Custom models on free tier expire after 30 days and need regeneration.
+### Creating Custom Wake Words
+
+1. Log into [Picovoice Console](https://console.picovoice.ai/)
+2. Click "Create Wake Word" 
+3. Enter your phrase (e.g., "Hey Assistant", "Computer", etc.)
+4. Select "Raspberry Pi" as the target platform
+5. Click "Train" and wait for the model to be generated
+6. Download the `.ppn` file from the email or console
+
+### Using Custom Wake Words
+
+1. Place the downloaded `.ppn` file in the `config/wake_words/` directory
+2. Update your `config.yaml`:
+
+```yaml
+wake_word:
+  enabled: true
+  model: "my_custom_wake.ppn"  # Use the filename of your .ppn file
+  sensitivity: 0.5
+```
+
+### Examples
+
+```yaml
+# Custom wake word examples
+model: "hey_assistant.ppn"     # Custom "Hey Assistant" wake word
+model: "jarvis.ppn"           # Custom "Jarvis" wake word  
+model: "smart_home.ppn"       # Custom "Smart Home" wake word
+```
+
+### Important Notes
+
+- Custom wake word files must have the `.ppn` extension
+- Files must be placed in `config/wake_words/` directory
+- The free tier models expire after 30 days and need regeneration
+- You can create up to 3 custom wake words on the free tier
+- For production use, consider the paid tier for permanent models
 
 ## Comparison with OpenWakeWord
 

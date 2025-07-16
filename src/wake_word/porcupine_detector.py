@@ -88,7 +88,14 @@ class PorcupineDetector:
         
         # Detection parameters - validate wake word early
         try:
-            self.keywords = self._get_keywords()
+            # Get keywords or keyword paths
+            result = self._get_keywords()
+            if isinstance(result, tuple):
+                self.keywords, self.keyword_paths = result
+            else:
+                self.keywords = result
+                self.keyword_paths = None
+            
             self.sensitivities = self._get_sensitivities()
         except ValueError as e:
             self.logger.error(f"Wake word configuration error: {e}")
@@ -114,11 +121,37 @@ class PorcupineDetector:
             except Exception:
                 pass  # Ignore errors during cleanup
     
-    def _get_keywords(self) -> List[str]:
-        """Get list of keywords based on config"""
+    def _get_keywords(self):
+        """Get list of keywords or keyword paths based on config"""
         model_name = self.config.model
         
-        # Map config name to Porcupine keyword
+        # Check if model is a custom wake word file (.ppn)
+        if model_name.endswith('.ppn'):
+            # Build path to wake word file in config/wake_words directory
+            wake_words_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'wake_words')
+            wake_words_dir = os.path.abspath(wake_words_dir)
+            
+            # Ensure wake_words directory exists
+            os.makedirs(wake_words_dir, exist_ok=True)
+            
+            # Build full path to the .ppn file
+            keyword_path = os.path.join(wake_words_dir, model_name)
+            
+            if not os.path.exists(keyword_path):
+                raise ValueError(
+                    f"Custom wake word file not found: {model_name}\n"
+                    f"Expected location: config/wake_words/{model_name}\n"
+                    f"Please:\n"
+                    f"  1. Create your wake word at https://console.picovoice.ai/\n"
+                    f"  2. Download the .ppn file\n"
+                    f"  3. Place it in config/wake_words/{model_name}"
+                )
+            
+            self.logger.info(f"Using custom wake word from: {keyword_path}")
+            # Return tuple: (keywords=None, keyword_paths=[path])
+            return (None, [keyword_path])
+        
+        # Handle built-in keywords
         if model_name in self.KEYWORD_MAPPING:
             keyword = self.KEYWORD_MAPPING[model_name]
             self.logger.info(f"Using wake word '{keyword}' (mapped from config '{model_name}')")
@@ -135,14 +168,18 @@ class PorcupineDetector:
             self.logger.error(error_msg)
             self.logger.error(f"Available config names: {', '.join(available_configs)}")
             self.logger.error(f"Available direct keywords: {', '.join(available_direct)}")
-            self.logger.error("For custom wake words like 'jarvis', create them at https://console.picovoice.ai/")
+            self.logger.error("For custom wake words, create a .ppn file at https://console.picovoice.ai/")
             
             raise ValueError(
                 f"{error_msg}\n"
                 f"Available options:\n"
                 f"  Config names: {', '.join(available_configs)}\n"
                 f"  Direct keywords: {', '.join(available_direct)}\n"
-                f"  For custom wake words, visit https://console.picovoice.ai/"
+                f"  For custom wake words:\n"
+                f"    1. Create at https://console.picovoice.ai/\n"
+                f"    2. Download the .ppn file\n"
+                f"    3. Place in config/wake_words/\n"
+                f"    4. Set model to the filename (e.g., 'my_wake_word.ppn')"
             )
     
     def _get_sensitivities(self) -> List[float]:
@@ -157,8 +194,11 @@ class PorcupineDetector:
         # Log the actual sensitivity being used
         print(f"DEBUG: Using sensitivity value: {sensitivity} (original: {self.config.sensitivity})", flush=True)
         
-        # Use the same sensitivity for all keywords
-        return [sensitivity] * len(self.keywords)
+        # Use the same sensitivity for all keywords or keyword paths
+        if self.keyword_paths:
+            return [sensitivity] * len(self.keyword_paths)
+        else:
+            return [sensitivity] * len(self.keywords)
     
     async def start(self) -> None:
         """Start wake word detection"""
@@ -186,7 +226,10 @@ class PorcupineDetector:
             self.logger.info("Starting Porcupine wake word detector...")
             self.logger.info(f"Access key configured: {'Yes' if self.access_key else 'No'}")
             self.logger.info(f"Access key length: {len(self.access_key) if self.access_key else 0}")
-            self.logger.info(f"Keywords to detect: {self.keywords}")
+            if self.keyword_paths:
+                self.logger.info(f"Custom keyword paths: {self.keyword_paths}")
+            else:
+                self.logger.info(f"Keywords to detect: {self.keywords}")
             self.logger.info(f"Sensitivities: {self.sensitivities}")
             print(f"DEBUG: self.porcupine status before init: {self.porcupine is not None}", flush=True)
             
@@ -200,11 +243,20 @@ class PorcupineDetector:
                 
                 def create_porcupine():
                     print("DEBUG: Inside create_porcupine()", flush=True)
-                    return pvporcupine.create(
-                        access_key=self.access_key,
-                        keywords=self.keywords,
-                        sensitivities=self.sensitivities
-                    )
+                    if self.keyword_paths:
+                        print(f"DEBUG: Creating Porcupine with custom keyword paths: {self.keyword_paths}", flush=True)
+                        return pvporcupine.create(
+                            access_key=self.access_key,
+                            keyword_paths=self.keyword_paths,
+                            sensitivities=self.sensitivities
+                        )
+                    else:
+                        print(f"DEBUG: Creating Porcupine with built-in keywords: {self.keywords}", flush=True)
+                        return pvporcupine.create(
+                            access_key=self.access_key,
+                            keywords=self.keywords,
+                            sensitivities=self.sensitivities
+                        )
                 
                 # Use ThreadPoolExecutor to run blocking call with timeout
                 with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -234,7 +286,10 @@ class PorcupineDetector:
             # Model verification logging
             print("DEBUG: Model verification:", flush=True)
             print(f"  Config model name: {self.config.model}", flush=True)
-            print(f"  Mapped keywords: {self.keywords}", flush=True)
+            if self.keyword_paths:
+                print(f"  Custom keyword paths: {self.keyword_paths}", flush=True)
+            else:
+                print(f"  Mapped keywords: {self.keywords}", flush=True)
             print(f"  Sensitivities: {self.sensitivities}", flush=True)
             print(f"  Audio gain: {self.audio_gain}", flush=True)
             
@@ -449,7 +504,10 @@ class PorcupineDetector:
     def _detection_loop(self) -> None:
         """Background thread for wake word detection"""
         self.logger.debug("Porcupine detection thread started")
-        print(f"DEBUG: Porcupine detection loop started - listening for: {self.keywords}", flush=True)
+        if self.keyword_paths:
+            print(f"DEBUG: Porcupine detection loop started - listening for custom wake words from: {self.keyword_paths}", flush=True)
+        else:
+            print(f"DEBUG: Porcupine detection loop started - listening for: {self.keywords}", flush=True)
         
         frames_processed = 0
         
@@ -510,7 +568,13 @@ class PorcupineDetector:
                 
                 # Check for detection
                 if keyword_index >= 0:
-                    keyword = self.keywords[keyword_index] if keyword_index < len(self.keywords) else 'unknown'
+                    # Get the detected keyword name
+                    if self.keyword_paths:
+                        # For custom keywords, use the filename without .ppn extension
+                        keyword_path = self.keyword_paths[keyword_index] if keyword_index < len(self.keyword_paths) else 'unknown'
+                        keyword = os.path.basename(keyword_path).replace('.ppn', '')
+                    else:
+                        keyword = self.keywords[keyword_index] if keyword_index < len(self.keywords) else 'unknown'
                     
                     # PROMINENT DETECTION LOGGING
                     print("\n" + "="*70, flush=True)
@@ -526,7 +590,6 @@ class PorcupineDetector:
                     
                     # Check cooldown
                     if time_since_last >= self.detection_cooldown:
-                        keyword = self.keywords[keyword_index]
                         sensitivity = self.sensitivities[keyword_index]
                         
                         self.logger.info(f"Wake word detected: {keyword} (index: {keyword_index})")
@@ -572,15 +635,24 @@ class PorcupineDetector:
         Returns:
             Dictionary with model information
         """
-        return {
+        info = {
             'engine': 'porcupine',
-            'keywords': self.keywords,
             'sensitivities': self.sensitivities,
             'sample_rate': self.sample_rate,
             'frame_length': self.frame_length,
             'audio_buffer_size': len(self.audio_buffer) if hasattr(self, 'audio_buffer') else 0,
             'access_key_set': bool(self.access_key)
         }
+        
+        if self.keyword_paths:
+            info['keyword_paths'] = self.keyword_paths
+            info['keywords'] = [os.path.basename(p).replace('.ppn', '') for p in self.keyword_paths]
+            info['type'] = 'custom'
+        else:
+            info['keywords'] = self.keywords
+            info['type'] = 'built-in'
+            
+        return info
     
     def reset_audio_buffers(self) -> None:
         """

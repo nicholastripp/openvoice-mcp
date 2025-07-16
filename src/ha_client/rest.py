@@ -234,9 +234,22 @@ class HomeAssistantRestClient:
         """
         return await self._request("POST", "/api/config/core/check_config")
     
+    async def get(self, endpoint: str, **kwargs) -> Any:
+        """
+        Convenience method for GET requests
+        
+        Args:
+            endpoint: API endpoint
+            **kwargs: Additional arguments for the request
+            
+        Returns:
+            Response data
+        """
+        return await self._request("GET", endpoint, **kwargs)
+    
     async def _request(self, method: str, endpoint: str, **kwargs) -> Any:
         """
-        Make HTTP request to Home Assistant
+        Make HTTP request to Home Assistant with retry logic
         
         Args:
             method: HTTP method
@@ -255,29 +268,78 @@ class HomeAssistantRestClient:
             
         url = urljoin(self.base_url, endpoint)
         
-        try:
-            async with self.session.request(method, url, **kwargs) as response:
-                response.raise_for_status()
-                
-                # Handle different content types
-                content_type = response.headers.get('content-type', '')
-                
-                if 'application/json' in content_type:
-                    return await response.json()
-                elif 'text/' in content_type:
-                    return await response.text()
-                else:
-                    return await response.read()
+        # Retry configuration
+        max_retries = 3
+        base_delay = 1.0  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                async with self.session.request(method, url, **kwargs) as response:
+                    response.raise_for_status()
                     
-        except aiohttp.ClientResponseError as e:
-            self.logger.error(f"HTTP {e.status} error for {method} {endpoint}: {e.message}")
-            raise
-        except aiohttp.ClientError as e:
-            self.logger.error(f"Client error for {method} {endpoint}: {e}")
-            raise
-        except asyncio.TimeoutError:
-            self.logger.error(f"Timeout for {method} {endpoint}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error for {method} {endpoint}: {e}")
-            raise
+                    # Handle different content types
+                    content_type = response.headers.get('content-type', '')
+                    
+                    if 'application/json' in content_type:
+                        return await response.json()
+                    elif 'text/' in content_type:
+                        return await response.text()
+                    else:
+                        return await response.read()
+                        
+            except aiohttp.ClientResponseError as e:
+                # Don't retry on client errors (4xx), except for 429 (Too Many Requests)
+                if 400 <= e.status < 500 and e.status != 429:
+                    error_msg = f"HTTP {e.status} error for {method} {endpoint}"
+                    if e.status == 401:
+                        error_msg += "\n\nAuthentication failed. Your access token may be invalid or expired."
+                        error_msg += "\nPlease check your Home Assistant access token in config.yaml"
+                    elif e.status == 403:
+                        error_msg += "\n\nAccess forbidden. Your token may not have the required permissions."
+                    elif e.status == 404:
+                        error_msg += "\n\nEndpoint not found. This may indicate an incompatible Home Assistant version."
+                    
+                    self.logger.error(error_msg)
+                    raise
+                    
+                # Retry on server errors (5xx) and rate limiting
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    self.logger.warning(f"HTTP {e.status} error, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(delay)
+                else:
+                    self.logger.error(f"HTTP {e.status} error for {method} {endpoint} after {max_retries} attempts")
+                    raise
+                    
+            except aiohttp.ClientConnectorError as e:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    self.logger.warning(f"Connection error: {e}, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(delay)
+                else:
+                    error_msg = f"Failed to connect to Home Assistant at {self.base_url}"
+                    error_msg += f"\n\nConnection error: {e}"
+                    error_msg += "\n\nPossible causes:"
+                    error_msg += "\n  - Home Assistant is not running"
+                    error_msg += "\n  - Network/firewall is blocking the connection"
+                    error_msg += "\n  - Incorrect URL in config.yaml"
+                    
+                    self.logger.error(error_msg)
+                    raise
+                    
+            except asyncio.TimeoutError:
+                if attempt < max_retries - 1:
+                    self.logger.warning(f"Request timeout, retrying... (attempt {attempt + 1}/{max_retries})")
+                else:
+                    error_msg = f"Request to {endpoint} timed out after {self.config.timeout} seconds"
+                    error_msg += "\n\nThis may indicate:"
+                    error_msg += "\n  - Home Assistant is overloaded or unresponsive"
+                    error_msg += "\n  - Network latency issues"
+                    error_msg += "\n  - You may need to increase the timeout in config.yaml"
+                    
+                    self.logger.error(error_msg)
+                    raise
+                    
+            except Exception as e:
+                self.logger.error(f"Unexpected error for {method} {endpoint}: {e}")
+                raise

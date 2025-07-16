@@ -50,6 +50,18 @@ else
     echo -e "${YELLOW}  .env already exists${NC}"
 fi
 
+if [ ! -f "config/persona.ini" ]; then
+    if [ -f "config/persona.ini.example" ]; then
+        cp config/persona.ini.example config/persona.ini
+        echo -e "${GREEN}✓ Created config/persona.ini${NC}"
+    else
+        echo -e "${RED}✗ config/persona.ini.example not found${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}  config/persona.ini already exists${NC}"
+fi
+
 echo ""
 
 # Note about wake word configuration

@@ -55,18 +55,124 @@ class HomeAssistantConversationClient:
         """Initialize the conversation client"""
         await self.rest_client.start()
         
-        # Test the connection
-        try:
-            await self.rest_client.get_api_status()
+        # Test the connection with detailed diagnostics
+        test_result = await self.test_connection()
+        
+        if test_result["connected"]:
+            self.logger.info(f"Successfully connected to Home Assistant {test_result.get('ha_version', '')}")
             self.logger.info("HA Conversation client started")
-        except Exception as e:
-            self.logger.error(f"Failed to connect to Home Assistant: {e}")
-            raise
+        else:
+            error_msg = f"Failed to connect to Home Assistant at {test_result['url']}"
+            if test_result["error"]:
+                error_msg += f"\n\nError: {test_result['error']}"
+            if test_result["suggestions"]:
+                error_msg += "\n\nTroubleshooting steps:"
+                for i, suggestion in enumerate(test_result["suggestions"], 1):
+                    error_msg += f"\n  {i}. {suggestion}"
+            
+            self.logger.error(error_msg)
+            raise ConnectionError(error_msg)
     
     async def stop(self) -> None:
         """Stop the conversation client"""
         await self.rest_client.stop()
         self.logger.info("HA Conversation client stopped")
+    
+    async def test_connection(self) -> Dict[str, Any]:
+        """
+        Test Home Assistant connection with detailed diagnostics.
+        
+        Returns:
+            Dict containing connection test results with detailed error info
+        """
+        result = {
+            "connected": False,
+            "url": self.config.url,
+            "error": None,
+            "suggestions": []
+        }
+        
+        try:
+            # Step 1: Test basic connectivity
+            self.logger.debug(f"Testing connection to {self.config.url}")
+            api_status = await self.rest_client.get_api_status()
+            
+            # Step 2: Verify it's Home Assistant
+            if api_status and "message" in api_status:
+                self.logger.info(f"Connected to Home Assistant: {api_status['message']}")
+                result["connected"] = True
+                result["ha_version"] = api_status.get("version", "Unknown")
+                
+                # Step 3: Test conversation agent availability
+                try:
+                    agents = await self.rest_client.get("/api/conversation/agents")
+                    result["conversation_agents"] = len(agents) if isinstance(agents, list) else 0
+                    self.logger.debug(f"Found {result['conversation_agents']} conversation agents")
+                except Exception as e:
+                    self.logger.warning(f"Could not check conversation agents: {e}")
+                    result["conversation_agents"] = "Unknown"
+                
+                return result
+            else:
+                raise ValueError("Invalid API response - may not be Home Assistant")
+                
+        except Exception as e:
+            import aiohttp
+            error_type = type(e).__name__
+            error_msg = str(e)
+            
+            self.logger.error(f"Connection test failed: {error_type}: {error_msg}")
+            result["error"] = f"{error_type}: {error_msg}"
+            
+            # Provide specific suggestions based on error type
+            if isinstance(e, aiohttp.ClientConnectorError):
+                result["suggestions"] = [
+                    "Check if Home Assistant is running",
+                    f"Verify the URL is correct: {self.config.url}",
+                    "Try accessing Home Assistant in your browser",
+                    "Check your network connection and firewall settings"
+                ]
+                if "Name or service not known" in error_msg:
+                    result["suggestions"].append("The hostname cannot be resolved - try using IP address instead")
+                elif "Connection refused" in error_msg:
+                    result["suggestions"].append("Home Assistant may not be running on the specified port")
+                    
+            elif isinstance(e, aiohttp.ClientResponseError):
+                if e.status == 401:
+                    result["suggestions"] = [
+                        "Invalid or expired access token",
+                        "Create a new Long-Lived Access Token in Home Assistant:",
+                        "  1. Go to your profile (click your name in the sidebar)",
+                        "  2. Scroll to 'Long-Lived Access Tokens'",
+                        "  3. Create a new token and update config.yaml"
+                    ]
+                elif e.status == 404:
+                    result["suggestions"] = [
+                        "API endpoint not found - verify Home Assistant version",
+                        "Ensure you're using the correct URL format",
+                        "The URL should not include /api at the end"
+                    ]
+                else:
+                    result["suggestions"] = [
+                        f"HTTP {e.status} error from Home Assistant",
+                        "Check Home Assistant logs for more details"
+                    ]
+                    
+            elif "certificate" in error_msg.lower() or "ssl" in error_msg.lower():
+                result["suggestions"] = [
+                    "SSL certificate issue detected",
+                    "If using self-signed certificates, you may need to disable SSL verification",
+                    "For production, use valid SSL certificates"
+                ]
+            else:
+                result["suggestions"] = [
+                    "Unexpected error occurred",
+                    "Check the error message above for details",
+                    "Verify your config.yaml settings",
+                    "Check Home Assistant logs"
+                ]
+                
+            return result
     
     async def process_command(self, text: str, conversation_id: Optional[str] = None,
                             agent_id: Optional[str] = None) -> ConversationResponse:

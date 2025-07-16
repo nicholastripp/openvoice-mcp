@@ -1,6 +1,6 @@
 # Home Assistant Realtime Voice Assistant
 
-![Version](https://img.shields.io/badge/version-0.2.0--beta-blue)
+![Version](https://img.shields.io/badge/version-0.3.0-blue)
 ![Status](https://img.shields.io/badge/status-beta-yellow)
 ![Python](https://img.shields.io/badge/python-3.9+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -58,12 +58,17 @@ cd ha-realtime-assist
 # Install dependencies and create virtual environment
 ./install.sh
 
-# Setup configuration files
+# Setup configuration files (copies examples to working files)
 ./setup_config.sh
 
-# Edit your settings (API keys and configuration)
+# Edit your API keys
 nano .env
+
+# Edit Home Assistant URL and other settings
 nano config/config.yaml
+
+# (Optional) Customize assistant personality
+nano config/persona.ini
 
 # Activate the virtual environment (required for all Python commands)
 source venv/bin/activate
@@ -75,6 +80,8 @@ python src/main.py
 **Note**: Always activate the virtual environment (`source venv/bin/activate`) before running any Python commands. You'll see `(venv)` in your terminal prompt when it's active.
 
 ## Configuration
+
+The project includes example configuration files (`.example` suffix) that are copied to working files by `setup_config.sh`. Always edit the copies, not the example files.
 
 ### Required Settings
 - **OpenAI API Key**: Get from [OpenAI Platform](https://platform.openai.com)
@@ -118,13 +125,12 @@ audio:
 
 See the [Audio Setup Guide](docs/AUDIO_SETUP.md) for optimal configuration.
 
-## What's New in v0.2.0-beta
+## What's New in v0.3.0
 
-- ✨ **Multi-turn Conversations** - Natural back-and-forth without wake word
-- 🔊 **Automatic Gain Control** - Prevents audio clipping automatically
-- 🦔 **Porcupine Support** - More accurate wake word detection
-- 🔧 **Audio Diagnostics** - Tools to optimize your audio setup
-- 📚 **Better Documentation** - Comprehensive guides for all features
+- 🚀 **Simplified Wake Word** - Removed OpenWakeWord, Porcupine is now the only engine
+- 🎯 **Smaller Install** - Reduced dependencies by ~100MB
+- 🛡️ **Better Error Handling** - Graceful failures with helpful messages for HA connection issues
+- 🔧 **Improved Setup** - setup_config.sh now handles all configuration files
 
 See [CHANGELOG.md](CHANGELOG.md) for complete details.
 

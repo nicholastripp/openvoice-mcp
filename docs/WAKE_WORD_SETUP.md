@@ -48,13 +48,11 @@ Porcupine includes these keywords without any downloads:
 | `computer` | "Computer" |
 | `grapefruit` | "Grapefruit" |
 | `grasshopper` | "Grasshopper" |
-| `hey google` | "Hey Google" |
-| `hey siri` | "Hey Siri" |
-| `jarvis` | "Jarvis" |
-| `ok google` | "Ok Google" |
 | `picovoice` | "Picovoice" (default) |
 | `porcupine` | "Porcupine" |
 | `terminator` | "Terminator" |
+
+**Note**: Popular wake words like "Jarvis", "Hey Google", "Hey Siri", and "Ok Google" are NOT built-in. You'll need to create custom wake words for these (see below).
 
 ## Sensitivity Tuning
 
@@ -109,28 +107,45 @@ wake_word:
 
 ## Custom Wake Words
 
+Want to use "Jarvis", "Hey Assistant", or your own custom phrase? Here's how:
+
 ### Creating Custom Keywords
 
 1. Visit [Picovoice Console](https://console.picovoice.ai)
-2. Click "Train Custom Wake Word"
-3. Enter your phrase (e.g., "Hey Assistant")
-4. Record training samples
-5. Download the `.ppn` file
+2. Click "Create Wake Word"
+3. Enter your phrase (e.g., "Hey Assistant", "Jarvis", etc.)
+4. Select "Raspberry Pi" as the target platform
+5. Click "Train" and wait for generation
+6. Download the `.ppn` file
 
 ### Using Custom Keywords
 
-1. Create directory for custom models:
+1. Place the `.ppn` file in `config/wake_words/`:
    ```bash
-   mkdir -p config/wake_words
+   cp ~/Downloads/my_wake_word.ppn config/wake_words/
    ```
 
-2. Place your `.ppn` file in the directory
-
-3. Update configuration:
+2. Update configuration:
    ```yaml
    wake_word:
-     model: "config/wake_words/Hey-Assistant_en_raspberry-pi_v3_0_0.ppn"
+     model: "my_wake_word.ppn"  # Just the filename, not the full path
    ```
+
+### Examples
+
+```yaml
+# Popular custom wake words
+model: "jarvis.ppn"         # "Jarvis" (Iron Man style)
+model: "hey_assistant.ppn"  # "Hey Assistant"
+model: "computer.ppn"       # Custom "Computer" (vs built-in)
+```
+
+### Important Notes
+
+- Free tier custom models expire after 30 days
+- You can create up to 3 custom wake words on free tier
+- Files must have `.ppn` extension
+- Place files in `config/wake_words/` directory only
 
 ## Troubleshooting
 

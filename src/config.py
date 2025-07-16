@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 
 @dataclass
@@ -128,6 +129,54 @@ class AppConfig:
     advanced: AdvancedConfig = field(default_factory=AdvancedConfig)
 
 
+def _validate_url(url: str, service_name: str) -> None:
+    """
+    Validate URL format and provide helpful error messages.
+    
+    Args:
+        url: The URL to validate
+        service_name: Name of the service (for error messages)
+        
+    Raises:
+        ValueError: If URL is invalid with helpful error message
+    """
+    try:
+        parsed = urlparse(url)
+        
+        # Check for missing scheme
+        if not parsed.scheme:
+            raise ValueError(
+                f"{service_name} URL is missing the protocol (http:// or https://).\n"
+                f"Current value: '{url}'\n"
+                f"Expected format: http://your-homeassistant-ip:8123 or https://your-domain.com"
+            )
+        
+        # Check for missing netloc (domain/IP)
+        if not parsed.netloc:
+            raise ValueError(
+                f"{service_name} URL is missing the host/domain.\n"
+                f"Current value: '{url}'\n"
+                f"Expected format: http://192.168.1.100:8123 or http://homeassistant.local:8123"
+            )
+        
+        # Check for invalid scheme
+        if parsed.scheme not in ['http', 'https']:
+            raise ValueError(
+                f"{service_name} URL must use http:// or https:// protocol.\n"
+                f"Current value: '{url}'\n"
+                f"Found protocol: '{parsed.scheme}://'"
+            )
+            
+    except Exception as e:
+        if isinstance(e, ValueError):
+            raise
+        raise ValueError(
+            f"Invalid {service_name} URL format: '{url}'\n"
+            f"Expected format: http://your-homeassistant-ip:8123\n"
+            f"Error: {str(e)}"
+        )
+
+
 def load_config(config_path: str = "config/config.yaml") -> AppConfig:
     """
     Load configuration from YAML file and environment variables.
@@ -161,13 +210,37 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
         openai_config = OpenAIConfig(**config_data.get("openai", {}))
         ha_config = HomeAssistantConfig(**config_data.get("home_assistant", {}))
         
-        # Validate required fields
+        # Validate required fields with helpful error messages
         if not openai_config.api_key:
-            raise ValueError("OpenAI API key is required")
+            raise ValueError(
+                "OpenAI API key is required.\n"
+                "Please set the OPENAI_API_KEY environment variable or add it to config.yaml:\n"
+                "  openai:\n"
+                "    api_key: 'your-api-key-here'"
+            )
+        
         if not ha_config.url:
-            raise ValueError("Home Assistant URL is required")
+            raise ValueError(
+                "Home Assistant URL is required.\n"
+                "Please update config/config.yaml with your Home Assistant URL:\n"
+                "  home_assistant:\n"
+                "    url: 'http://your-homeassistant-ip:8123'"
+            )
+        
         if not ha_config.token:
-            raise ValueError("Home Assistant token is required")
+            raise ValueError(
+                "Home Assistant access token is required.\n"
+                "Please set the HA_TOKEN environment variable or add it to config.yaml:\n"
+                "  home_assistant:\n"
+                "    token: 'your-long-lived-access-token'\n\n"
+                "To create a token:\n"
+                "1. Go to your Home Assistant profile (http://your-ha-ip:8123/profile)\n"
+                "2. Scroll down to 'Long-Lived Access Tokens'\n"
+                "3. Click 'Create Token' and copy the generated token"
+            )
+        
+        # Validate URL format
+        _validate_url(ha_config.url, "Home Assistant")
         
         # Create optional configuration objects
         audio_config = AudioConfig(**config_data.get("audio", {}))
