@@ -2,8 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Callable
-from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Optional
 import httpx
 
 from mcp.client.sse import sse_client
@@ -64,47 +63,21 @@ class MCPClient:
         self.ssl_verify = ssl_verify
         
         self.sse_url = f"{self.base_url}{self.sse_endpoint}"
+        
+        # Context managers for proper lifecycle management
+        self._streams_context = None
+        self._session_context = None
         self._session: Optional[ClientSession] = None
+        
+        # State tracking
         self._tools: List[Tool] = []
         self._capabilities: Dict[str, Any] = {}
         self._connected = False
         self._initialized = False
-        
-    @asynccontextmanager
-    async def _create_session(self):
-        """Create an MCP session with proper error handling."""
-        try:
-            # Create httpx client factory that respects SSL settings
-            def httpx_client_factory():
-                return httpx.AsyncClient(verify=self.ssl_verify)
-            
-            # Create SSE client with Home Assistant auth
-            async with sse_client(
-                url=self.sse_url,
-                auth=BearerTokenAuth(self.access_token),
-                headers={
-                    "Accept": "text/event-stream",
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive"
-                },
-                timeout=float(self.connection_timeout),
-                sse_read_timeout=float(self.sse_read_timeout),
-                httpx_client_factory=httpx_client_factory
-            ) as (read_stream, write_stream):
-                logger.debug("SSE client connected")
-                
-                # Create MCP session
-                async with ClientSession(read_stream, write_stream) as session:
-                    self._session = session
-                    self._connected = True
-                    yield session
-                    
-        except Exception as e:
-            logger.error(f"Failed to create MCP session: {e}")
-            raise MCPConnectionError(f"Connection failed: {str(e)}")
-        finally:
-            self._session = None
-            self._connected = False
+    
+    def _httpx_client_factory(self):
+        """Create httpx client with SSL settings."""
+        return httpx.AsyncClient(verify=self.ssl_verify)
     
     async def connect(self) -> None:
         """Establish connection and initialize MCP protocol."""
@@ -116,19 +89,62 @@ class MCPClient:
         logger.info(f"SSL verification: {'enabled' if self.ssl_verify else 'DISABLED'}")
         
         try:
-            async with self._create_session() as session:
-                # Initialize protocol
-                await self._initialize_protocol(session)
-                
-                # List available tools (may fail on some HA versions)
-                await self._list_tools(session)
-                
-                self._initialized = True
-                logger.info("Successfully connected to MCP server")
+            # Create and enter SSE context
+            self._streams_context = sse_client(
+                url=self.sse_url,
+                auth=BearerTokenAuth(self.access_token),
+                headers={
+                    "Accept": "text/event-stream",
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive"
+                },
+                timeout=float(self.connection_timeout),
+                sse_read_timeout=float(self.sse_read_timeout),
+                httpx_client_factory=self._httpx_client_factory
+            )
+            streams = await self._streams_context.__aenter__()
+            logger.debug("SSE streams created")
+            
+            # Create and enter session context
+            self._session_context = ClientSession(*streams)
+            self._session = await self._session_context.__aenter__()
+            logger.debug("MCP session created")
+            
+            # Initialize protocol
+            await self._initialize_protocol(self._session)
+            
+            # List available tools (may fail on some HA versions)
+            await self._list_tools(self._session)
+            
+            self._connected = True
+            self._initialized = True
+            logger.info("Successfully connected to MCP server")
                 
         except Exception as e:
             logger.error(f"Failed to connect to MCP server: {e}")
+            # Clean up on failure
+            await self._cleanup_connection()
             raise
+    
+    async def _cleanup_connection(self) -> None:
+        """Clean up connection contexts."""
+        try:
+            if self._session_context:
+                await self._session_context.__aexit__(None, None, None)
+        except Exception as e:
+            logger.debug(f"Error cleaning up session context: {e}")
+        
+        try:
+            if self._streams_context:
+                await self._streams_context.__aexit__(None, None, None)
+        except Exception as e:
+            logger.debug(f"Error cleaning up streams context: {e}")
+        
+        self._session = None
+        self._session_context = None
+        self._streams_context = None
+        self._connected = False
+        self._initialized = False
     
     async def _initialize_protocol(self, session: ClientSession) -> None:
         """Initialize MCP protocol handshake."""
@@ -184,31 +200,26 @@ class MCPClient:
         Returns:
             Tool execution result
         """
-        if not self._initialized:
-            raise MCPError("Client not initialized - call connect() first")
+        if not self._initialized or not self._session:
+            raise MCPError("Client not connected - call connect() first")
             
         if not self._tools:
-            raise MCPError("No tools available - tools discovery may have failed")
+            logger.warning("No tools available - tools discovery may have failed")
             
         logger.debug(f"Calling tool: {name}")
         
-        async with self._create_session() as session:
-            try:
-                # Re-initialize if needed (for new session)
-                if not session._initialized:
-                    await self._initialize_protocol(session)
+        try:
+            # Use the persistent session directly
+            result = await self._session.call_tool(name, arguments)
+            
+            if hasattr(result, 'content'):
+                return result.content
+            else:
+                return result
                 
-                # Call the tool
-                result = await session.call_tool(name, arguments)
-                
-                if hasattr(result, 'content'):
-                    return result.content
-                else:
-                    return result
-                    
-            except Exception as e:
-                logger.error(f"Tool call failed: {e}")
-                raise MCPError(f"Failed to call tool '{name}': {str(e)}")
+        except Exception as e:
+            logger.error(f"Tool call failed: {e}")
+            raise MCPError(f"Failed to call tool '{name}': {str(e)}")
     
     def get_tools(self) -> List[Dict[str, Any]]:
         """Get list of available tools as dictionaries."""
@@ -236,15 +247,14 @@ class MCPClient:
     async def disconnect(self) -> None:
         """Disconnect from MCP server."""
         logger.info("Disconnecting from MCP server")
-        self._initialized = False
         self._tools.clear()
         self._capabilities.clear()
-        # Session cleanup is handled by context manager
+        await self._cleanup_connection()
     
     @property
     def is_connected(self) -> bool:
         """Check if client is connected."""
-        return self._connected and self._initialized
+        return self._connected and self._initialized and self._session is not None
         
     @property
     def capabilities(self) -> Dict[str, Any]:
