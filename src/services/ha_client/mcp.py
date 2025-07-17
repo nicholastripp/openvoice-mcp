@@ -5,10 +5,9 @@ import json
 import logging
 import ssl
 import time
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, AsyncGenerator, Tuple
 from urllib.parse import urljoin
 import aiohttp
-from aiohttp_sse_client import client as sse_client
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -71,7 +70,7 @@ class MCPClient:
         self.sse_url = urljoin(self.base_url, sse_endpoint.lstrip('/'))
         self._session: Optional[aiohttp.ClientSession] = None
         self._ssl_context: Optional[ssl.SSLContext] = None
-        self._sse_client = None
+        self._sse_response = None  # The SSE response object
         self._response_futures: Dict[str, asyncio.Future] = {}
         self._event_handlers: Dict[str, List[Callable]] = {}
         self._tools: List[Dict[str, Any]] = []
@@ -177,13 +176,18 @@ class MCPClient:
                             logger.warning(f"Unexpected content type: {content_type}")
                             logger.warning(f"Response preview: {text[:100]}")
                 
-                # Now establish SSE connection
+                # Now establish SSE connection with manual streaming
                 logger.debug(f"Establishing SSE connection to {self.sse_url}")
-                self._sse_client = sse_client.EventSource(
+                self._sse_response = await self._session.get(
                     self.sse_url,
-                    session=self._session,
                     headers=headers
                 )
+                
+                if self._sse_response.status != 200:
+                    body = await self._sse_response.text()
+                    raise MCPConnectionError(
+                        f"SSE endpoint returned {self._sse_response.status}: {body[:200]}"
+                    )
                 
                 # Start message processing task
                 self._message_task = asyncio.create_task(self._process_messages())
@@ -240,52 +244,72 @@ class MCPClient:
                     
         raise MCPConnectionError(f"Failed after {self.reconnect_attempts} attempts: {last_error}")
     
+    async def _parse_sse_stream(self) -> AsyncGenerator[Tuple[str, str], None]:
+        """Parse SSE stream manually.
+        
+        Yields:
+            Tuples of (event_type, event_data)
+        """
+        buffer = ""
+        event_type = "message"
+        event_data = ""
+        
+        async for chunk in self._sse_response.content:
+            # Decode chunk and add to buffer
+            buffer += chunk.decode('utf-8', errors='replace')
+            
+            # Process complete lines
+            while '\n' in buffer:
+                line, buffer = buffer.split('\n', 1)
+                line = line.strip('\r')
+                
+                if not line:
+                    # Empty line means end of event
+                    if event_data:
+                        yield (event_type, event_data.strip())
+                        event_type = "message"
+                        event_data = ""
+                elif line.startswith('event:'):
+                    event_type = line[6:].strip()
+                elif line.startswith('data:'):
+                    # Append data (SSE allows multiple data lines)
+                    if event_data:
+                        event_data += "\n"
+                    event_data += line[5:].strip()
+                elif line.startswith(':'):
+                    # Comment line, ignore
+                    pass
+                else:
+                    # Non-standard line, log it
+                    logger.debug(f"Non-standard SSE line: {line}")
+    
     async def _process_messages(self) -> None:
         """Process incoming SSE messages."""
         try:
             logger.debug("Starting message processing loop")
-            if not self._sse_client:
-                raise MCPError("SSE client not initialized")
+            if not self._sse_response:
+                raise MCPError("SSE response not initialized")
             
-            # Try to iterate over SSE events
-            try:
-                async for event in self._sse_client:
-                    logger.debug(f"SSE event - type: {event.type}, data: {event.data[:100] if event.data else 'None'}")
+            # Process SSE events using our manual parser
+            async for event_type, event_data in self._parse_sse_stream():
+                logger.debug(f"SSE event - type: {event_type}, data: {event_data[:100] if event_data else 'None'}")
+                
+                if event_type == 'endpoint':
+                    # Handle the endpoint event that provides the message URL
+                    self._message_endpoint = event_data
+                    logger.info(f"Received message endpoint: {self._message_endpoint}")
+                    # The endpoint event means we're connected
+                    continue
                     
-                    if event.type == 'endpoint':
-                        # Handle the endpoint event that provides the message URL
-                        self._message_endpoint = event.data.strip()
-                        logger.info(f"Received message endpoint: {self._message_endpoint}")
-                        # The endpoint event means we're connected
-                        continue
-                        
-                    elif event.type == 'message':
-                        logger.debug(f"Received message event: {event.data[:100]}...")
-                        await self._handle_message(event.data)
-                    elif event.type == 'error':
-                        logger.error(f"SSE error event: {event.data}")
-                    elif event.type == 'ping':
-                        logger.debug("Received ping from server")
-                    else:
-                        logger.debug(f"Received unknown event type: {event.type}")
-            except ValueError as e:
-                # This is the specific error we're seeing
-                logger.error(f"ValueError in SSE processing: {str(e)}")
-                logger.error("SSE client failed to parse event stream")
-                logger.error("This usually means the endpoint is not returning proper SSE format")
-                
-                # Try to get more info about what was received
-                if hasattr(self._sse_client, '_response'):
-                    try:
-                        # Try to read some of the response
-                        chunk = await self._sse_client._response.content.read(200)
-                        logger.error(f"Response preview: {chunk.decode('utf-8', errors='replace')[:200]}")
-                    except:
-                        pass
-                
-                raise MCPConnectionError(
-                    "SSE parsing failed - endpoint may not be configured correctly"
-                )
+                elif event_type == 'message':
+                    logger.debug(f"Received message event: {event_data[:100]}...")
+                    await self._handle_message(event_data)
+                elif event_type == 'error':
+                    logger.error(f"SSE error event: {event_data}")
+                elif event_type == 'ping':
+                    logger.debug("Received ping from server")
+                else:
+                    logger.debug(f"Received unknown event type: {event_type}")
                 
         except asyncio.CancelledError:
             logger.debug("Message processing cancelled")
@@ -464,8 +488,8 @@ class MCPClient:
         if self._message_task and not self._message_task.done():
             self._message_task.cancel()
         
-        if self._sse_client:
-            await self._sse_client.close()
+        if self._sse_response:
+            self._sse_response.close()
         
         try:
             await self.connect()
@@ -494,12 +518,12 @@ class MCPClient:
                 pass
         
         # Close connections
-        if self._sse_client:
+        if self._sse_response:
             try:
-                await self._sse_client.close()
+                self._sse_response.close()
             except Exception as e:
-                logger.debug(f"Error closing SSE client: {e}")
-            self._sse_client = None
+                logger.debug(f"Error closing SSE response: {e}")
+            self._sse_response = None
             
         if self._session:
             try:
