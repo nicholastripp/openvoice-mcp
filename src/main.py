@@ -252,11 +252,8 @@ class VoiceAssistant:
                 self.logger.info("Fetching fresh device information from Home Assistant...")
                 start_time = asyncio.get_event_loop().time()
                 
-                # TODO: MCP doesn't provide direct state access
-                # We could potentially use MCP tools to query device states
-                # For now, skip device state fetching
-                states = None
-                self.logger.warning("Device state fetching not yet implemented for MCP")
+                # Fetch device states via MCP
+                states = await self._fetch_device_states_mcp()
                 
                 fetch_time = asyncio.get_event_loop().time() - start_time
                 self.logger.info(f"Device fetch completed in {fetch_time:.2f}s")
@@ -384,6 +381,175 @@ class VoiceAssistant:
         self._device_cache_time = None
         self.logger.debug("Device cache cleared")
     
+    async def _fetch_device_states_mcp(self) -> Optional[List[Dict[str, Any]]]:
+        """Fetch device states using MCP tools via natural language queries."""
+        if not self.mcp_client or not self.mcp_client.is_connected:
+            self.logger.warning("MCP client not connected, cannot fetch device states")
+            return None
+        
+        try:
+            # Find a suitable tool for querying device states
+            tools = self.mcp_client.get_tools()
+            query_tool = None
+            
+            # Look for tools that might handle natural language queries
+            for tool in tools:
+                name_lower = tool['name'].lower()
+                desc_lower = tool['description'].lower()
+                
+                # Look for tools that can process commands or handle requests
+                if any(keyword in name_lower or keyword in desc_lower 
+                       for keyword in ['process', 'command', 'handle', 'execute', 'control']):
+                    query_tool = tool
+                    break
+            
+            if not query_tool:
+                self.logger.warning("No suitable MCP tool found for device state queries")
+                return None
+            
+            self.logger.info(f"Using tool '{query_tool['name']}' to query device states")
+            
+            # Try multiple queries to get comprehensive device information
+            queries = [
+                "show me all lights and their current states",
+                "list all switches and sensors with their current status", 
+                "what devices are currently on or active",
+                "show me all available entities and their states"
+            ]
+            
+            all_device_info = []
+            
+            for query in queries:
+                try:
+                    self.logger.debug(f"Querying: {query}")
+                    
+                    # Use the tool to query device states
+                    # Most MCP tools expect a 'command' parameter
+                    result = await self.mcp_client.call_tool(query_tool['name'], {
+                        "command": query
+                    })
+                    
+                    if result:
+                        # Parse the result to extract device information
+                        device_info = self._parse_mcp_device_response(result, query)
+                        if device_info:
+                            all_device_info.extend(device_info)
+                            self.logger.debug(f"Extracted {len(device_info)} devices from query: {query}")
+                    
+                except Exception as e:
+                    self.logger.debug(f"Query '{query}' failed: {e}")
+                    continue
+            
+            if all_device_info:
+                # Remove duplicates based on entity_id
+                unique_devices = {}
+                for device in all_device_info:
+                    entity_id = device.get('entity_id')
+                    if entity_id and entity_id not in unique_devices:
+                        unique_devices[entity_id] = device
+                
+                final_devices = list(unique_devices.values())
+                self.logger.info(f"Successfully fetched {len(final_devices)} unique devices via MCP")
+                return final_devices
+            else:
+                self.logger.warning("No device information extracted from MCP queries")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error fetching device states via MCP: {e}")
+            return None
+    
+    def _parse_mcp_device_response(self, response: Any, query: str) -> List[Dict[str, Any]]:
+        """Parse MCP tool response to extract device state information."""
+        devices = []
+        
+        try:
+            # Handle different response formats
+            if isinstance(response, list):
+                # Response is a list of content items
+                for item in response:
+                    if hasattr(item, 'text') or (isinstance(item, dict) and 'text' in item):
+                        text = item.text if hasattr(item, 'text') else item['text']
+                        parsed = self._extract_devices_from_text(text)
+                        devices.extend(parsed)
+            elif isinstance(response, dict) and 'content' in response:
+                # Response has content array
+                for item in response['content']:
+                    if item.get('type') == 'text' and 'text' in item:
+                        parsed = self._extract_devices_from_text(item['text'])
+                        devices.extend(parsed)
+            elif isinstance(response, str):
+                # Direct text response
+                parsed = self._extract_devices_from_text(response)
+                devices.extend(parsed)
+            else:
+                # Try to convert to string and parse
+                text = str(response)
+                parsed = self._extract_devices_from_text(text)
+                devices.extend(parsed)
+                
+        except Exception as e:
+            self.logger.debug(f"Error parsing MCP response: {e}")
+        
+        return devices
+    
+    def _extract_devices_from_text(self, text: str) -> List[Dict[str, Any]]:
+        """Extract device information from text response."""
+        devices = []
+        
+        if not text:
+            return devices
+        
+        try:
+            # Look for common patterns in Home Assistant responses
+            lines = text.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Try to extract entity information from common formats
+                # Example: "light.living_room: on" or "Living Room Light (light.living_room): on"
+                
+                # Pattern 1: entity_id: state
+                if ':' in line and '.' in line:
+                    parts = line.split(':', 1)
+                    if len(parts) == 2:
+                        left_part = parts[0].strip()
+                        state_part = parts[1].strip()
+                        
+                        # Extract entity_id
+                        entity_id = None
+                        friendly_name = None
+                        
+                        if '(' in left_part and ')' in left_part:
+                            # Format: "Friendly Name (entity.id)"
+                            name_part = left_part.split('(')[0].strip()
+                            entity_part = left_part.split('(')[1].split(')')[0].strip()
+                            if '.' in entity_part:
+                                entity_id = entity_part
+                                friendly_name = name_part
+                        elif '.' in left_part and not ' ' in left_part:
+                            # Direct entity_id format
+                            entity_id = left_part
+                            friendly_name = entity_id.replace('_', ' ').title()
+                        
+                        if entity_id:
+                            device = {
+                                'entity_id': entity_id,
+                                'state': state_part.lower(),
+                                'attributes': {
+                                    'friendly_name': friendly_name or entity_id.replace('_', ' ').title()
+                                }
+                            }
+                            devices.append(device)
+                            
+        except Exception as e:
+            self.logger.debug(f"Error extracting devices from text: {e}")
+        
+        return devices
+    
     async def diagnose_device_exposure(self) -> Dict[str, Any]:
         """Diagnostic method to test device exposure and loading
         
@@ -412,8 +578,8 @@ class VoiceAssistant:
             self._clear_device_cache()
             
             start_time = asyncio.get_event_loop().time()
-            # TODO: MCP doesn't provide direct state access
-            states = None
+            # Fetch device states via MCP
+            states = await self._fetch_device_states_mcp()
             fetch_time = asyncio.get_event_loop().time() - start_time
             diagnostics["fetch_time"] = fetch_time
             
