@@ -313,7 +313,11 @@ class MCPClient:
                 logger.debug(f"SSE stream closed during shutdown: {e}")
             # Yield any remaining data
             if event_data:
+                logger.debug(f"Yielding incomplete event on stream close: type={event_type}, data={event_data[:200]}...")
                 yield (event_type, event_data.strip())
+            # Also check if there's data in the buffer
+            if buffer.strip():
+                logger.warning(f"Unprocessed data in buffer on stream close: {buffer[:200]}...")
         except Exception as e:
             logger.error(f"Error in SSE parser: {type(e).__name__}: {e}")
             raise
@@ -338,7 +342,11 @@ class MCPClient:
                     
                 elif event_type == 'message':
                     logger.debug(f"Received message event: {event_data[:100]}...")
-                    await self._handle_message(event_data)
+                    # Check if this looks like a complete JSON message
+                    if event_data.strip().endswith('}'):
+                        await self._handle_message(event_data)
+                    else:
+                        logger.warning(f"Received incomplete message: {event_data[:200]}...")
                 elif event_type == 'error':
                     logger.error(f"SSE error event: {event_data}")
                 elif event_type == 'ping':
@@ -378,15 +386,18 @@ class MCPClient:
             
             # Check if it's a response to a request
             if 'id' in message and message['id'] in self._response_futures:
+                logger.debug(f"Processing response for request {message['id']}")
                 future = self._response_futures.pop(message['id'])
                 if 'error' in message:
                     error = message['error']
+                    logger.error(f"Received error response: {error}")
                     future.set_exception(MCPProtocolError(
                         error.get('code', -1),
                         error.get('message', 'Unknown error'),
                         error.get('data')
                     ))
                 else:
+                    logger.debug(f"Received successful response for {message['id']}")
                     future.set_result(message.get('result'))
             
             # Handle notifications (no id field)
@@ -452,9 +463,13 @@ class MCPClient:
                     body = await response.text()
                     logger.error(f"Request failed: status={response.status}, body={body[:200]}")
                     raise MCPConnectionError(f"Request failed with status {response.status}: {body[:200]}")
+                else:
+                    logger.debug(f"POST request sent successfully, status: {response.status}")
             
             # Wait for response with timeout
+            logger.debug(f"Waiting for response to request {request_id}")
             result = await asyncio.wait_for(future, timeout=30.0)
+            logger.debug(f"Received response for request {request_id}")
             return result
             
         except asyncio.TimeoutError:
