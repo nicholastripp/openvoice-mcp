@@ -150,6 +150,32 @@ class MCPClient:
                         raise MCPConnectionError(f"Home Assistant returned status {resp.status}")
                     logger.debug("Basic connectivity test passed")
                 
+                # First check if endpoint returns SSE
+                logger.debug(f"Checking SSE endpoint: {self.sse_url}")
+                async with self._session.get(self.sse_url, headers=headers) as resp:
+                    content_type = resp.headers.get('Content-Type', '')
+                    logger.debug(f"SSE endpoint returned Content-Type: {content_type}")
+                    
+                    if resp.status != 200:
+                        body = await resp.text()
+                        raise MCPConnectionError(
+                            f"SSE endpoint returned {resp.status}: {body[:200]}"
+                        )
+                    
+                    if 'text/event-stream' not in content_type and 'text/plain' not in content_type:
+                        # Read a bit of the response to see what it is
+                        chunk = await resp.content.read(500)
+                        text = chunk.decode('utf-8', errors='replace')
+                        
+                        if text.strip().startswith('<!DOCTYPE') or text.strip().startswith('<html'):
+                            raise MCPConnectionError(
+                                "SSE endpoint returned HTML instead of event stream. "
+                                "MCP server integration may not be properly configured."
+                            )
+                        else:
+                            logger.warning(f"Unexpected content type: {content_type}")
+                            logger.warning(f"Response preview: {text[:100]}")
+                
                 # Now establish SSE connection
                 logger.debug(f"Establishing SSE connection to {self.sse_url}")
                 self._sse_client = sse_client.EventSource(
@@ -208,22 +234,46 @@ class MCPClient:
             logger.debug("Starting message processing loop")
             if not self._sse_client:
                 raise MCPError("SSE client not initialized")
+            
+            # Try to iterate over SSE events
+            try:
+                async for event in self._sse_client:
+                    if event.type == 'message':
+                        logger.debug(f"Received message event: {event.data[:100]}...")
+                        await self._handle_message(event.data)
+                    elif event.type == 'error':
+                        logger.error(f"SSE error event: {event.data}")
+                    elif event.type == 'ping':
+                        logger.debug("Received ping from server")
+                    else:
+                        logger.debug(f"Received event type: {event.type}")
+            except ValueError as e:
+                # This is the specific error we're seeing
+                logger.error(f"ValueError in SSE processing: {str(e)}")
+                logger.error("SSE client failed to parse event stream")
+                logger.error("This usually means the endpoint is not returning proper SSE format")
                 
-            async for event in self._sse_client:
-                if event.type == 'message':
-                    logger.debug(f"Received message event: {event.data[:100]}...")
-                    await self._handle_message(event.data)
-                elif event.type == 'error':
-                    logger.error(f"SSE error event: {event.data}")
-                elif event.type == 'ping':
-                    logger.debug("Received ping from server")
-                else:
-                    logger.debug(f"Received event type: {event.type}")
+                # Try to get more info about what was received
+                if hasattr(self._sse_client, '_response'):
+                    try:
+                        # Try to read some of the response
+                        chunk = await self._sse_client._response.content.read(200)
+                        logger.error(f"Response preview: {chunk.decode('utf-8', errors='replace')[:200]}")
+                    except:
+                        pass
+                
+                raise MCPConnectionError(
+                    "SSE parsing failed - endpoint may not be configured correctly"
+                )
+                
         except asyncio.CancelledError:
             logger.debug("Message processing cancelled")
             raise
         except Exception as e:
             logger.error(f"Error processing messages: {type(e).__name__}: {e}")
+            if hasattr(e, '__traceback__'):
+                import traceback
+                logger.debug("Traceback: " + ''.join(traceback.format_tb(e.__traceback__)))
             self._connected = False
             # Trigger reconnection if needed
             if self._reconnect_task is None or self._reconnect_task.done():
