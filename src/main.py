@@ -468,9 +468,7 @@ class VoiceAssistant:
                     access_token=self.config.home_assistant.token,
                     sse_endpoint=self.config.home_assistant.mcp.sse_endpoint,
                     connection_timeout=self.config.home_assistant.mcp.connection_timeout,
-                    reconnect_attempts=self.config.home_assistant.mcp.reconnect_attempts,
-                    ssl_verify=self.config.home_assistant.mcp.ssl_verify,
-                    ssl_ca_bundle=self.config.home_assistant.mcp.ssl_ca_bundle
+                    ssl_verify=self.config.home_assistant.mcp.ssl_verify
                 )
                 await self.mcp_client.connect()
                 self.logger.debug("MCP client connected to Home Assistant")
