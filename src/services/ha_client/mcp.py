@@ -76,6 +76,7 @@ class MCPClient:
         self._tools: List[Dict[str, Any]] = []
         self._capabilities: Dict[str, Any] = {}
         self._connected = False
+        self._initialized = False  # Track if protocol is initialized
         self._reconnect_task = None
         self._message_task = None
         self._message_endpoint: Optional[str] = None  # Session-specific message endpoint
@@ -111,7 +112,14 @@ class MCPClient:
             await self._establish_connection()
             # Set connected to True after SSE connection is established
             self._connected = True
-            await self._initialize_protocol()
+            
+            # Only initialize protocol if not already initialized
+            if not self._initialized:
+                await self._initialize_protocol()
+                self._initialized = True
+            else:
+                logger.debug("Skipping protocol initialization - already initialized")
+                
             logger.info("Successfully connected to MCP server")
         except Exception as e:
             # Reset connected state on failure
@@ -297,12 +305,15 @@ class MCPClient:
                         logger.debug(f"Non-standard SSE line: {line}")
                         
         except aiohttp.ClientPayloadError as e:
-            # Connection closed by server - this is expected in some cases
-            logger.debug(f"SSE stream closed by server: {e}")
+            # Connection closed by server
+            if self._connected:
+                # Only log as error if we're still supposed to be connected
+                logger.warning(f"SSE stream closed unexpectedly: {e}")
+            else:
+                logger.debug(f"SSE stream closed during shutdown: {e}")
             # Yield any remaining data
             if event_data:
                 yield (event_type, event_data.strip())
-            return
         except Exception as e:
             logger.error(f"Error in SSE parser: {type(e).__name__}: {e}")
             raise
@@ -335,8 +346,15 @@ class MCPClient:
                 else:
                     logger.debug(f"Received unknown event type: {event_type}")
             
-            # Stream ended normally
-            logger.debug("SSE stream ended normally")
+            # Stream ended 
+            if self._connected:
+                logger.warning("SSE stream ended while still connected - will reconnect")
+                # Trigger reconnection
+                self._connected = False
+                if self._reconnect_task is None or self._reconnect_task.done():
+                    self._reconnect_task = asyncio.create_task(self._reconnect())
+            else:
+                logger.debug("SSE stream ended during shutdown")
                 
         except asyncio.CancelledError:
             logger.debug("Message processing cancelled")
@@ -346,10 +364,12 @@ class MCPClient:
             if hasattr(e, '__traceback__'):
                 import traceback
                 logger.debug("Traceback: " + ''.join(traceback.format_tb(e.__traceback__)))
-            self._connected = False
-            # Trigger reconnection if needed
-            if self._reconnect_task is None or self._reconnect_task.done():
-                self._reconnect_task = asyncio.create_task(self._reconnect())
+            
+            if self._connected:
+                # Only reconnect if we're supposed to be connected
+                self._connected = False
+                if self._reconnect_task is None or self._reconnect_task.done():
+                    self._reconnect_task = asyncio.create_task(self._reconnect())
     
     async def _handle_message(self, data: str) -> None:
         """Handle incoming JSON-RPC message."""
@@ -514,14 +534,27 @@ class MCPClient:
         # Clean up existing connection
         if self._message_task and not self._message_task.done():
             self._message_task.cancel()
+            try:
+                await self._message_task
+            except asyncio.CancelledError:
+                pass
         
         if self._sse_response:
             self._sse_response.close()
+            self._sse_response = None
+        
+        # Wait a bit before reconnecting
+        await asyncio.sleep(1.0)
         
         try:
+            # Reconnect - this will skip initialization if already done
             await self.connect()
         except Exception as e:
             logger.error(f"Reconnection failed: {e}")
+            # Schedule another reconnection attempt
+            await asyncio.sleep(5.0)
+            if not self._connected and (self._reconnect_task is None or self._reconnect_task.done()):
+                self._reconnect_task = asyncio.create_task(self._reconnect())
     
     async def disconnect(self) -> None:
         """Disconnect from MCP server."""
@@ -564,6 +597,7 @@ class MCPClient:
         self._tools.clear()
         self._capabilities.clear()
         self._message_endpoint = None
+        self._initialized = False
     
     def on_event(self, event: str, handler: Callable) -> None:
         """Register event handler for notifications.
