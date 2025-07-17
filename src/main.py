@@ -392,16 +392,24 @@ class VoiceAssistant:
             tools = self.mcp_client.get_tools()
             query_tool = None
             
-            # Look for tools that might handle natural language queries
+            # First priority: Look for GetLiveContext tool (purpose-built for state queries)
             for tool in tools:
-                name_lower = tool['name'].lower()
-                desc_lower = tool['description'].lower()
-                
-                # Look for tools that can process commands or handle requests
-                if any(keyword in name_lower or keyword in desc_lower 
-                       for keyword in ['process', 'command', 'handle', 'execute', 'control']):
+                if tool['name'] == 'GetLiveContext':
                     query_tool = tool
+                    self.logger.info("Found GetLiveContext tool - using for device state queries")
                     break
+            
+            # Fallback: Look for tools that might handle natural language queries
+            if not query_tool:
+                for tool in tools:
+                    name_lower = tool['name'].lower()
+                    desc_lower = tool['description'].lower()
+                    
+                    # Look for tools that can process commands or handle requests
+                    if any(keyword in name_lower or keyword in desc_lower 
+                           for keyword in ['process', 'command', 'handle', 'execute', 'control']):
+                        query_tool = tool
+                        break
             
             if not query_tool:
                 self.logger.warning("No suitable MCP tool found for device state queries")
@@ -410,12 +418,27 @@ class VoiceAssistant:
             self.logger.info(f"Using tool '{query_tool['name']}' to query device states")
             
             # Try multiple queries to get comprehensive device information
-            queries = [
-                "show me all lights and their current states",
-                "list all switches and sensors with their current status", 
-                "what devices are currently on or active",
-                "show me all available entities and their states"
-            ]
+            # Optimize queries based on tool type
+            if query_tool['name'] == 'GetLiveContext':
+                # GetLiveContext is designed for real-time state queries
+                queries = [
+                    "show all lights",
+                    "show all switches", 
+                    "show all sensors",
+                    "show all climate devices",
+                    "show all media players",
+                    "show all devices in the living room",
+                    "show all devices in the bedroom",
+                    "show all devices in the kitchen"
+                ]
+            else:
+                # Fallback queries for general command tools
+                queries = [
+                    "show me all lights and their current states",
+                    "list all switches and sensors with their current status", 
+                    "what devices are currently on or active",
+                    "show me all available entities and their states"
+                ]
             
             all_device_info = []
             
@@ -424,10 +447,21 @@ class VoiceAssistant:
                     self.logger.debug(f"Querying: {query}")
                     
                     # Use the tool to query device states
-                    # Most MCP tools expect a 'command' parameter
-                    result = await self.mcp_client.call_tool(query_tool['name'], {
-                        "command": query
-                    })
+                    # GetLiveContext may not need parameters, fallback tools use 'command'
+                    if query_tool['name'] == 'GetLiveContext':
+                        # Try with no parameters first, then with query parameter
+                        try:
+                            result = await self.mcp_client.call_tool(query_tool['name'], {})
+                        except:
+                            # Fallback: try with query parameter
+                            result = await self.mcp_client.call_tool(query_tool['name'], {
+                                "query": query
+                            })
+                    else:
+                        # Most other MCP tools expect a 'command' parameter
+                        result = await self.mcp_client.call_tool(query_tool['name'], {
+                            "command": query
+                        })
                     
                     if result:
                         # Parse the result to extract device information

@@ -92,27 +92,27 @@ async def test_all_mcp_tools():
         print("TOOL ANALYSIS SUMMARY")
         print("=" * 60)
         
-        print(f"\n📊 CATEGORIES:")
+        print(f"\nCATEGORIES:")
         print(f"   State/Query tools: {len(state_related_tools)}")
         print(f"   Control tools: {len(control_tools)}")
         print(f"   Other tools: {len(other_tools)}")
         
         if state_related_tools:
-            print(f"\n🔍 STATE/QUERY TOOLS:")
+            print(f"\nSTATE/QUERY TOOLS:")
             for tool in state_related_tools:
                 print(f"   - {tool['name']}: {tool['description']}")
         else:
-            print(f"\n⚠️  NO DIRECT STATE QUERY TOOLS FOUND")
+            print(f"\nNO DIRECT STATE QUERY TOOLS FOUND")
             print("   This means we cannot directly fetch device states via MCP")
         
-        print(f"\n🎮 CONTROL TOOLS:")
+        print(f"\nCONTROL TOOLS:")
         for tool in control_tools[:5]:  # Show first 5
             print(f"   - {tool['name']}: {tool['description']}")
         if len(control_tools) > 5:
             print(f"   ... and {len(control_tools) - 5} more")
         
         # Test if any tools might provide state information
-        print(f"\n🧪 TESTING FOR HIDDEN STATE CAPABILITIES:")
+        print(f"\nTESTING FOR HIDDEN STATE CAPABILITIES:")
         
         # Look for tools that might respond to state queries
         test_tools = []
@@ -133,14 +133,14 @@ async def test_all_mcp_tools():
                         "command": "show me all lights"
                     })
                     if result:
-                        print(f"   ✓ Got response: {result}")
+                        print(f"   Success - Got response: {result}")
                         break
                 except Exception as e:
-                    print(f"   ✗ Failed: {e}")
+                    print(f"   Failed: {e}")
         else:
             print("   No tools found that might handle natural language state queries")
         
-        print(f"\n💡 RECOMMENDATIONS:")
+        print(f"\nRECOMMENDATIONS:")
         if not state_related_tools:
             print("   1. MCP currently doesn't provide direct state access")
             print("   2. Consider hybrid approach: MCP for control, REST API for state queries")
