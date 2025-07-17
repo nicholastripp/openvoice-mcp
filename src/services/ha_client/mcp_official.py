@@ -75,9 +75,14 @@ class MCPClient:
         self._connected = False
         self._initialized = False
     
-    def _httpx_client_factory(self):
-        """Create httpx client with SSL settings."""
-        return httpx.AsyncClient(verify=self.ssl_verify)
+    def _httpx_client_factory(self, headers=None, auth=None, timeout=None):
+        """Create httpx client with SSL settings and provided parameters."""
+        return httpx.AsyncClient(
+            verify=self.ssl_verify,
+            headers=headers,
+            auth=auth,
+            timeout=timeout
+        )
     
     async def connect(self) -> None:
         """Establish connection and initialize MCP protocol."""
