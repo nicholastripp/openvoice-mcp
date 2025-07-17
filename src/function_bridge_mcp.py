@@ -5,7 +5,7 @@ import json
 import asyncio
 from typing import Dict, Any, Optional, List
 
-from services.ha_client.mcp import MCPClient
+from services.ha_client.mcp_official import MCPClient
 from utils.logger import get_logger
 
 

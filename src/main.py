@@ -20,7 +20,7 @@ from config import load_config, AppConfig
 from personality import PersonalityProfile
 from utils.logger import setup_logging, get_logger
 from openai_client.realtime import OpenAIRealtimeClient
-from services.ha_client.mcp import MCPClient
+from services.ha_client.mcp_official import MCPClient
 from audio.capture import AudioCapture
 from audio.playback import AudioPlayback
 from function_bridge_mcp import MCPFunctionBridge

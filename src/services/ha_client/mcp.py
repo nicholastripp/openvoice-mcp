@@ -505,10 +505,15 @@ class MCPClient:
         """Retrieve available tools from server."""
         logger.debug("Listing available tools")
         
-        result = await self._send_request("tools/list", {})
-        self._tools = result.get('tools', [])
-        
-        logger.info(f"Available tools: {[tool['name'] for tool in self._tools]}")
+        try:
+            result = await self._send_request("tools/list", {})
+            self._tools = result.get('tools', [])
+            logger.info(f"Available tools: {[tool['name'] for tool in self._tools]}")
+        except Exception as e:
+            logger.warning(f"Failed to list tools: {e}")
+            logger.warning("Continuing without tools - this may be a Home Assistant MCP limitation")
+            self._tools = []
+            # Don't re-raise - we can operate without tools
     
     async def call_tool(self, name: str, arguments: Dict[str, Any]) -> Any:
         """Call a tool on the MCP server.
@@ -520,6 +525,9 @@ class MCPClient:
         Returns:
             Tool execution result
         """
+        if not self._tools:
+            raise MCPError("No tools available - tools discovery may have failed")
+            
         logger.debug(f"Calling tool: {name}")
         
         result = await self._send_request("tools/call", {
