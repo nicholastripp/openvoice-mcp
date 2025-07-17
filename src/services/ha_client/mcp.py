@@ -124,7 +124,8 @@ class MCPClient:
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Accept": "text/event-stream",
-            "Cache-Control": "no-cache"
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive"
         }
         
         if not self._session:
@@ -139,7 +140,8 @@ class MCPClient:
                 
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
-                connector=connector
+                connector=connector,
+                headers={'Connection': 'keep-alive'}
             )
         
         last_error = None
@@ -181,9 +183,11 @@ class MCPClient:
                 
                 # Now establish SSE connection with manual streaming
                 logger.debug(f"Establishing SSE connection to {self.sse_url}")
+                # Use no total timeout for SSE streaming
                 self._sse_response = await self._session.get(
                     self.sse_url,
-                    headers=headers
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=None, connect=self.connection_timeout)
                 )
                 
                 if self._sse_response.status != 200:
@@ -257,34 +261,51 @@ class MCPClient:
         event_type = "message"
         event_data = ""
         
-        async for chunk in self._sse_response.content:
-            # Decode chunk and add to buffer
-            buffer += chunk.decode('utf-8', errors='replace')
-            
-            # Process complete lines
-            while '\n' in buffer:
-                line, buffer = buffer.split('\n', 1)
-                line = line.strip('\r')
+        try:
+            # Check if response is closed before reading
+            if self._sse_response.closed:
+                logger.debug("SSE response is closed")
+                return
                 
-                if not line:
-                    # Empty line means end of event
-                    if event_data:
-                        yield (event_type, event_data.strip())
-                        event_type = "message"
-                        event_data = ""
-                elif line.startswith('event:'):
-                    event_type = line[6:].strip()
-                elif line.startswith('data:'):
-                    # Append data (SSE allows multiple data lines)
-                    if event_data:
-                        event_data += "\n"
-                    event_data += line[5:].strip()
-                elif line.startswith(':'):
-                    # Comment line, ignore
-                    pass
-                else:
-                    # Non-standard line, log it
-                    logger.debug(f"Non-standard SSE line: {line}")
+            async for chunk in self._sse_response.content:
+                # Decode chunk and add to buffer
+                buffer += chunk.decode('utf-8', errors='replace')
+                
+                # Process complete lines
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    line = line.strip('\r')
+                    
+                    if not line:
+                        # Empty line means end of event
+                        if event_data:
+                            yield (event_type, event_data.strip())
+                            event_type = "message"
+                            event_data = ""
+                    elif line.startswith('event:'):
+                        event_type = line[6:].strip()
+                    elif line.startswith('data:'):
+                        # Append data (SSE allows multiple data lines)
+                        if event_data:
+                            event_data += "\n"
+                        event_data += line[5:].strip()
+                    elif line.startswith(':'):
+                        # Comment line, ignore
+                        pass
+                    else:
+                        # Non-standard line, log it
+                        logger.debug(f"Non-standard SSE line: {line}")
+                        
+        except aiohttp.ClientPayloadError as e:
+            # Connection closed by server - this is expected in some cases
+            logger.debug(f"SSE stream closed by server: {e}")
+            # Yield any remaining data
+            if event_data:
+                yield (event_type, event_data.strip())
+            return
+        except Exception as e:
+            logger.error(f"Error in SSE parser: {type(e).__name__}: {e}")
+            raise
     
     async def _process_messages(self) -> None:
         """Process incoming SSE messages."""
@@ -313,6 +334,9 @@ class MCPClient:
                     logger.debug("Received ping from server")
                 else:
                     logger.debug(f"Received unknown event type: {event_type}")
+            
+            # Stream ended normally
+            logger.debug("SSE stream ended normally")
                 
         except asyncio.CancelledError:
             logger.debug("Message processing cancelled")
