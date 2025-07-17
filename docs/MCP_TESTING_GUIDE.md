@@ -144,69 +144,32 @@ home_assistant:
 
 ### Step 8: Test MCP Connection
 
-Create and run a connection test:
+We've provided a comprehensive test script in the examples directory:
 
 ```bash
-# Create test script
-cat > test_mcp.py << 'EOF'
-import asyncio
-import sys
-sys.path.insert(0, 'src')
+# Run the MCP connection test (from project root directory)
+python examples/test_mcp_connection.py
 
-from services.ha_client.mcp import MCPClient
-from config import load_config
-
-async def test_mcp_connection():
-    print("Loading configuration...")
-    config = load_config("config/config.yaml")
-    
-    print(f"Connecting to Home Assistant at: {config.home_assistant.url}")
-    print(f"Using MCP endpoint: {config.home_assistant.mcp.sse_endpoint}")
-    
-    client = MCPClient(
-        base_url=config.home_assistant.url,
-        access_token=config.home_assistant.token,
-        sse_endpoint=config.home_assistant.mcp.sse_endpoint,
-        connection_timeout=config.home_assistant.mcp.connection_timeout,
-        reconnect_attempts=config.home_assistant.mcp.reconnect_attempts
-    )
-    
-    try:
-        print("\nAttempting connection...")
-        await client.connect()
-        print("✅ Successfully connected to MCP server!")
-        
-        tools = client.get_tools()
-        print(f"\n✅ Discovered {len(tools)} tools from Home Assistant:")
-        for tool in tools:
-            print(f"   - {tool['name']}: {tool.get('description', 'No description')}")
-        
-        # Test a simple tool call if available
-        if tools:
-            print(f"\n🔧 Testing tool invocation...")
-            # This would depend on what tools HA exposes
-            
-        print("\n✅ All tests passed!")
-        
-    except Exception as e:
-        print(f"\n❌ Connection failed: {type(e).__name__}: {e}")
-        print("\nTroubleshooting:")
-        print("1. Check Home Assistant is running and accessible")
-        print("2. Verify MCP Server integration is installed")
-        print("3. Confirm your access token is correct")
-        print("4. Check the URL in your .env file")
-        
-    finally:
-        await client.disconnect()
-        print("\nTest complete.")
-
-# Run the test
-asyncio.run(test_mcp_connection())
-EOF
-
-# Execute test
-python test_mcp.py
+# Or make it executable and run directly
+chmod +x examples/test_mcp_connection.py
+./examples/test_mcp_connection.py
 ```
+
+The test script will:
+1. Load your configuration
+2. Connect to the MCP server
+3. Discover available tools
+4. Perform a simple test
+5. Provide detailed troubleshooting if anything fails
+
+**Important Notes:**
+- Always run Python scripts with `python` or `python3` command
+- The script must be run from the project root directory
+- Do NOT try to run `.py` files directly with `./` unless they have a shebang line
+
+**Understanding Test Scripts:**
+- `examples/test_mcp_connection.py` - Standalone script for testing MCP connection
+- `tests/test_mcp_client.py` - Unit tests for pytest framework (not for direct execution)
 
 ## 🎤 Phase 4: Voice Assistant Testing
 
