@@ -61,7 +61,9 @@ async def test_mcp_connection():
             access_token=config.home_assistant.token,
             sse_endpoint=config.home_assistant.mcp.sse_endpoint,
             connection_timeout=config.home_assistant.mcp.connection_timeout,
-            reconnect_attempts=config.home_assistant.mcp.reconnect_attempts
+            reconnect_attempts=config.home_assistant.mcp.reconnect_attempts,
+            ssl_verify=config.home_assistant.mcp.ssl_verify,
+            ssl_ca_bundle=config.home_assistant.mcp.ssl_ca_bundle
         )
         print("[OK] MCP client created")
         

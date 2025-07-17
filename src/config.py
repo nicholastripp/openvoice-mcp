@@ -27,6 +27,8 @@ class MCPConfig:
     auth_method: str = "token"  # "token" or "oauth"
     connection_timeout: int = 30
     reconnect_attempts: int = 3
+    ssl_verify: bool = True  # Whether to verify SSL certificates
+    ssl_ca_bundle: Optional[str] = None  # Path to custom CA bundle
 
 
 @dataclass

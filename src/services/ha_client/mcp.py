@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import ssl
 import time
 from typing import Any, Dict, List, Optional, Callable
 from urllib.parse import urljoin
@@ -42,7 +43,9 @@ class MCPClient:
         sse_endpoint: str = "/mcp_server/sse",
         connection_timeout: int = 30,
         reconnect_attempts: int = 3,
-        reconnect_delay: float = 1.0
+        reconnect_delay: float = 1.0,
+        ssl_verify: bool = True,
+        ssl_ca_bundle: Optional[str] = None
     ):
         """Initialize MCP client.
         
@@ -53,6 +56,8 @@ class MCPClient:
             connection_timeout: Connection timeout in seconds
             reconnect_attempts: Number of reconnection attempts
             reconnect_delay: Initial delay between reconnection attempts
+            ssl_verify: Whether to verify SSL certificates (default: True)
+            ssl_ca_bundle: Path to custom CA bundle file (optional)
         """
         self.base_url = base_url.rstrip('/')
         self.access_token = access_token
@@ -60,9 +65,12 @@ class MCPClient:
         self.connection_timeout = connection_timeout
         self.reconnect_attempts = reconnect_attempts
         self.reconnect_delay = reconnect_delay
+        self.ssl_verify = ssl_verify
+        self.ssl_ca_bundle = ssl_ca_bundle
         
         self.sse_url = urljoin(self.base_url, sse_endpoint.lstrip('/'))
         self._session: Optional[aiohttp.ClientSession] = None
+        self._ssl_context: Optional[ssl.SSLContext] = None
         self._sse_client = None
         self._response_futures: Dict[str, asyncio.Future] = {}
         self._event_handlers: Dict[str, List[Callable]] = {}
@@ -72,6 +80,24 @@ class MCPClient:
         self._reconnect_task = None
         self._message_task = None
         
+    def _create_ssl_context(self) -> ssl.SSLContext:
+        """Create SSL context with custom settings."""
+        if self.ssl_verify:
+            context = ssl.create_default_context()
+            if self.ssl_ca_bundle:
+                context.load_verify_locations(self.ssl_ca_bundle)
+            logger.debug("SSL verification enabled")
+        else:
+            # Create unverified context for testing
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            logger.warning("SSL verification DISABLED - this is insecure!")
+        
+        # Log SSL details
+        logger.debug(f"SSL Protocol: {context.protocol}")
+        return context
+    
     async def connect(self) -> None:
         """Establish connection to MCP server."""
         if self._connected:
@@ -79,6 +105,7 @@ class MCPClient:
             return
             
         logger.info(f"Connecting to MCP server at {self.sse_url}")
+        logger.info(f"SSL verification: {'enabled' if self.ssl_verify else 'DISABLED'}")
         
         try:
             await self._establish_connection()
@@ -99,8 +126,14 @@ class MCPClient:
         
         if not self._session:
             timeout = aiohttp.ClientTimeout(total=self.connection_timeout)
-            # Create session with SSL handling for HTTPS
-            connector = aiohttp.TCPConnector(ssl=True)
+            
+            # Create SSL context
+            if self.base_url.startswith('https'):
+                self._ssl_context = self._create_ssl_context()
+                connector = aiohttp.TCPConnector(ssl=self._ssl_context)
+            else:
+                connector = aiohttp.TCPConnector()
+                
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
                 connector=connector
@@ -139,6 +172,16 @@ class MCPClient:
                 
                 logger.debug("SSE connection established successfully")
                 return
+                
+            except ssl.SSLError as e:
+                last_error = e
+                logger.error(f"SSL Error on attempt {attempt + 1}: {e}")
+                logger.error("This might be a certificate verification issue")
+                
+            except aiohttp.ClientConnectorSSLError as e:
+                last_error = e
+                logger.error(f"SSL Connection Error on attempt {attempt + 1}: {e}")
+                logger.error("Try disabling SSL verification for testing")
                 
             except Exception as e:
                 last_error = e

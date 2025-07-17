@@ -21,6 +21,8 @@ home_assistant:
     auth_method: "token"                  # Authentication method: "token" or "oauth"
     connection_timeout: 30                # Connection timeout in seconds
     reconnect_attempts: 3                 # Number of reconnection attempts
+    ssl_verify: true                      # Verify SSL certificates (set to false for self-signed certs)
+    ssl_ca_bundle: null                   # Path to custom CA bundle file (optional)
   
 # Audio Configuration
 audio:
