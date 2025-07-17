@@ -15,6 +15,13 @@ home_assistant:
   language: "en"                          # Must match OpenAI language
   timeout: 10                             # API timeout in seconds
   
+  # Model Context Protocol (MCP) configuration
+  mcp:
+    sse_endpoint: "/mcp_server/sse"       # MCP SSE endpoint (default)
+    auth_method: "token"                  # Authentication method: "token" or "oauth"
+    connection_timeout: 30                # Connection timeout in seconds
+    reconnect_attempts: 3                 # Number of reconnection attempts
+  
 # Audio Configuration
 audio:
   input_device: "default"           # Microphone device (name or index)

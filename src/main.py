@@ -20,10 +20,10 @@ from config import load_config, AppConfig
 from personality import PersonalityProfile
 from utils.logger import setup_logging, get_logger
 from openai_client.realtime import OpenAIRealtimeClient
-from ha_client.conversation import HomeAssistantConversationClient
+from services.ha_client.mcp import MCPClient
 from audio.capture import AudioCapture
 from audio.playback import AudioPlayback
-from function_bridge import FunctionCallBridge
+from function_bridge_mcp import MCPFunctionBridge
 from wake_word import PorcupineDetector
 
 
@@ -54,10 +54,10 @@ class VoiceAssistant:
         
         # Components (will be initialized later)
         self.openai_client: Optional[OpenAIRealtimeClient] = None
-        self.ha_client: Optional[HomeAssistantConversationClient] = None
+        self.mcp_client: Optional[MCPClient] = None
         self.audio_capture: Optional[AudioCapture] = None
         self.audio_playback: Optional[AudioPlayback] = None
-        self.function_bridge: Optional[FunctionCallBridge] = None
+        self.function_bridge: Optional[MCPFunctionBridge] = None
         self.wake_word_detector: Optional[PorcupineDetector] = None
         
         # Session state
@@ -231,7 +231,7 @@ class VoiceAssistant:
         base_prompt = self.personality.generate_prompt()
         
         # If Home Assistant is not connected, return base prompt
-        if not self.ha_client:
+        if not self.mcp_client:
             self.logger.warning("Home Assistant not connected - using base personality without device awareness")
             return base_prompt
         
@@ -252,12 +252,11 @@ class VoiceAssistant:
                 self.logger.info("Fetching fresh device information from Home Assistant...")
                 start_time = asyncio.get_event_loop().time()
                 
-                try:
-                    states = await self.ha_client.rest_client.get_states()
-                except Exception as fetch_error:
-                    self.logger.error(f"Failed to fetch states from Home Assistant: {fetch_error}")
-                    self.logger.error(f"HA URL: {self.ha_client.rest_client.base_url}")
-                    states = None
+                # TODO: MCP doesn't provide direct state access
+                # We could potentially use MCP tools to query device states
+                # For now, skip device state fetching
+                states = None
+                self.logger.warning("Device state fetching not yet implemented for MCP")
                 
                 fetch_time = asyncio.get_event_loop().time() - start_time
                 self.logger.info(f"Device fetch completed in {fetch_time:.2f}s")
@@ -413,7 +412,8 @@ class VoiceAssistant:
             self._clear_device_cache()
             
             start_time = asyncio.get_event_loop().time()
-            states = await self.ha_client.rest_client.get_states()
+            # TODO: MCP doesn't provide direct state access
+            states = None
             fetch_time = asyncio.get_event_loop().time() - start_time
             diagnostics["fetch_time"] = fetch_time
             
@@ -455,20 +455,27 @@ class VoiceAssistant:
         if wake_word_only_mode:
             self.logger.info("WAKE WORD TEST MODE: Skipping Home Assistant and OpenAI initialization")
             self.logger.info(f"TEST MODE VALUE: {self.config.wake_word.test_mode}")
-            self.ha_client = None
+            self.mcp_client = None
             self.function_bridge = None
             self.openai_client = None
         else:
             self.logger.debug("About to initialize Home Assistant client")
             # Initialize Home Assistant client with graceful failure handling
-            self.logger.info("Initializing Home Assistant client...")
+            self.logger.info("Initializing MCP client for Home Assistant...")
             try:
-                self.ha_client = HomeAssistantConversationClient(self.config.home_assistant)
-                await self.ha_client.start()
-                self.logger.debug("Home Assistant client initialized")
+                self.mcp_client = MCPClient(
+                    base_url=self.config.home_assistant.url,
+                    access_token=self.config.home_assistant.token,
+                    sse_endpoint=self.config.home_assistant.mcp.sse_endpoint,
+                    connection_timeout=self.config.home_assistant.mcp.connection_timeout,
+                    reconnect_attempts=self.config.home_assistant.mcp.reconnect_attempts
+                )
+                await self.mcp_client.connect()
+                self.logger.debug("MCP client connected to Home Assistant")
                 
                 # Initialize function bridge
-                self.function_bridge = FunctionCallBridge(self.ha_client)
+                self.function_bridge = MCPFunctionBridge(self.mcp_client)
+                await self.function_bridge.initialize()
                 
             except ConnectionError as e:
                 # User-friendly error message already formatted by conversation client
@@ -482,7 +489,7 @@ class VoiceAssistant:
                 if self.skip_ha_check:
                     print("WARNING: --skip-ha-check flag is set, continuing without Home Assistant")
                     print("Home Assistant functionality will not be available")
-                    self.ha_client = None
+                    self.mcp_client = None
                     self.function_bridge = None
                 else:
                     # Check if user wants to continue in wake word only mode
@@ -514,7 +521,7 @@ class VoiceAssistant:
                 if self.skip_ha_check:
                     print("WARNING: --skip-ha-check flag is set, continuing without Home Assistant")
                     print("Home Assistant functionality will not be available")
-                    self.ha_client = None
+                    self.mcp_client = None
                     self.function_bridge = None
                 else:
                     print("\nOr run with --skip-ha-check to continue without Home Assistant (limited functionality)")
@@ -596,7 +603,7 @@ class VoiceAssistant:
             ("audio_capture", self.audio_capture),
             ("audio_playback", self.audio_playback),
             ("openai_client", self.openai_client),
-            ("ha_client", self.ha_client)
+            ("ha_client", self.mcp_client)
         ]
         
         for name, component in components:
@@ -802,7 +809,7 @@ class VoiceAssistant:
             self.logger.debug("Reset conversation context")
         
         # Refresh device list and update personality for this session
-        if self.openai_client and self.ha_client:
+        if self.openai_client and self.mcp_client:
             try:
                 self.logger.info("Refreshing Home Assistant device list for new session...")
                 updated_personality = await self._generate_device_aware_personality()

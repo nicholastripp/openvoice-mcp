@@ -12,6 +12,9 @@ scipy>=1.11.0
 # HTTP client for Home Assistant API
 aiohttp>=3.9.0
 
+# Server-Sent Events client for MCP
+aiohttp-sse-client>=0.2.1
+
 # Configuration and environment
 python-dotenv>=1.0.0
 pyyaml>=6.0

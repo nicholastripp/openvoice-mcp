@@ -21,12 +21,22 @@ class OpenAIConfig:
 
 
 @dataclass
+class MCPConfig:
+    """Model Context Protocol configuration"""
+    sse_endpoint: str = "/mcp_server/sse"
+    auth_method: str = "token"  # "token" or "oauth"
+    connection_timeout: int = 30
+    reconnect_attempts: int = 3
+
+
+@dataclass
 class HomeAssistantConfig:
     """Home Assistant API configuration"""
     url: str
     token: str
     language: str = "en"
     timeout: int = 10
+    mcp: MCPConfig = field(default_factory=MCPConfig)
 
 
 @dataclass
@@ -249,6 +259,11 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
         # Create optional configuration objects
         audio_config = AudioConfig(**config_data.get("audio", {}))
         wake_word_config = WakeWordConfig(**config_data.get("wake_word", {}))
+        
+        # Create MCP config from home_assistant section
+        mcp_data = config_data.get("home_assistant", {}).get("mcp", {})
+        mcp_config = MCPConfig(**mcp_data)
+        ha_config.mcp = mcp_config
         
         # Validate wake word gain settings
         if wake_word_config.audio_gain < 1.0 or wake_word_config.audio_gain > 5.0:
