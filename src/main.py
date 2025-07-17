@@ -10,7 +10,7 @@ import argparse
 import signal
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from enum import Enum
 
 # Add src to path for imports
