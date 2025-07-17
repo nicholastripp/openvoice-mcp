@@ -99,11 +99,26 @@ class MCPClient:
         
         if not self._session:
             timeout = aiohttp.ClientTimeout(total=self.connection_timeout)
-            self._session = aiohttp.ClientSession(timeout=timeout)
+            # Create session with SSL handling for HTTPS
+            connector = aiohttp.TCPConnector(ssl=True)
+            self._session = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector
+            )
         
         last_error = None
         for attempt in range(self.reconnect_attempts):
             try:
+                logger.debug(f"Connection attempt {attempt + 1}/{self.reconnect_attempts}")
+                
+                # First, test basic connectivity
+                async with self._session.get(self.base_url) as resp:
+                    if resp.status != 200:
+                        raise MCPConnectionError(f"Home Assistant returned status {resp.status}")
+                    logger.debug("Basic connectivity test passed")
+                
+                # Now establish SSE connection
+                logger.debug(f"Establishing SSE connection to {self.sse_url}")
                 self._sse_client = sse_client.EventSource(
                     self.sse_url,
                     session=self._session,
@@ -113,15 +128,33 @@ class MCPClient:
                 # Start message processing task
                 self._message_task = asyncio.create_task(self._process_messages())
                 
-                # Give it a moment to establish
-                await asyncio.sleep(0.1)
+                # Wait a bit longer to ensure connection is established
+                await asyncio.sleep(0.5)
+                
+                # Check if task is still running
+                if self._message_task.done():
+                    error = self._message_task.exception()
+                    if error:
+                        raise MCPConnectionError(f"Message processing failed immediately: {error}")
+                
+                logger.debug("SSE connection established successfully")
                 return
                 
             except Exception as e:
                 last_error = e
+                logger.error(f"Connection attempt {attempt + 1} failed: {type(e).__name__}: {e}")
+                
+                # Cancel message task if it's running
+                if self._message_task and not self._message_task.done():
+                    self._message_task.cancel()
+                    try:
+                        await self._message_task
+                    except asyncio.CancelledError:
+                        pass
+                
                 if attempt < self.reconnect_attempts - 1:
                     delay = self.reconnect_delay * (2 ** attempt)
-                    logger.warning(f"Connection attempt {attempt + 1} failed, retrying in {delay}s: {e}")
+                    logger.info(f"Retrying in {delay}s...")
                     await asyncio.sleep(delay)
                     
         raise MCPConnectionError(f"Failed after {self.reconnect_attempts} attempts: {last_error}")
@@ -129,15 +162,25 @@ class MCPClient:
     async def _process_messages(self) -> None:
         """Process incoming SSE messages."""
         try:
+            logger.debug("Starting message processing loop")
+            if not self._sse_client:
+                raise MCPError("SSE client not initialized")
+                
             async for event in self._sse_client:
                 if event.type == 'message':
+                    logger.debug(f"Received message event: {event.data[:100]}...")
                     await self._handle_message(event.data)
                 elif event.type == 'error':
                     logger.error(f"SSE error event: {event.data}")
                 elif event.type == 'ping':
                     logger.debug("Received ping from server")
+                else:
+                    logger.debug(f"Received event type: {event.type}")
+        except asyncio.CancelledError:
+            logger.debug("Message processing cancelled")
+            raise
         except Exception as e:
-            logger.error(f"Error processing messages: {e}")
+            logger.error(f"Error processing messages: {type(e).__name__}: {e}")
             self._connected = False
             # Trigger reconnection if needed
             if self._reconnect_task is None or self._reconnect_task.done():
@@ -201,13 +244,19 @@ class MCPClient:
         
         try:
             # Send request via POST to the same endpoint
+            logger.debug(f"Sending request: {method} with id {request_id}")
             async with self._session.post(
                 self.sse_url,
                 json=request,
-                headers={"Authorization": f"Bearer {self.access_token}"}
+                headers={
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Content-Type": "application/json"
+                }
             ) as response:
                 if response.status != 200:
-                    raise MCPConnectionError(f"Request failed with status {response.status}")
+                    body = await response.text()
+                    logger.error(f"Request failed: status={response.status}, body={body[:200]}")
+                    raise MCPConnectionError(f"Request failed with status {response.status}: {body[:200]}")
             
             # Wait for response with timeout
             result = await asyncio.wait_for(future, timeout=30.0)
@@ -308,16 +357,31 @@ class MCPClient:
         # Cancel tasks
         if self._message_task and not self._message_task.done():
             self._message_task.cancel()
+            try:
+                await self._message_task
+            except asyncio.CancelledError:
+                pass
             
         if self._reconnect_task and not self._reconnect_task.done():
             self._reconnect_task.cancel()
+            try:
+                await self._reconnect_task
+            except asyncio.CancelledError:
+                pass
         
         # Close connections
         if self._sse_client:
-            await self._sse_client.close()
+            try:
+                await self._sse_client.close()
+            except Exception as e:
+                logger.debug(f"Error closing SSE client: {e}")
+            self._sse_client = None
             
         if self._session:
-            await self._session.close()
+            try:
+                await self._session.close()
+            except Exception as e:
+                logger.debug(f"Error closing session: {e}")
             self._session = None
         
         # Clear state

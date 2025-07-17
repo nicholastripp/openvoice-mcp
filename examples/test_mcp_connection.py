@@ -47,9 +47,12 @@ async def test_mcp_connection():
         # Display connection information (without sensitive data)
         print(f"\n2. Connection Details:")
         print(f"   - Home Assistant URL: {config.home_assistant.url}")
+        print(f"   - Protocol: {'HTTPS' if config.home_assistant.url.startswith('https') else 'HTTP'}")
         print(f"   - MCP Endpoint: {config.home_assistant.mcp.sse_endpoint}")
+        print(f"   - Full SSE URL: {config.home_assistant.url.rstrip('/')}{config.home_assistant.mcp.sse_endpoint}")
         print(f"   - Connection Timeout: {config.home_assistant.mcp.connection_timeout}s")
         print(f"   - Auth Method: {config.home_assistant.mcp.auth_method}")
+        print(f"   - Token: {'Set' if config.home_assistant.token else 'Not set'} ({len(config.home_assistant.token)} chars)")
         
         # Create MCP client
         print("\n3. Creating MCP client...")
@@ -62,15 +65,34 @@ async def test_mcp_connection():
         )
         print("[OK] MCP client created")
         
-        # Attempt connection
-        print("\n4. Attempting connection to MCP server...")
+        # Test basic connectivity first
+        print("\n4. Testing basic Home Assistant connectivity...")
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(config.home_assistant.url, 
+                                     headers={"Authorization": f"Bearer {config.home_assistant.token}"}) as resp:
+                    print(f"   - HTTP Status: {resp.status}")
+                    if resp.status == 200:
+                        print("   [OK] Home Assistant is accessible")
+                    elif resp.status == 401:
+                        print("   [ERROR] Authentication failed - check your token")
+                        return
+                    else:
+                        print(f"   [WARNING] Unexpected status code: {resp.status}")
+            except Exception as e:
+                print(f"   [ERROR] Cannot reach Home Assistant: {e}")
+                return
+        
+        # Attempt MCP connection
+        print("\n5. Attempting connection to MCP server...")
         print("   This may take a few seconds...")
         
         await client.connect()
         print("[OK] Successfully connected to MCP server!")
         
         # Get available tools
-        print("\n5. Discovering available tools...")
+        print("\n6. Discovering available tools...")
         tools = client.get_tools()
         
         if tools:
@@ -88,7 +110,7 @@ async def test_mcp_connection():
         
         # Test a simple tool call if we have tools
         if tools and any('control' in tool['name'].lower() for tool in tools):
-            print("\n6. Testing tool invocation...")
+            print("\n7. Testing tool invocation...")
             # Find a control tool
             control_tool = next((t for t in tools if 'control' in t['name'].lower()), None)
             if control_tool:
@@ -131,7 +153,7 @@ async def test_mcp_connection():
         
     finally:
         if 'client' in locals() and client.is_connected:
-            print("\n7. Disconnecting...")
+            print("\n8. Disconnecting...")
             await client.disconnect()
             print("[OK] Disconnected successfully")
 
