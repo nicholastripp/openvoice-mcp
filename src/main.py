@@ -464,11 +464,21 @@ class VoiceAssistant:
                         })
                     
                     if result:
+                        # Debug: Log the raw response for analysis
+                        self.logger.debug(f"Raw GetLiveContext response for '{query}': {result}")
+                        self.logger.debug(f"Response type: {type(result)}")
+                        if hasattr(result, '__dict__'):
+                            self.logger.debug(f"Response attributes: {result.__dict__}")
+                        
                         # Parse the result to extract device information
                         device_info = self._parse_mcp_device_response(result, query)
                         if device_info:
                             all_device_info.extend(device_info)
                             self.logger.debug(f"Extracted {len(device_info)} devices from query: {query}")
+                        else:
+                            self.logger.debug(f"No devices extracted from query: {query}")
+                    else:
+                        self.logger.debug(f"No result returned for query: {query}")
                     
                 except Exception as e:
                     self.logger.debug(f"Query '{query}' failed: {e}")
