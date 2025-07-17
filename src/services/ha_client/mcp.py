@@ -109,10 +109,13 @@ class MCPClient:
         
         try:
             await self._establish_connection()
-            await self._initialize_protocol()
+            # Set connected to True after SSE connection is established
             self._connected = True
+            await self._initialize_protocol()
             logger.info("Successfully connected to MCP server")
         except Exception as e:
+            # Reset connected state on failure
+            self._connected = False
             logger.error(f"Failed to connect to MCP server: {e}")
             raise MCPConnectionError(f"Connection failed: {str(e)}")
     
