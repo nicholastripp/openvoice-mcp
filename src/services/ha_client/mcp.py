@@ -79,6 +79,7 @@ class MCPClient:
         self._connected = False
         self._reconnect_task = None
         self._message_task = None
+        self._message_endpoint: Optional[str] = None  # Session-specific message endpoint
         
     def _create_ssl_context(self) -> ssl.SSLContext:
         """Create SSL context with custom settings."""
@@ -196,6 +197,17 @@ class MCPClient:
                     if error:
                         raise MCPConnectionError(f"Message processing failed immediately: {error}")
                 
+                # Wait for endpoint event
+                logger.debug("Waiting for endpoint event...")
+                max_wait = 5.0  # Maximum 5 seconds to wait for endpoint
+                start_time = asyncio.get_event_loop().time()
+                
+                while not self._message_endpoint:
+                    if asyncio.get_event_loop().time() - start_time > max_wait:
+                        raise MCPConnectionError("Timeout waiting for message endpoint from MCP server")
+                    await asyncio.sleep(0.1)
+                
+                logger.debug(f"Got message endpoint: {self._message_endpoint}")
                 logger.debug("SSE connection established successfully")
                 return
                 
@@ -238,7 +250,16 @@ class MCPClient:
             # Try to iterate over SSE events
             try:
                 async for event in self._sse_client:
-                    if event.type == 'message':
+                    logger.debug(f"SSE event - type: {event.type}, data: {event.data[:100] if event.data else 'None'}")
+                    
+                    if event.type == 'endpoint':
+                        # Handle the endpoint event that provides the message URL
+                        self._message_endpoint = event.data.strip()
+                        logger.info(f"Received message endpoint: {self._message_endpoint}")
+                        # The endpoint event means we're connected
+                        continue
+                        
+                    elif event.type == 'message':
                         logger.debug(f"Received message event: {event.data[:100]}...")
                         await self._handle_message(event.data)
                     elif event.type == 'error':
@@ -246,7 +267,7 @@ class MCPClient:
                     elif event.type == 'ping':
                         logger.debug("Received ping from server")
                     else:
-                        logger.debug(f"Received event type: {event.type}")
+                        logger.debug(f"Received unknown event type: {event.type}")
             except ValueError as e:
                 # This is the specific error we're seeing
                 logger.error(f"ValueError in SSE processing: {str(e)}")
@@ -323,6 +344,13 @@ class MCPClient:
         if not self._connected:
             raise MCPConnectionError("Not connected to MCP server")
         
+        # Wait for message endpoint to be available
+        if not self._message_endpoint:
+            # Give it a moment for the endpoint event to arrive
+            await asyncio.sleep(0.5)
+            if not self._message_endpoint:
+                raise MCPConnectionError("No message endpoint received from MCP server")
+        
         request_id = str(uuid.uuid4())
         request = {
             "jsonrpc": "2.0",
@@ -335,11 +363,14 @@ class MCPClient:
         future = asyncio.Future()
         self._response_futures[request_id] = future
         
+        # Build the full message endpoint URL
+        message_url = urljoin(self.base_url, self._message_endpoint.lstrip('/'))
+        
         try:
-            # Send request via POST to the same endpoint
-            logger.debug(f"Sending request: {method} with id {request_id}")
+            # Send request via POST to the message endpoint (not SSE endpoint)
+            logger.debug(f"Sending request: {method} with id {request_id} to {message_url}")
             async with self._session.post(
-                self.sse_url,
+                message_url,
                 json=request,
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
@@ -481,6 +512,7 @@ class MCPClient:
         self._response_futures.clear()
         self._tools.clear()
         self._capabilities.clear()
+        self._message_endpoint = None
     
     def on_event(self, event: str, handler: Callable) -> None:
         """Register event handler for notifications.
