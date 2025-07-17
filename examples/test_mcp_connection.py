@@ -35,14 +35,14 @@ async def test_mcp_connection():
         config_path = Path(__file__).parent.parent / "config" / "config.yaml"
         
         if not config_path.exists():
-            print(f"❌ Configuration file not found: {config_path}")
+            print(f"[ERROR] Configuration file not found: {config_path}")
             print("\nPlease ensure you have:")
             print("  1. Copied config.yaml.example to config.yaml")
             print("  2. Created a .env file with your credentials")
             return
             
         config = load_config(str(config_path))
-        print("✅ Configuration loaded successfully")
+        print("[OK] Configuration loaded successfully")
         
         # Display connection information (without sensitive data)
         print(f"\n2. Connection Details:")
@@ -60,21 +60,21 @@ async def test_mcp_connection():
             connection_timeout=config.home_assistant.mcp.connection_timeout,
             reconnect_attempts=config.home_assistant.mcp.reconnect_attempts
         )
-        print("✅ MCP client created")
+        print("[OK] MCP client created")
         
         # Attempt connection
         print("\n4. Attempting connection to MCP server...")
         print("   This may take a few seconds...")
         
         await client.connect()
-        print("✅ Successfully connected to MCP server!")
+        print("[OK] Successfully connected to MCP server!")
         
         # Get available tools
         print("\n5. Discovering available tools...")
         tools = client.get_tools()
         
         if tools:
-            print(f"✅ Found {len(tools)} tools:")
+            print(f"[OK] Found {len(tools)} tools:")
             for i, tool in enumerate(tools, 1):
                 print(f"\n   Tool {i}: {tool['name']}")
                 if 'description' in tool:
@@ -84,7 +84,7 @@ async def test_mcp_connection():
                     if params:
                         print(f"   Parameters: {', '.join(params.keys())}")
         else:
-            print("⚠️  No tools discovered. Check that MCP server has 'Control Home Assistant' enabled.")
+            print("[WARNING] No tools discovered. Check that MCP server has 'Control Home Assistant' enabled.")
         
         # Test a simple tool call if we have tools
         if tools and any('control' in tool['name'].lower() for tool in tools):
@@ -98,33 +98,33 @@ async def test_mcp_connection():
                         control_tool['name'],
                         {"command": "what time is it"}
                     )
-                    print("✅ Tool invocation successful!")
+                    print("[OK] Tool invocation successful!")
                     if isinstance(result, dict) and 'content' in result:
                         print(f"   Response: {result['content']}")
                 except Exception as e:
-                    print(f"⚠️  Tool invocation test failed: {e}")
+                    print(f"[WARNING] Tool invocation test failed: {e}")
                     print("   This is normal if the tool doesn't support the test command")
         
         print("\n" + "=" * 60)
-        print("✅ ALL TESTS PASSED! MCP integration is working correctly.")
+        print("[SUCCESS] ALL TESTS PASSED! MCP integration is working correctly.")
         print("=" * 60)
         
     except FileNotFoundError as e:
-        print(f"\n❌ Configuration Error: {e}")
+        print(f"\n[ERROR] Configuration Error: {e}")
         print("\nPlease check that:")
         print("  1. You're running from the project root directory")
         print("  2. config/config.yaml exists")
         print("  3. .env file exists with required variables")
         
     except Exception as e:
-        print(f"\n❌ Connection Failed: {type(e).__name__}: {e}")
-        print("\n🔧 Troubleshooting Steps:")
+        print(f"\n[ERROR] Connection Failed: {type(e).__name__}: {e}")
+        print("\n[DEBUG] Troubleshooting Steps:")
         print("  1. Verify Home Assistant is running and accessible")
         print("  2. Check Home Assistant version (must be 2025.2+)")
         print("  3. Ensure MCP Server integration is installed in HA")
         print("  4. Verify your access token is correct in .env")
         print("  5. Check the HA_URL in your .env file")
-        print("\n💡 Debug Commands:")
+        print("\n[TIP] Debug Commands:")
         print(f"  - Test HA access: curl {config.home_assistant.url if 'config' in locals() else 'http://homeassistant.local:8123'}")
         print("  - Check HA version: ha core info")
         print("  - View HA logs: ha logs | grep mcp_server")
@@ -133,7 +133,7 @@ async def test_mcp_connection():
         if 'client' in locals() and client.is_connected:
             print("\n7. Disconnecting...")
             await client.disconnect()
-            print("✅ Disconnected successfully")
+            print("[OK] Disconnected successfully")
 
 
 def main():
@@ -142,16 +142,16 @@ def main():
     
     # Check Python version
     if sys.version_info < (3, 8):
-        print("❌ Python 3.8 or higher is required")
+        print("[ERROR] Python 3.8 or higher is required")
         sys.exit(1)
     
     # Run the async test
     try:
         asyncio.run(test_mcp_connection())
     except KeyboardInterrupt:
-        print("\n\n⚠️  Test interrupted by user")
+        print("\n\n[WARNING] Test interrupted by user")
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
+        print(f"\n[ERROR] Unexpected error: {e}")
         sys.exit(1)
 
 
