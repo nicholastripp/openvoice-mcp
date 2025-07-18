@@ -514,26 +514,40 @@ class VoiceAssistant:
                 for item in response:
                     if hasattr(item, 'text') or (isinstance(item, dict) and 'text' in item):
                         text = item.text if hasattr(item, 'text') else item['text']
-                        parsed = self._extract_devices_from_text(text)
+                        # Check if this is a GetLiveContext JSON response
+                        if text.strip().startswith('{"success":'):
+                            parsed = self._extract_devices_from_getlivecontext(text)
+                        else:
+                            parsed = self._extract_devices_from_text(text)
                         devices.extend(parsed)
             elif isinstance(response, dict) and 'content' in response:
                 # Response has content array
                 for item in response['content']:
                     if item.get('type') == 'text' and 'text' in item:
-                        parsed = self._extract_devices_from_text(item['text'])
+                        text = item['text']
+                        if text.strip().startswith('{"success":'):
+                            parsed = self._extract_devices_from_getlivecontext(text)
+                        else:
+                            parsed = self._extract_devices_from_text(text)
                         devices.extend(parsed)
             elif isinstance(response, str):
                 # Direct text response
-                parsed = self._extract_devices_from_text(response)
+                if response.strip().startswith('{"success":'):
+                    parsed = self._extract_devices_from_getlivecontext(response)
+                else:
+                    parsed = self._extract_devices_from_text(response)
                 devices.extend(parsed)
             else:
                 # Try to convert to string and parse
                 text = str(response)
-                parsed = self._extract_devices_from_text(text)
+                if text.strip().startswith('{"success":'):
+                    parsed = self._extract_devices_from_getlivecontext(text)
+                else:
+                    parsed = self._extract_devices_from_text(text)
                 devices.extend(parsed)
                 
         except Exception as e:
-            self.logger.debug(f"Error parsing MCP response: {e}")
+            self.logger.info(f"Error parsing MCP response: {e}")
         
         return devices
     
@@ -591,6 +605,127 @@ class VoiceAssistant:
                             
         except Exception as e:
             self.logger.debug(f"Error extracting devices from text: {e}")
+        
+        return devices
+    
+    def _extract_devices_from_getlivecontext(self, text: str) -> List[Dict[str, Any]]:
+        """Extract device information from GetLiveContext JSON/YAML response."""
+        devices = []
+        
+        if not text:
+            return devices
+        
+        try:
+            # Parse the JSON wrapper
+            import json
+            data = json.loads(text.strip())
+            
+            if not data.get('success') or 'result' not in data:
+                self.logger.debug("GetLiveContext response not successful or missing result")
+                return devices
+            
+            # Extract the YAML-like content from the result field
+            result_text = data['result']
+            
+            # Parse the YAML-like format line by line
+            lines = result_text.split('\n')
+            current_device = None
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Skip the header line
+                if line.startswith('Live Context:'):
+                    continue
+                
+                # New device entry starts with '- names:'
+                if line.startswith('- names:'):
+                    # Save previous device if exists
+                    if current_device and 'domain' in current_device:
+                        # Generate entity_id from domain and name
+                        name = current_device.get('names', 'unknown')
+                        domain = current_device['domain']
+                        
+                        # Sanitize name for entity_id
+                        entity_name = name.lower().replace(' ', '_').replace('-', '_')
+                        entity_name = ''.join(c for c in entity_name if c.isalnum() or c == '_')
+                        
+                        entity_id = f"{domain}.{entity_name}"
+                        
+                        # Create device entry
+                        device = {
+                            'entity_id': entity_id,
+                            'state': current_device.get('state', 'unknown'),
+                            'attributes': {
+                                'friendly_name': name
+                            }
+                        }
+                        
+                        # Add area if present
+                        if 'areas' in current_device:
+                            device['attributes']['area'] = current_device['areas']
+                        
+                        # Add any additional attributes
+                        if 'attributes' in current_device:
+                            device['attributes'].update(current_device['attributes'])
+                        
+                        devices.append(device)
+                    
+                    # Start new device
+                    current_device = {
+                        'names': line.split(':', 1)[1].strip()
+                    }
+                
+                elif current_device and ':' in line:
+                    # Parse attribute line
+                    key, value = line.split(':', 1)
+                    key = key.strip()
+                    value = value.strip().strip("'\"")
+                    
+                    if key == 'attributes':
+                        # Start of attributes section - parse nested attributes
+                        current_device['attributes'] = {}
+                    elif line.startswith('  ') and 'attributes' in current_device:
+                        # Nested attribute line
+                        current_device['attributes'][key] = value
+                    else:
+                        # Regular attribute
+                        current_device[key] = value
+            
+            # Don't forget the last device
+            if current_device and 'domain' in current_device:
+                name = current_device.get('names', 'unknown')
+                domain = current_device['domain']
+                
+                # Sanitize name for entity_id
+                entity_name = name.lower().replace(' ', '_').replace('-', '_')
+                entity_name = ''.join(c for c in entity_name if c.isalnum() or c == '_')
+                
+                entity_id = f"{domain}.{entity_name}"
+                
+                device = {
+                    'entity_id': entity_id,
+                    'state': current_device.get('state', 'unknown'),
+                    'attributes': {
+                        'friendly_name': name
+                    }
+                }
+                
+                if 'areas' in current_device:
+                    device['attributes']['area'] = current_device['areas']
+                
+                if 'attributes' in current_device:
+                    device['attributes'].update(current_device['attributes'])
+                
+                devices.append(device)
+            
+            self.logger.info(f"Extracted {len(devices)} devices from GetLiveContext response")
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing GetLiveContext response: {e}")
+            self.logger.debug(f"Response text: {text[:500]}...")
         
         return devices
     
