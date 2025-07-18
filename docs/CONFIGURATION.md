@@ -128,6 +128,19 @@ system:
   daemon: false                  # Run as daemon process
 ```
 
+### Web UI Configuration
+
+Enable and configure the optional web interface:
+
+```yaml
+web_ui:
+  enabled: false                # Enable web UI on startup
+  host: "0.0.0.0"              # Listen address (0.0.0.0 for all interfaces, 127.0.0.1 for localhost only)
+  port: 8080                   # Web UI port
+```
+
+**Security Note**: Setting `host: "0.0.0.0"` makes the web UI accessible from any network interface. This is convenient for remote access but could expose your configuration. Ensure your network is secure or use `host: "127.0.0.1"` with SSH tunneling.
+
 ## Personality Configuration (config/persona.ini)
 
 Customize the assistant's personality and behavior:

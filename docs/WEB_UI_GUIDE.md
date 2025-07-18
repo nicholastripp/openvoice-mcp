@@ -14,6 +14,24 @@ The web UI provides:
 
 ## Starting the Web UI
 
+### Method 1: Configuration File (Recommended)
+
+Add to your `config/config.yaml`:
+
+```yaml
+web_ui:
+  enabled: true         # Enable web UI on startup
+  host: "0.0.0.0"      # Listen on all interfaces for remote access
+  port: 8080           # Web UI port
+```
+
+Then start normally:
+```bash
+python src/main.py
+```
+
+### Method 2: Command Line
+
 ```bash
 # Start the assistant with web UI enabled
 python src/main.py --web
@@ -21,6 +39,8 @@ python src/main.py --web
 # Use a custom port (default is 8080)
 python src/main.py --web --web-port 8090
 ```
+
+Note: CLI flags override config file settings for the port, but the host address is always taken from the config file for security reasons.
 
 ## Features
 
@@ -117,10 +137,14 @@ The web UI includes a consistent navigation bar with links to all major sections
 
 ## Security
 
-- By default, the web UI only listens on localhost (127.0.0.1)
+- Default configuration listens on all interfaces (0.0.0.0) for easy remote access
+- To restrict to localhost only, set `host: "127.0.0.1"` in config.yaml
 - API keys are masked in the interface
-- No authentication required for local access
-- For network access, consider using a reverse proxy with authentication
+- No built-in authentication - ensure your network is secure
+- For public networks, consider:
+  - Using SSH tunneling: `ssh -L 8080:localhost:8080 pi@your-pi`
+  - Setting up a reverse proxy with authentication
+  - Restricting to localhost and using VPN
 
 ## Troubleshooting
 

@@ -126,6 +126,14 @@ class SystemConfig:
 
 
 @dataclass
+class WebUIConfig:
+    """Web UI configuration"""
+    enabled: bool = False
+    host: str = "0.0.0.0"
+    port: int = 8080
+
+
+@dataclass
 class AdvancedConfig:
     """Advanced configuration options"""
     reconnect_delay: float = 5.0
@@ -144,6 +152,7 @@ class AppConfig:
     wake_word: WakeWordConfig = field(default_factory=WakeWordConfig)
     session: SessionConfig = field(default_factory=SessionConfig)
     system: SystemConfig = field(default_factory=SystemConfig)
+    web_ui: WebUIConfig = field(default_factory=WebUIConfig)
     advanced: AdvancedConfig = field(default_factory=AdvancedConfig)
 
 
@@ -277,6 +286,7 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
         
         session_config = SessionConfig(**config_data.get("session", {}))
         system_config = SystemConfig(**config_data.get("system", {}))
+        web_ui_config = WebUIConfig(**config_data.get("web_ui", {}))
         advanced_config = AdvancedConfig(**config_data.get("advanced", {}))
         
         return AppConfig(
@@ -286,6 +296,7 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
             wake_word=wake_word_config,
             session=session_config,
             system=system_config,
+            web_ui=web_ui_config,
             advanced=advanced_config
         )
         

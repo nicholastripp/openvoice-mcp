@@ -107,6 +107,15 @@ system:
   led_gpio: null                 # GPIO pin for status LED (optional)
   daemon: false                  # Run as daemon process
   
+# Web UI Configuration (optional)
+web_ui:
+  enabled: false                # Enable web UI on startup
+  host: "0.0.0.0"              # Listen address: 0.0.0.0 for all interfaces, 127.0.0.1 for localhost only
+  port: 8080                   # Web UI port
+  # SECURITY WARNING: Setting host to 0.0.0.0 makes the web UI accessible from any network interface.
+  # This allows remote access but could expose your configuration to anyone on your network.
+  # Consider using 127.0.0.1 and SSH tunneling, or ensure your network is secure.
+
 # Advanced Configuration
 advanced:
   reconnect_delay: 5.0          # WebSocket reconnection delay

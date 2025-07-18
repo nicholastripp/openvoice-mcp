@@ -2533,13 +2533,28 @@ async def main():
         logger.info(f"HA URL: {config.home_assistant.url}")
         logger.info(f"Assistant Name: {personality.backstory.name}")
         
-        # Start web UI if requested
+        # Start web UI if requested via CLI or config
         web_app = None
-        if args.web:
-            logger.info(f"Starting web UI on port {args.web_port}")
+        web_ui_enabled = args.web or config.web_ui.enabled
+        web_ui_port = args.web_port if args.web else config.web_ui.port
+        web_ui_host = config.web_ui.host  # Always use config for host
+        
+        if web_ui_enabled:
+            logger.info(f"Starting web UI on {web_ui_host}:{web_ui_port}")
+            
+            # Security warning if binding to all interfaces
+            if web_ui_host == "0.0.0.0":
+                logger.warning("Web UI configured to listen on all interfaces (0.0.0.0)")
+                logger.warning("This makes the web UI accessible from any network interface")
+                print("\n" + "="*70)
+                print("SECURITY WARNING: Web UI listening on all interfaces")
+                print("The web UI will be accessible from: http://<your-ip>:" + str(web_ui_port))
+                print("Ensure your network is secure!")
+                print("="*70 + "\n")
+            
             from web.app import WebApp
             config_dir = Path(args.config).parent
-            web_app = WebApp(config_dir, port=args.web_port)
+            web_app = WebApp(config_dir, host=web_ui_host, port=web_ui_port)
             await web_app.start()
             
             # If first run, show setup message
