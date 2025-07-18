@@ -89,6 +89,10 @@ class VoiceAssistant:
         self.cleanup_task = None
         self.cleanup_interval = 30.0  # Check every 30 seconds
         
+        # Periodic status broadcast task
+        self.status_broadcast_task = None
+        self.status_broadcast_interval = 5.0  # Broadcast every 5 seconds
+        
         # Device cache
         self._device_cache = None
         self._device_cache_time = None
@@ -119,6 +123,11 @@ class VoiceAssistant:
             # Start periodic cleanup task
             self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
             
+            # Start periodic status broadcast if web UI is enabled
+            if hasattr(self, 'web_app') and self.web_app:
+                self.status_broadcast_task = asyncio.create_task(self._periodic_status_broadcast())
+                self.logger.debug("Started periodic status broadcast task")
+            
             self.logger.debug("Starting main loop")
             # Start main loop
             self.running = True
@@ -137,6 +146,10 @@ class VoiceAssistant:
         # Cancel cleanup task
         if self.cleanup_task and not self.cleanup_task.done():
             self.cleanup_task.cancel()
+        
+        # Cancel status broadcast task
+        if self.status_broadcast_task and not self.status_broadcast_task.done():
+            self.status_broadcast_task.cancel()
         
         # Stop web UI if running
         if hasattr(self, 'web_app') and self.web_app:
@@ -2116,7 +2129,7 @@ class VoiceAssistant:
                 'openai': bool(self.openai_client and 
                              self.openai_client.state == ConnectionState.CONNECTED),
                 'home_assistant': bool(self.mcp_client and self.mcp_client.is_connected),
-                'wake_word': bool(self.wake_word_detector and self.wake_word_detector.initialized)
+                'wake_word': bool(self.wake_word_detector and self.wake_word_detector.is_running)
             }
             
             await self.web_app.broadcast_event('status', {
@@ -2125,6 +2138,25 @@ class VoiceAssistant:
             })
         except Exception as e:
             self.logger.error(f"Error broadcasting connection status: {e}")
+    
+    async def _periodic_status_broadcast(self) -> None:
+        """Periodically broadcast connection status to web UI"""
+        while self.running:
+            try:
+                await asyncio.sleep(self.status_broadcast_interval)
+                
+                if not self.running:
+                    break
+                    
+                # Broadcast current status
+                await self._broadcast_connection_status()
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error in periodic status broadcast: {e}")
+                # Continue broadcast loop even on error
+                await asyncio.sleep(1.0)
     
     def _calculate_audio_level(self, audio_data: bytes) -> float:
         """Calculate audio level in dB from audio data"""
@@ -2775,6 +2807,7 @@ async def main():
         # Store web app reference if available
         if web_app:
             assistant.web_app = web_app
+            web_app.set_assistant(assistant)
         
         logger.debug("About to setup signal handlers")
         # Setup signal handlers

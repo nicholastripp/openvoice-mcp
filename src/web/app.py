@@ -34,6 +34,7 @@ class WebApp:
         self.config_manager = ConfigManager(config_dir)
         self.start_time = None  # Will be set when server starts
         self.ssl_context = None  # Will be set if TLS is enabled
+        self.assistant = None  # Will be set by voice assistant
         
     async def setup(self) -> web.Application:
         """Set up the web application"""
@@ -160,3 +161,9 @@ class WebApp:
         for ws in disconnected:
             if ws in self.app['websockets']:
                 self.app['websockets'].remove(ws)
+                
+    def set_assistant(self, assistant) -> None:
+        """Set the voice assistant reference for status queries"""
+        self.assistant = assistant
+        if self.app:
+            self.app['assistant'] = assistant

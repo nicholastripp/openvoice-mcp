@@ -33,16 +33,37 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     request.app['websockets'].append(ws)
     
     try:
-        # Send initial status
-        await ws.send_json({
-            'type': 'status',
-            'state': 'idle',
-            'connections': {
-                'openai': True,
-                'home_assistant': True,
-                'wake_word': True
+        # Get real status from assistant if available
+        assistant = request.app.get('assistant')
+        if assistant:
+            # Import ConnectionState for comparison
+            from openai_client.realtime import ConnectionState
+            
+            # Get real connection status
+            connections = {
+                'openai': bool(assistant.openai_client and 
+                             assistant.openai_client.state == ConnectionState.CONNECTED),
+                'home_assistant': bool(assistant.mcp_client and assistant.mcp_client.is_connected),
+                'wake_word': bool(assistant.wake_word_detector and assistant.wake_word_detector.is_running)
             }
-        })
+            
+            # Send real status
+            await ws.send_json({
+                'type': 'status',
+                'state': assistant.session_state.value,
+                'connections': connections
+            })
+        else:
+            # Fallback to default status if assistant not available
+            await ws.send_json({
+                'type': 'status',
+                'state': 'idle',
+                'connections': {
+                    'openai': False,
+                    'home_assistant': False,
+                    'wake_word': False
+                }
+            })
         
         # Keep connection alive
         async for msg in ws:
