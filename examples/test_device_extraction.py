@@ -113,11 +113,13 @@ async def test_device_extraction():
             
             # Group by domain
             domains = {}
-            for entity_id, state_info in assistant._device_cache.items():
-                domain = entity_id.split('.')[0] if '.' in entity_id else 'unknown'
-                if domain not in domains:
-                    domains[domain] = []
-                domains[domain].append((entity_id, state_info))
+            for state_info in assistant._device_cache:
+                entity_id = state_info.get('entity_id', '')
+                if entity_id:
+                    domain = entity_id.split('.')[0] if '.' in entity_id else 'unknown'
+                    if domain not in domains:
+                        domains[domain] = []
+                    domains[domain].append((entity_id, state_info))
             
             # Show summary by domain
             for domain, entities in sorted(domains.items()):
