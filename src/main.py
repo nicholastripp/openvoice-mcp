@@ -2480,8 +2480,8 @@ async def main():
     parser.add_argument(
         "--web-port",
         type=int,
-        default=8080,
-        help="Port for web UI (default: 8080)"
+        default=None,
+        help="Port for web UI (default: uses config file setting)"
     )
     
     args = parser.parse_args()
@@ -2536,7 +2536,7 @@ async def main():
         # Start web UI if requested via CLI or config
         web_app = None
         web_ui_enabled = args.web or config.web_ui.enabled
-        web_ui_port = args.web_port if args.web else config.web_ui.port
+        web_ui_port = args.web_port if args.web_port is not None else config.web_ui.port
         web_ui_host = config.web_ui.host  # Always use config for host
         
         if web_ui_enabled:
