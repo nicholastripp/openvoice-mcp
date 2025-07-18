@@ -30,9 +30,9 @@ class SecurityHeaders:
         return (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "  # Required for some UI features
-            "style-src 'self' 'unsafe-inline'; "  # Required for inline styles
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "  # Allow CDN for water.css
             "img-src 'self' data: https:; "
-            "font-src 'self'; "
+            "font-src 'self' https://fonts.gstatic.com; "  # Allow Google Fonts if used
             "connect-src 'self' wss: ws:; "  # For WebSocket connections
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
