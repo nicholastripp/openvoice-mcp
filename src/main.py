@@ -465,8 +465,8 @@ class VoiceAssistant:
                     
                     if result:
                         # Debug: Log the raw response for analysis
-                        self.logger.info(f"Raw GetLiveContext response for '{query}': {result}")
-                        self.logger.info(f"Response type: {type(result)}")
+                        self.logger.debug(f"Raw GetLiveContext response for '{query}': {result}")
+                        self.logger.debug(f"Response type: {type(result)}")
                         if hasattr(result, '__dict__'):
                             self.logger.info(f"Response attributes: {result.__dict__}")
                         
@@ -1309,6 +1309,9 @@ class VoiceAssistant:
         # Audio response complete handler
         self.openai_client.on("audio_response_done", self._on_audio_response_done)
         
+        # Speech started handler (user started talking)
+        self.openai_client.on("speech_started", self._on_speech_started)
+        
         # Speech stopped handler (user stopped talking)
         self.openai_client.on("speech_stopped", self._on_speech_stopped)
         
@@ -1963,6 +1966,15 @@ class VoiceAssistant:
                 self.logger.error(f"Error in periodic cleanup: {e}")
                 # Continue cleanup loop even on error
                 await asyncio.sleep(5.0)
+    
+    async def _on_speech_started(self, event_data: dict) -> None:
+        """Handle speech started event from server VAD"""
+        # Cancel multi-turn timeout task since user is speaking
+        if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
+            self.multi_turn_timeout_task.cancel()
+            self.multi_turn_timeout_task = None
+            self.logger.info("Cancelled multi-turn timeout - user started speaking")
+            print("*** MULTI-TURN TIMEOUT CANCELLED - USER STARTED SPEAKING ***")
     
     async def _on_speech_stopped(self, event_data) -> None:
         """Handle user speech stopped"""
