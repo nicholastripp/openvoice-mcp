@@ -164,6 +164,10 @@ print(hashed.decode('utf-8'))
     sed -i.bak "s/username: \"admin\"/username: \"$web_username\"/" config/config.yaml 2>/dev/null || \
     sed -i '' "s/username: \"admin\"/username: \"$web_username\"/" config/config.yaml 2>/dev/null
     
+    # Update password_hash to use environment variable
+    sed -i.bak 's/password_hash: ""/password_hash: ${WEB_UI_PASSWORD_HASH}/' config/config.yaml 2>/dev/null || \
+    sed -i '' 's/password_hash: ""/password_hash: ${WEB_UI_PASSWORD_HASH}/' config/config.yaml 2>/dev/null
+    
     # Add password hash to .env file
     echo -e "${YELLOW}Saving password hash to .env file...${NC}"
     if grep -q "^WEB_UI_PASSWORD_HASH=" .env 2>/dev/null; then
