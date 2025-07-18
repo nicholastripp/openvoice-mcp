@@ -47,20 +47,20 @@ def setup_logging(
         def format(self, record):
             # Add simple prefixes based on level
             if record.levelno >= logging.ERROR:
-                prefix = "✗ "
+                prefix = "[ERROR] "
             elif record.levelno >= logging.WARNING:
-                prefix = "⚠ "
+                prefix = "[WARN] "
             elif record.levelno >= logging.INFO:
                 # Special handling for specific message types
                 msg = record.getMessage()
                 if "wake word detected" in msg.lower():
-                    prefix = "► "
+                    prefix = "> "
                 elif "listening" in msg.lower() and "..." in msg:
-                    prefix = "● "
+                    prefix = "* "
                 elif "speaking" in msg.lower() or "responding" in msg.lower():
-                    prefix = "● "
+                    prefix = "* "
                 elif "ready" in msg.lower() or "started" in msg.lower():
-                    prefix = "✓ "
+                    prefix = "[READY] "
                 else:
                     prefix = ""
             else:
