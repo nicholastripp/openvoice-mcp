@@ -18,6 +18,7 @@ from src.config import load_config
 from src.main import VoiceAssistant
 from src.personality import PersonalityProfile
 from src.utils.logger import get_logger
+from src.utils.text_utils import safe_str
 from src.services.ha_client.mcp_official import MCPClient
 
 
@@ -71,7 +72,7 @@ async def test_device_extraction():
         for i, device in enumerate(devices, 1):
             print(f"\n{i}. {device['entity_id']}")
             print(f"   State: {device['state']}")
-            print(f"   Name: {device['attributes'].get('friendly_name', 'Unknown')}")
+            print(f"   Name: {safe_str(device['attributes'].get('friendly_name', 'Unknown'))}")
             if 'area' in device['attributes']:
                 print(f"   Area: {device['attributes']['area']}")
             # Show other attributes
@@ -128,7 +129,7 @@ async def test_device_extraction():
                 for entity_id, state_info in entities[:3]:
                     state = state_info.get('state', 'unknown')
                     name = state_info.get('attributes', {}).get('friendly_name', entity_id)
-                    print(f"  - {entity_id}: {state} ({name})")
+                    print(f"  - {safe_str(entity_id)}: {safe_str(state)} ({safe_str(name)})")
                 if len(entities) > 3:
                     print(f"  ... and {len(entities) - 3} more")
             
