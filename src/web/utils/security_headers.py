@@ -48,14 +48,6 @@ class SecurityHeaders:
     @web.middleware
     async def security_headers_middleware(self, request: web.Request, handler):
         """Add security headers to all responses"""
-        
-        # Add a response preparation callback to remove Server header
-        async def prepare_response(request, response):
-            # Remove Server header if present
-            response.headers.pop('Server', None)
-        
-        request.on_response_prepare.append(prepare_response)
-        
         try:
             response = await handler(request)
         except web.HTTPException as ex:
