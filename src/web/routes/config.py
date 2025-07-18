@@ -40,8 +40,8 @@ async def yaml_editor(request: web.Request) -> dict:
     
     if wake_words_dir.exists():
         for file in wake_words_dir.glob('*.ppn'):
-            # Get filename without extension as the wake word name
-            custom_wake_words.append(file.stem)
+            # Get full filename with extension for custom wake words
+            custom_wake_words.append(file.name)
     
     return {
         'title': 'Configuration Settings',

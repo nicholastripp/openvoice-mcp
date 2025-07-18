@@ -102,7 +102,7 @@
                 <option value="porcupine" {% if config.wake_word.model == 'porcupine' %}selected{% endif %}>Porcupine</option>
                 <option value="terminator" {% if config.wake_word.model == 'terminator' %}selected{% endif %}>Terminator</option>
                 {% for custom in custom_wake_words %}
-                <option value="{{ custom }}" {% if config.wake_word.model == custom %}selected{% endif %}>{{ custom }} (custom)</option>
+                <option value="{{ custom }}" {% if config.wake_word.model == custom %}selected{% endif %}>{{ custom.replace('.ppn', '').replace('_', ' ').replace('-', ' ').title() }} (custom)</option>
                 {% endfor %}
             </select>
             
