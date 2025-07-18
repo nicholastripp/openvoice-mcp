@@ -24,6 +24,7 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 - 🔊 **Automatic Gain Control**: AGC prevents clipping and maintains optimal audio levels
 - 🌍 **Multi-Language**: Configurable language support
 - 🎭 **Personality**: Customizable assistant personality
+- 🌐 **Web UI**: Optional web interface for easy configuration and monitoring
 - 🚀 **Easy Setup**: Simple configuration and installation
 
 ## How It Works
@@ -253,6 +254,7 @@ python src/main.py
 - [Installation Guide](docs/INSTALLATION.md) - Step-by-step setup instructions
 - [Usage Guide](docs/USAGE.md) - How to use your assistant
 - [Configuration Guide](docs/CONFIGURATION.md) - All configuration options
+- [Web UI Guide](docs/WEB_UI_GUIDE.md) - Web interface for easy configuration
 - [Audio Setup](docs/AUDIO_SETUP.md) - Microphone and speaker configuration
 - [Wake Word Setup](docs/WAKE_WORD_SETUP.md) - Wake word configuration
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
