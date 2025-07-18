@@ -35,7 +35,7 @@ async def yaml_editor(request: web.Request) -> dict:
     import os
     from pathlib import Path
     
-    wake_words_dir = Path('wake_words')
+    wake_words_dir = Path('config/wake_words')
     custom_wake_words = []
     
     if wake_words_dir.exists():

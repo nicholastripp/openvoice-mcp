@@ -74,6 +74,17 @@
                 Enable wake word detection
             </label>
             
+            <label for="wake_word_sensitivity">Sensitivity:</label>
+            <input type="range" id="wake_word_sensitivity" name="wake_word.sensitivity" 
+                   min="0.1" max="2.0" step="0.1" value="{{ config.wake_word.sensitivity }}">
+            <span class="range-value">{{ config.wake_word.sensitivity }}</span>
+            
+            <label>
+                <input type="checkbox" name="wake_word.confirmation_beep_enabled" 
+                       {% if config.wake_word.confirmation_beep_enabled %}checked{% endif %}>
+                Play confirmation beep
+            </label>
+            
             <label for="wake_word_model">Wake Word:</label>
             <select id="wake_word_model" name="wake_word.model">
                 <option value="alexa" {% if config.wake_word.model == 'alexa' %}selected{% endif %}>Alexa</option>
@@ -95,17 +106,6 @@
                 {% endfor %}
             </select>
             
-            <label for="wake_word_sensitivity">Sensitivity:</label>
-            <input type="range" id="wake_word_sensitivity" name="wake_word.sensitivity" 
-                   min="0.1" max="2.0" step="0.1" value="{{ config.wake_word.sensitivity }}">
-            <span class="range-value">{{ config.wake_word.sensitivity }}</span>
-            
-            <label>
-                <input type="checkbox" name="wake_word.confirmation_beep_enabled" 
-                       {% if config.wake_word.confirmation_beep_enabled %}checked{% endif %}>
-                Play confirmation beep
-            </label>
-            
             <div class="upload-section">
                 <h3>Upload Custom Wake Word Model</h3>
                 <p>Upload a Porcupine wake word model (.ppn file)</p>
@@ -119,6 +119,7 @@
         <div class="button-group">
             <button type="submit" class="button primary">Save Changes</button>
             <button type="button" class="button" onclick="location.reload()">Cancel</button>
+            <button type="button" class="button danger" onclick="restartApplication()" id="restart-button">Apply & Restart</button>
         </div>
     </form>
 </div>
@@ -177,6 +178,21 @@ input[type="checkbox"] {
 #upload_status {
     margin-top: 0.5rem;
     font-style: italic;
+}
+
+.button.danger {
+    background-color: #dc3545;
+    color: white;
+    border: 1px solid #dc3545;
+}
+
+.button.danger:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+}
+
+#restart-button {
+    display: none;
 }
 </style>
 
@@ -244,9 +260,14 @@ document.getElementById('yaml-form').addEventListener('submit', async (e) => {
         const result = await response.json();
         
         if (result.status === 'success') {
-            alert('Configuration saved successfully' + 
-                  (result.restart_required ? '\nRestart required for some changes to take effect.' : ''));
-            location.reload();
+            if (result.restart_required) {
+                alert('Configuration saved successfully.\nRestart required for changes to take effect.');
+                // Show restart button
+                document.getElementById('restart-button').style.display = 'inline-block';
+            } else {
+                alert('Configuration saved successfully');
+                location.reload();
+            }
         } else {
             alert('Error: ' + result.message);
         }
@@ -293,6 +314,50 @@ async function uploadWakeWord() {
     } catch (error) {
         statusDiv.textContent = 'Upload failed: ' + error.message;
     }
+}
+
+// Restart application function
+async function restartApplication() {
+    if (!confirm('This will restart the voice assistant. Are you sure?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/system/restart', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            alert('Application is restarting. Please wait a moment and refresh the page.');
+            // Disable the restart button
+            document.getElementById('restart-button').disabled = true;
+            
+            // Try to reconnect after a delay
+            setTimeout(() => {
+                checkConnection();
+            }, 5000);
+        } else {
+            alert('Restart failed: ' + result.message);
+        }
+    } catch (error) {
+        alert('Restart request failed: ' + error.message);
+    }
+}
+
+// Check if the application is back online
+function checkConnection() {
+    fetch('/api/health')
+        .then(() => {
+            // Application is back online
+            location.reload();
+        })
+        .catch(() => {
+            // Still offline, try again
+            setTimeout(checkConnection, 2000);
+        });
 }
 </script>
 {% endblock %}
