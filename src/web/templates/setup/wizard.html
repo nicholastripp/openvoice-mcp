@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="wizard-container">
+    <h1>Setup Your Voice Assistant</h1>
+    
+    <form id="setup-form">
+        <div class="form-section">
+            <h2>1. OpenAI Configuration</h2>
+            <p>Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI Platform</a></p>
+            
+            <label for="openai_api_key">OpenAI API Key:</label>
+            <div class="input-with-test">
+                <input type="password" id="openai_api_key" name="openai_api_key" 
+                       placeholder="sk-..." required>
+                <button type="button" class="test-btn" onclick="testOpenAI()">Test</button>
+            </div>
+            <div id="openai-status" class="status-message"></div>
+        </div>
+        
+        <div class="form-section">
+            <h2>2. Home Assistant Connection</h2>
+            <p>Configure access to your Home Assistant instance</p>
+            
+            <label for="ha_url">Home Assistant URL:</label>
+            <div class="input-with-test">
+                <input type="url" id="ha_url" name="ha_url" 
+                       placeholder="http://homeassistant.local:8123" required>
+            </div>
+            
+            <label for="ha_token">Long-Lived Access Token:</label>
+            <div class="input-with-test">
+                <input type="password" id="ha_token" name="ha_token" 
+                       placeholder="eyJ0eXAiOiJKV1..." required>
+                <button type="button" class="test-btn" onclick="testHomeAssistant()">Test</button>
+            </div>
+            <div id="ha-status" class="status-message"></div>
+            
+            <p class="help-text">
+                Generate a token in Home Assistant: Profile → Long-Lived Access Tokens → Create Token
+            </p>
+        </div>
+        
+        <div class="form-section">
+            <h2>3. Wake Word Detection</h2>
+            <p>Get your access key from <a href="https://console.picovoice.ai" target="_blank">Picovoice Console</a></p>
+            
+            <label for="picovoice_key">Picovoice Access Key:</label>
+            <div class="input-with-test">
+                <input type="password" id="picovoice_key" name="picovoice_key" 
+                       placeholder="Access key..." required>
+                <button type="button" class="test-btn" onclick="testPicovoice()">Test</button>
+            </div>
+            <div id="picovoice-status" class="status-message"></div>
+        </div>
+        
+        <div class="button-group">
+            <button type="submit" class="button primary" id="save-btn">Save & Start Assistant</button>
+        </div>
+    </form>
+</div>
+
+<style>
+.wizard-container {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.form-section {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: rgba(0,0,0,0.05);
+    border-radius: 0.5rem;
+}
+
+.input-with-test {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.input-with-test input {
+    flex: 1;
+}
+
+.test-btn {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+}
+
+.status-message {
+    margin: 0.5rem 0;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    display: none;
+}
+
+.status-message.success {
+    background: #d4edda;
+    color: #155724;
+    display: block;
+}
+
+.status-message.error {
+    background: #f8d7da;
+    color: #721c24;
+    display: block;
+}
+
+.help-text {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 0.5rem;
+}
+
+.button-group {
+    margin-top: 2rem;
+    text-align: center;
+}
+</style>
+
+<script>
+async function testOpenAI() {
+    const apiKey = document.getElementById('openai_api_key').value;
+    const status = document.getElementById('openai-status');
+    
+    if (!apiKey) {
+        showStatus(status, 'Please enter an API key', 'error');
+        return;
+    }
+    
+    showStatus(status, 'Testing...', '');
+    
+    try {
+        const response = await fetch('/api/test/openai', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({api_key: apiKey})
+        });
+        
+        const data = await response.json();
+        showStatus(status, data.message, data.status);
+    } catch (error) {
+        showStatus(status, 'Test failed: ' + error.message, 'error');
+    }
+}
+
+async function testHomeAssistant() {
+    const url = document.getElementById('ha_url').value;
+    const token = document.getElementById('ha_token').value;
+    const status = document.getElementById('ha-status');
+    
+    if (!url || !token) {
+        showStatus(status, 'Please enter URL and token', 'error');
+        return;
+    }
+    
+    showStatus(status, 'Testing...', '');
+    
+    try {
+        const response = await fetch('/api/test/home_assistant', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url, token})
+        });
+        
+        const data = await response.json();
+        showStatus(status, data.message, data.status);
+    } catch (error) {
+        showStatus(status, 'Test failed: ' + error.message, 'error');
+    }
+}
+
+async function testPicovoice() {
+    const accessKey = document.getElementById('picovoice_key').value;
+    const status = document.getElementById('picovoice-status');
+    
+    if (!accessKey) {
+        showStatus(status, 'Please enter an access key', 'error');
+        return;
+    }
+    
+    showStatus(status, 'Testing...', '');
+    
+    try {
+        const response = await fetch('/api/test/picovoice', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({access_key: accessKey})
+        });
+        
+        const data = await response.json();
+        showStatus(status, data.message, data.status);
+    } catch (error) {
+        showStatus(status, 'Test failed: ' + error.message, 'error');
+    }
+}
+
+function showStatus(element, message, status) {
+    element.textContent = message;
+    element.className = 'status-message ' + status;
+    element.style.display = 'block';
+}
+
+document.getElementById('setup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const saveBtn = document.getElementById('save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+    
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+    
+    try {
+        const response = await fetch('/setup/save', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            alert('Configuration saved! The assistant will now start.');
+            window.location.href = result.redirect || '/status';
+        } else {
+            alert('Error: ' + result.message);
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save & Start Assistant';
+        }
+    } catch (error) {
+        alert('Save failed: ' + error.message);
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save & Start Assistant';
+    }
+});
+</script>
+{% endblock %}

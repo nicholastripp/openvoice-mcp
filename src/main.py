@@ -134,6 +134,11 @@ class VoiceAssistant:
         if self.cleanup_task and not self.cleanup_task.done():
             self.cleanup_task.cancel()
         
+        # Stop web UI if running
+        if hasattr(self, 'web_app') and self.web_app:
+            self.logger.info("Stopping web UI...")
+            await self.web_app.stop()
+        
         # Cleanup components
         await self._cleanup_components()
         
@@ -2467,6 +2472,17 @@ async def main():
         action="store_true",
         help="Skip Home Assistant connection check (for testing only)"
     )
+    parser.add_argument(
+        "--web",
+        action="store_true",
+        help="Enable web UI for configuration and monitoring"
+    )
+    parser.add_argument(
+        "--web-port",
+        type=int,
+        default=8080,
+        help="Port for web UI (default: 8080)"
+    )
     
     args = parser.parse_args()
     
@@ -2517,9 +2533,39 @@ async def main():
         logger.info(f"HA URL: {config.home_assistant.url}")
         logger.info(f"Assistant Name: {personality.backstory.name}")
         
+        # Start web UI if requested
+        web_app = None
+        if args.web:
+            logger.info(f"Starting web UI on port {args.web_port}")
+            from src.web.app import WebApp
+            config_dir = Path(args.config).parent
+            web_app = WebApp(config_dir, port=args.web_port)
+            await web_app.start()
+            
+            # If first run, show setup message
+            if web_app.app['first_run']:
+                print("\n" + "="*70)
+                print("FIRST RUN DETECTED - SETUP REQUIRED")
+                print("="*70)
+                print(f"Please open http://localhost:{args.web_port} to complete setup")
+                print("="*70 + "\n")
+                
+                # Wait for setup to complete
+                while web_app.app['first_run']:
+                    await asyncio.sleep(1)
+                
+                # Reload configuration after setup
+                config = load_config(args.config)
+                personality = PersonalityProfile(args.persona)
+                logger.info("Setup completed, continuing with startup")
+        
         logger.debug("About to create VoiceAssistant instance")
         # Create and start assistant
         assistant = VoiceAssistant(config, personality, skip_ha_check=args.skip_ha_check)
+        
+        # Store web app reference if available
+        if web_app:
+            assistant.web_app = web_app
         
         logger.debug("About to setup signal handlers")
         # Setup signal handlers

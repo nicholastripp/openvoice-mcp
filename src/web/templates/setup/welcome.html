@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="welcome-container">
+    <h1>Welcome to HA Voice Assistant!</h1>
+    
+    <p>This setup wizard will help you configure your voice assistant in just a few minutes.</p>
+    
+    <h2>What you'll need:</h2>
+    <ul>
+        <li><strong>OpenAI API Key</strong> - For voice recognition and responses</li>
+        <li><strong>Home Assistant URL</strong> - Your HA instance address</li>
+        <li><strong>Home Assistant Token</strong> - Long-lived access token</li>
+        <li><strong>Picovoice Access Key</strong> - For wake word detection</li>
+    </ul>
+    
+    <h2>Features:</h2>
+    <ul>
+        <li>✨ Natural voice conversations</li>
+        <li>🏠 Full Home Assistant control</li>
+        <li>⚡ Sub-800ms response time</li>
+        <li>🎙️ Custom wake words</li>
+        <li>🎭 Customizable personality</li>
+    </ul>
+    
+    <div class="button-group">
+        <a href="/setup/wizard" class="button primary">Start Setup</a>
+        <a href="https://github.com/nicholastripp/ha-realtime-assist/blob/main/docs/INSTALLATION.md" 
+           target="_blank" class="button">Setup Guide</a>
+    </div>
+</div>
+
+<style>
+.welcome-container {
+    max-width: 600px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.button-group {
+    margin-top: 2rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.button {
+    padding: 0.75rem 2rem;
+    text-decoration: none;
+    border-radius: 0.25rem;
+    display: inline-block;
+}
+
+.button.primary {
+    background: #007bff;
+    color: white;
+}
+
+.button.primary:hover {
+    background: #0056b3;
+}
+</style>
+{% endblock %}

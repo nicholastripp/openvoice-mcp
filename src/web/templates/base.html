@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ title }}{% endblock %} - HA Voice Assistant</title>
+    
+    <!-- Simple CSS Framework -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+    
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="/static/css/simple.css">
+    
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <header>
+        <nav>
+            <h1>HA Voice Assistant</h1>
+            <ul>
+                <li><a href="/status">Status</a></li>
+                <li><a href="/config/env">Environment</a></li>
+                <li><a href="/config/yaml">Configuration</a></li>
+                <li><a href="/persona">Personality</a></li>
+                <li><a href="/config/audio">Audio</a></li>
+                <li><a href="/status/logs">Logs</a></li>
+            </ul>
+        </nav>
+    </header>
+    
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    
+    <footer>
+        <p>HA Voice Assistant v1.1.0 | <a href="https://github.com/nicholastripp/ha-realtime-assist">GitHub</a></p>
+    </footer>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>
