@@ -101,10 +101,11 @@ class SessionConfig:
     
     # Multi-turn conversation settings
     conversation_mode: str = "single_turn"  # "single_turn" or "multi_turn"
-    multi_turn_timeout: float = 30.0  # seconds to wait for follow-up questions
+    multi_turn_timeout: float = 300.0  # Safety fallback timeout (5 minutes)
     multi_turn_max_turns: int = 10  # maximum conversation turns per session
     multi_turn_end_phrases: list = None  # phrases to end conversation
-    multi_turn_stuck_multiplier: float = 4.0  # multiplier for stuck detection (4x timeout = 2 minutes with 30s base)
+    multi_turn_stuck_multiplier: float = 4.0  # multiplier for stuck detection
+    extended_silence_threshold: float = 8.0  # seconds of silence before ending conversation
     
     def __post_init__(self):
         # Set default end phrases if not provided
@@ -126,6 +127,33 @@ class SystemConfig:
 
 
 @dataclass
+class WebUIAuthConfig:
+    """Web UI authentication configuration"""
+    enabled: bool = True
+    username: str = "admin"
+    password_hash: str = ""
+    session_timeout: int = 3600
+
+
+@dataclass
+class WebUITLSConfig:
+    """Web UI TLS/HTTPS configuration"""
+    enabled: bool = True
+    cert_file: str = ""
+    key_file: str = ""
+
+
+@dataclass
+class WebUIConfig:
+    """Web UI configuration"""
+    enabled: bool = False
+    host: str = "0.0.0.0"
+    port: int = 8443
+    auth: WebUIAuthConfig = field(default_factory=WebUIAuthConfig)
+    tls: WebUITLSConfig = field(default_factory=WebUITLSConfig)
+
+
+@dataclass
 class AdvancedConfig:
     """Advanced configuration options"""
     reconnect_delay: float = 5.0
@@ -144,6 +172,7 @@ class AppConfig:
     wake_word: WakeWordConfig = field(default_factory=WakeWordConfig)
     session: SessionConfig = field(default_factory=SessionConfig)
     system: SystemConfig = field(default_factory=SystemConfig)
+    web_ui: WebUIConfig = field(default_factory=WebUIConfig)
     advanced: AdvancedConfig = field(default_factory=AdvancedConfig)
 
 
@@ -277,6 +306,15 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
         
         session_config = SessionConfig(**config_data.get("session", {}))
         system_config = SystemConfig(**config_data.get("system", {}))
+        
+        # Create WebUIConfig with nested dataclasses
+        web_ui_data = config_data.get("web_ui", {})
+        if "auth" in web_ui_data:
+            web_ui_data["auth"] = WebUIAuthConfig(**web_ui_data["auth"])
+        if "tls" in web_ui_data:
+            web_ui_data["tls"] = WebUITLSConfig(**web_ui_data["tls"])
+        web_ui_config = WebUIConfig(**web_ui_data)
+        
         advanced_config = AdvancedConfig(**config_data.get("advanced", {}))
         
         return AppConfig(
@@ -286,6 +324,7 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
             wake_word=wake_word_config,
             session=session_config,
             system=system_config,
+            web_ui=web_ui_config,
             advanced=advanced_config
         )
         

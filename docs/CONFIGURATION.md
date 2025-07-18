@@ -20,6 +20,9 @@ OPENAI_API_KEY=sk-your-openai-api-key-here
 
 # Home Assistant Long-Lived Access Token
 HA_TOKEN=your-home-assistant-token-here
+
+# Web UI Password Hash (set by installer, uses bcrypt)
+WEB_UI_PASSWORD_HASH=
 ```
 
 ## Main Configuration (config/config.yaml)
@@ -108,7 +111,8 @@ session:
   
   # Multi-turn conversation settings
   conversation_mode: "multi_turn"  # "single_turn" or "multi_turn"
-  multi_turn_timeout: 30.0        # Wait time for follow-ups
+  multi_turn_timeout: 300.0       # Safety fallback timeout (5 minutes)
+  extended_silence_threshold: 8.0 # Natural conversation end after extended silence
   multi_turn_max_turns: 10        # Max conversation turns
   multi_turn_end_phrases:         # Phrases to end conversation
     - "goodbye"
@@ -117,6 +121,12 @@ session:
     - "thank you"
     - "bye"
 ```
+
+**v1.1.0 Multi-turn Improvements**:
+- Natural conversation endings based on VAD-detected silence
+- Extended silence threshold (default 8s) replaces the fixed 30s timeout
+- Multi-turn timeout increased to 5 minutes (safety fallback only)
+- Conversations end naturally when both parties stop talking
 
 ### System Configuration
 
@@ -127,6 +137,55 @@ system:
   led_gpio: null                 # GPIO pin for status LED (optional)
   daemon: false                  # Run as daemon process
 ```
+
+### Web UI Configuration
+
+Enable and configure the optional web interface with security features:
+
+```yaml
+web_ui:
+  enabled: false                # Enable web UI on startup
+  host: "0.0.0.0"              # Listen address (0.0.0.0 for all interfaces, 127.0.0.1 for localhost only)
+  port: 8443                   # Web UI port (8443 for HTTPS by default)
+  
+  # Authentication settings
+  auth:
+    enabled: true              # Require login (highly recommended)
+    username: "admin"          # Default username
+    password_hash: ${WEB_UI_PASSWORD_HASH}  # From .env (set by installer)
+    session_timeout: 3600      # Session timeout in seconds
+  
+  # TLS/HTTPS settings
+  tls:
+    enabled: true              # Use HTTPS (highly recommended)
+    cert_file: ""              # Path to certificate (empty = self-signed)
+    key_file: ""               # Path to private key (empty = self-signed)
+```
+
+**Security Features**:
+- **Authentication**: Basic auth with bcrypt hashed passwords (12 rounds)
+- **HTTPS**: Encrypted connections with TLS 1.2+
+- **Self-signed certificates**: Generated automatically using OpenSSL
+- **Session management**: Configurable timeouts with secure cookies
+
+**Setup**: The installer will prompt you to configure web UI security during installation:
+1. Choose a username (default: admin)
+2. Set a secure password (min 8 characters recommended)
+3. The installer automatically:
+   - Hashes your password with bcrypt (12 rounds)
+   - Stores the hash in .env file
+   - Generates a self-signed certificate
+   - Updates config.yaml with username
+
+**Certificate Management**:
+- Self-signed certificates are stored in `config/certs/`
+- Valid for 365 days from creation
+- To use custom certificates, place them in `config/certs/` and update the config:
+  ```yaml
+  tls:
+    cert_file: "config/certs/your-cert.pem"
+    key_file: "config/certs/your-key.pem"
+  ```
 
 ## Personality Configuration (config/persona.ini)
 

@@ -1,15 +1,15 @@
 # Home Assistant Realtime Voice Assistant
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 ![Status](https://img.shields.io/badge/status-stable-green)
 ![Python](https://img.shields.io/badge/python-3.9+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A standalone Raspberry Pi voice assistant that provides natural, low-latency conversations for Home Assistant control using OpenAI's Realtime API.
 
-## 🚀 Project Status: 1.0 Release!
+## 🚀 Project Status: v1.1.0 - Web UI Release!
 
-The assistant is now stable with Model Context Protocol (MCP) integration, providing direct tool-based control of Home Assistant.
+The assistant now includes a complete web interface for easy configuration and monitoring, with built-in security features including HTTPS and authentication.
 
 ## Overview
 
@@ -24,7 +24,9 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 - 🔊 **Automatic Gain Control**: AGC prevents clipping and maintains optimal audio levels
 - 🌍 **Multi-Language**: Configurable language support
 - 🎭 **Personality**: Customizable assistant personality
-- 🚀 **Easy Setup**: Simple configuration and installation
+- 🌐 **Web UI**: Complete web interface with setup wizard and real-time monitoring
+- 🔒 **Security**: HTTPS encryption and authentication for remote access
+- 🚀 **Easy Setup**: Simple configuration and installation with guided wizard
 
 ## How It Works
 
@@ -81,6 +83,9 @@ source venv/bin/activate
 
 # Start the assistant
 python src/main.py
+
+# Or start with web UI for easy configuration (opens at https://localhost:8443)
+python src/main.py --web
 ```
 
 **Note**: Always activate the virtual environment (`source venv/bin/activate`) before running any Python commands. You'll see `(venv)` in your terminal prompt when it's active.
@@ -143,17 +148,22 @@ audio:
 
 See the [Audio Setup Guide](docs/AUDIO_SETUP.md) for optimal configuration.
 
-## What's New in v1.0.0
+## What's New in v1.1.0
 
-- 🚀 **Model Context Protocol Integration** - Direct tool-based control replacing Conversation API
-- 🎯 **GetLiveContext Support** - Real-time device state awareness
-- 🔧 **Automatic Tool Discovery** - Dynamically discovers all available MCP tools
-- 🎮 **Enhanced Multi-turn** - Fixed timeout issues for seamless conversations
-- 📊 **Better Error Handling** - Clear MCP-specific error messages
-- 🛡️ **SSL Certificate Support** - Works with self-signed certificates
-- 🧹 **Cleaned Up for Release** - Removed 70+ development scripts
+- 🌐 **Complete Web UI** - Full-featured web interface with setup wizard
+- 🔒 **Security Features** - HTTPS encryption and authentication built-in
+- 🎨 **Visual Configuration** - Edit all settings through the browser
+- 📊 **Real-time Dashboard** - Monitor status, logs, and statistics
+- 🎙️ **Audio Testing** - Test and configure audio devices via web
+- 🎭 **Personality Editor** - Customize assistant personality with visual sliders
+- 🔧 **Natural Multi-turn** - VAD-based silence detection for natural conversation endings
 
 See [CHANGELOG.md](CHANGELOG.md) for complete details.
+
+### Previous Release (v1.0.0)
+- Model Context Protocol (MCP) integration for direct Home Assistant control
+- Real-time device state awareness with GetLiveContext
+- Automatic tool discovery and SSL certificate support
 
 ### ⚠️ Breaking Changes from 0.x
 
@@ -250,6 +260,7 @@ python src/main.py
 - [Installation Guide](docs/INSTALLATION.md) - Step-by-step setup instructions
 - [Usage Guide](docs/USAGE.md) - How to use your assistant
 - [Configuration Guide](docs/CONFIGURATION.md) - All configuration options
+- [Web UI Guide](docs/WEB_UI_GUIDE.md) - Web interface for easy configuration
 - [Audio Setup](docs/AUDIO_SETUP.md) - Microphone and speaker configuration
 - [Wake Word Setup](docs/WAKE_WORD_SETUP.md) - Wake word configuration
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions

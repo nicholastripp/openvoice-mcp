@@ -117,6 +117,79 @@ fi
 mkdir -p logs
 echo -e "${GREEN}✓ Created logs directory${NC}"
 
+# Configure Web UI security (optional)
+echo ""
+echo -e "${YELLOW}Web UI Security Configuration (Optional)${NC}"
+echo "The web UI can be accessed remotely. Would you like to set up authentication?"
+read -p "Enable web UI with authentication? (y/N): " -n 1 -r
+echo ""
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # Prompt for username
+    read -p "Enter web UI username (default: admin): " web_username
+    web_username=${web_username:-admin}
+    
+    # Prompt for password
+    while true; do
+        read -s -p "Enter web UI password: " web_password
+        echo
+        read -s -p "Confirm password: " web_password_confirm
+        echo
+        
+        if [ "$web_password" = "$web_password_confirm" ] && [ -n "$web_password" ]; then
+            break
+        else
+            echo -e "${RED}Passwords don't match or are empty. Please try again.${NC}"
+        fi
+    done
+    
+    # Generate password hash using bcrypt
+    web_password_hash=$(./venv/bin/python -c "
+import bcrypt
+password = '$web_password'
+salt = bcrypt.gensalt(rounds=12)
+hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+print(hashed.decode('utf-8'))
+    ")
+    
+    # Update config.yaml for username and enable web UI
+    echo -e "${YELLOW}Updating config/config.yaml with web UI settings...${NC}"
+    
+    # Enable web UI
+    sed -i.bak "s/^web_ui:$/web_ui:\n  enabled: true/" config/config.yaml 2>/dev/null || \
+    sed -i '' "s/^web_ui:$/web_ui:\n  enabled: true/" config/config.yaml 2>/dev/null || \
+    echo "Note: Please manually enable web_ui in config.yaml"
+    
+    # Update username in config
+    sed -i.bak "s/username: \"admin\"/username: \"$web_username\"/" config/config.yaml 2>/dev/null || \
+    sed -i '' "s/username: \"admin\"/username: \"$web_username\"/" config/config.yaml 2>/dev/null
+    
+    # Update password_hash to use environment variable
+    sed -i.bak 's/password_hash: ""/password_hash: ${WEB_UI_PASSWORD_HASH}/' config/config.yaml 2>/dev/null || \
+    sed -i '' 's/password_hash: ""/password_hash: ${WEB_UI_PASSWORD_HASH}/' config/config.yaml 2>/dev/null
+    
+    # Add password hash to .env file
+    echo -e "${YELLOW}Saving password hash to .env file...${NC}"
+    if grep -q "^WEB_UI_PASSWORD_HASH=" .env 2>/dev/null; then
+        # Update existing entry
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|^WEB_UI_PASSWORD_HASH=.*|WEB_UI_PASSWORD_HASH=$web_password_hash|" .env
+        else
+            sed -i "s|^WEB_UI_PASSWORD_HASH=.*|WEB_UI_PASSWORD_HASH=$web_password_hash|" .env
+        fi
+    else
+        # Add new entry
+        echo "" >> .env
+        echo "# Web UI Authentication (set by installer)" >> .env
+        echo "WEB_UI_PASSWORD_HASH=$web_password_hash" >> .env
+    fi
+    
+    echo -e "${GREEN}✓ Web UI authentication configured${NC}"
+    echo -e "${GREEN}  Username: $web_username${NC}"
+    echo -e "${GREEN}  Access at: https://<your-ip>:8443${NC}"
+    echo -e "${YELLOW}  Note: You'll see a certificate warning on first access (self-signed cert)${NC}"
+fi
+
 # Test basic functionality
 echo ""
 echo -e "${YELLOW}Testing installation...${NC}"

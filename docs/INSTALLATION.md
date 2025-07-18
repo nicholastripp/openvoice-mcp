@@ -16,6 +16,7 @@ This guide will walk you through setting up the Home Assistant Realtime Voice As
 - Raspberry Pi OS (Bullseye or newer) or Ubuntu 20.04+
 - Python 3.9 or newer
 - Git
+- Home Assistant 2025.2+ (required for MCP support)
 
 ### Required Accounts
 1. **OpenAI Account** with API access
@@ -24,8 +25,10 @@ This guide will walk you through setting up the Home Assistant Realtime Voice As
    - Note: Realtime API requires payment setup
 
 2. **Home Assistant Instance**
-   - Running Home Assistant with external access
+   - Running Home Assistant 2025.2 or later
+   - MCP Server integration installed and enabled
    - Long-lived access token created
+   - "Control Home Assistant" option enabled in MCP settings
 
 3. **Picovoice Account** (Optional, for Porcupine wake words)
    - Sign up at [console.picovoice.ai](https://console.picovoice.ai)
@@ -67,8 +70,24 @@ The installation script will set up the Python virtual environment and install a
 
 This script will:
 - Create a Python virtual environment
-- Install all required Python packages
+- Install all required Python packages (including web UI dependencies)
 - Set up the basic directory structure
+- Optionally configure web UI security (authentication and HTTPS)
+
+#### Web UI Security Setup (Optional)
+
+During installation, you'll be asked about web UI configuration:
+
+1. **Enable Web UI?** - Choose Yes to set up the web interface
+2. **Enable Authentication?** - Strongly recommended if web UI will be network-accessible
+3. **Username** - Default is "admin" (you can change this)
+4. **Password** - Enter a strong password (8+ characters recommended)
+
+The installer will:
+- Generate a secure bcrypt password hash
+- Store the hash in your `.env` file as `WEB_UI_PASSWORD_HASH`
+- Configure HTTPS with self-signed certificates
+- Update your `config.yaml` with web UI settings
 
 ### 4. Configure the Assistant
 
@@ -144,6 +163,65 @@ Or with debug logging:
 # With virtual environment activated
 python src/main.py --log-level DEBUG
 ```
+
+Or with the web UI enabled:
+```bash
+# With virtual environment activated
+python src/main.py --web
+# Access the web UI at https://localhost:8443
+```
+
+## Web UI Access
+
+### Starting with Web UI
+
+If you enabled the web UI during installation:
+
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Start with web UI enabled
+python src/main.py --web
+
+# Or with a custom port
+python src/main.py --web --web-port 8090
+```
+
+### Accessing the Web Interface
+
+1. **Local Access**: Navigate to `https://localhost:8443`
+2. **Remote Access**: Use `https://your-pi-ip:8443`
+3. **Certificate Warning**: Accept the self-signed certificate
+   - This is normal on first access
+   - The certificate is generated automatically for security
+4. **Authentication**: Log in with the credentials you set during installation
+
+### Web UI Features
+
+Once logged in, you can:
+- **Status Dashboard** - Real-time monitoring with WebSocket updates
+- **Environment Variables** - Securely edit API keys and tokens
+- **Configuration Editor** - Modify all settings through the browser
+- **Personality Editor** - Customize assistant behavior with visual sliders
+- **Audio Testing** - Test and configure audio devices
+- **Log Viewer** - View system logs with syntax highlighting
+
+### Security Considerations
+
+- **HTTPS is enabled by default** to protect your credentials
+- **Authentication is required** when accessing from the network
+- **Session timeout** is configurable (default: 1 hour)
+- **Password hashes** use bcrypt with 12 rounds
+
+For maximum security when accessing remotely, consider:
+1. Using a VPN to your home network
+2. Setting up custom SSL certificates
+3. Using SSH tunneling:
+   ```bash
+   ssh -L 8443:localhost:8443 pi@your-pi
+   # Then access https://localhost:8443
+   ```
 
 ## Setting up as a System Service (Optional)
 

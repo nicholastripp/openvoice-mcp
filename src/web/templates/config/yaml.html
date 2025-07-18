@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="config-container">
+    <h1>Configuration Settings</h1>
+    
+    <form id="yaml-form">
+        <!-- OpenAI Settings -->
+        <div class="form-section">
+            <h2>OpenAI Settings</h2>
+            
+            <label for="openai_voice">Voice:</label>
+            <select id="openai_voice" name="openai.voice">
+                <option value="alloy" {% if config.openai.voice == 'alloy' %}selected{% endif %}>Alloy</option>
+                <option value="ash" {% if config.openai.voice == 'ash' %}selected{% endif %}>Ash</option>
+                <option value="ballad" {% if config.openai.voice == 'ballad' %}selected{% endif %}>Ballad</option>
+                <option value="coral" {% if config.openai.voice == 'coral' %}selected{% endif %}>Coral</option>
+                <option value="echo" {% if config.openai.voice == 'echo' %}selected{% endif %}>Echo</option>
+                <option value="sage" {% if config.openai.voice == 'sage' %}selected{% endif %}>Sage</option>
+                <option value="shimmer" {% if config.openai.voice == 'shimmer' %}selected{% endif %}>Shimmer</option>
+                <option value="verse" {% if config.openai.voice == 'verse' %}selected{% endif %}>Verse</option>
+            </select>
+            
+            <label for="openai_temperature">Temperature (0.0-1.0):</label>
+            <input type="range" id="openai_temperature" name="openai.temperature" 
+                   min="0" max="1" step="0.1" value="{{ config.openai.temperature }}">
+            <span class="range-value">{{ config.openai.temperature }}</span>
+            
+            <label for="openai_language">Language:</label>
+            <input type="text" id="openai_language" name="openai.language" 
+                   value="{{ config.openai.language }}" placeholder="en">
+        </div>
+        
+        <!-- Audio Settings -->
+        <div class="form-section">
+            <h2>Audio Settings</h2>
+            
+            <label for="audio_input_volume">Input Volume:</label>
+            <input type="range" id="audio_input_volume" name="audio.input_volume" 
+                   min="0.1" max="5.0" step="0.1" value="{{ config.audio.input_volume }}">
+            <span class="range-value">{{ config.audio.input_volume }}</span>
+            
+            <label for="audio_output_volume">Output Volume:</label>
+            <input type="range" id="audio_output_volume" name="audio.output_volume" 
+                   min="0.1" max="5.0" step="0.1" value="{{ config.audio.output_volume }}">
+            <span class="range-value">{{ config.audio.output_volume }}</span>
+            
+            <label>
+                <input type="checkbox" name="audio.agc_enabled" 
+                       {% if config.audio.agc_enabled %}checked{% endif %}>
+                Enable Automatic Gain Control (AGC)
+            </label>
+            
+            <label>
+                <input type="checkbox" name="audio.mute_during_response" 
+                       {% if config.audio.mute_during_response %}checked{% endif %}>
+                Mute microphone during response
+            </label>
+        </div>
+        
+        <!-- Wake Word Settings -->
+        <div class="form-section">
+            <h2>Wake Word Settings</h2>
+            
+            <label>
+                <input type="checkbox" name="wake_word.enabled" 
+                       {% if config.wake_word.enabled %}checked{% endif %}>
+                Enable wake word detection
+            </label>
+            
+            <label for="wake_word_sensitivity">Sensitivity:</label>
+            <input type="range" id="wake_word_sensitivity" name="wake_word.sensitivity" 
+                   min="0.1" max="2.0" step="0.1" value="{{ config.wake_word.sensitivity }}">
+            <span class="range-value">{{ config.wake_word.sensitivity }}</span>
+            
+            <label>
+                <input type="checkbox" name="wake_word.confirmation_beep_enabled" 
+                       {% if config.wake_word.confirmation_beep_enabled %}checked{% endif %}>
+                Play confirmation beep
+            </label>
+        </div>
+        
+        <!-- Session Settings -->
+        <div class="form-section">
+            <h2>Session Settings</h2>
+            
+            <label for="session_multi_turn_timeout">Multi-turn Timeout (seconds):</label>
+            <input type="number" id="session_multi_turn_timeout" name="session.multi_turn_timeout" 
+                   min="5" max="120" value="{{ config.session.multi_turn_timeout | default(30) }}">
+            
+            <label for="session_multi_turn_stuck_multiplier">Stuck Detection Multiplier:</label>
+            <input type="number" id="session_multi_turn_stuck_multiplier" 
+                   name="session.multi_turn_stuck_multiplier" 
+                   min="1" max="10" step="0.5" value="{{ config.session.multi_turn_stuck_multiplier | default(4.0) }}">
+        </div>
+        
+        <div class="button-group">
+            <button type="submit" class="button primary">Save Changes</button>
+            <button type="button" class="button" onclick="location.reload()">Cancel</button>
+        </div>
+    </form>
+</div>
+
+<style>
+.config-container {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.form-section {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: rgba(0,0,0,0.05);
+    border-radius: 0.5rem;
+}
+
+select, input[type="text"], input[type="number"] {
+    width: 100%;
+    padding: 0.5rem;
+    margin: 0.5rem 0 1rem;
+}
+
+input[type="range"] {
+    width: calc(100% - 4rem);
+    margin: 0.5rem 0 1rem;
+}
+
+label {
+    display: block;
+    margin-top: 1rem;
+}
+
+input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+.button-group {
+    margin-top: 2rem;
+    display: flex;
+    gap: 1rem;
+}
+</style>
+
+<script>
+// Update range value displays
+document.querySelectorAll('input[type="range"]').forEach(input => {
+    const valueDisplay = input.nextElementSibling;
+    input.addEventListener('input', () => {
+        valueDisplay.textContent = input.value;
+    });
+});
+
+document.getElementById('yaml-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = {};
+    
+    // Convert form data to nested object
+    for (const [key, value] of formData.entries()) {
+        const parts = key.split('.');
+        let current = data;
+        
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (!current[parts[i]]) {
+                current[parts[i]] = {};
+            }
+            current = current[parts[i]];
+        }
+        
+        // Convert values to appropriate types
+        if (value === 'on') {
+            current[parts[parts.length - 1]] = true;
+        } else if (!isNaN(value) && value !== '') {
+            current[parts[parts.length - 1]] = parseFloat(value);
+        } else {
+            current[parts[parts.length - 1]] = value;
+        }
+    }
+    
+    // Handle unchecked checkboxes
+    document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        if (!checkbox.checked) {
+            const parts = checkbox.name.split('.');
+            let current = data;
+            
+            for (let i = 0; i < parts.length - 1; i++) {
+                if (!current[parts[i]]) {
+                    current[parts[i]] = {};
+                }
+                current = current[parts[i]];
+            }
+            
+            current[parts[parts.length - 1]] = false;
+        }
+    });
+    
+    try {
+        const response = await fetch('/api/config/yaml', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            alert('Configuration saved successfully' + 
+                  (result.restart_required ? '\nRestart required for some changes to take effect.' : ''));
+            location.reload();
+        } else {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        alert('Save failed: ' + error.message);
+    }
+});
+</script>
+{% endblock %}

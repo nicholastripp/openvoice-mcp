@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="audio-container">
+    <h1>Audio Device Testing</h1>
+    
+    <div class="test-grid">
+        <!-- Input Devices -->
+        <div class="test-section">
+            <h2>Input Devices (Microphones)</h2>
+            <div id="input-devices-list">
+                <p>Loading devices...</p>
+            </div>
+            
+            <button onclick="refreshDevices()" class="button">Refresh Devices</button>
+        </div>
+        
+        <!-- Output Devices -->
+        <div class="test-section">
+            <h2>Output Devices (Speakers)</h2>
+            <div id="output-devices-list">
+                <p>Loading devices...</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Audio Level Monitor -->
+    <div class="monitor-section">
+        <h2>Audio Level Monitor</h2>
+        <p>Select an input device above to monitor its audio level:</p>
+        
+        <div class="audio-meter">
+            <div class="audio-meter-bar" id="level-bar"></div>
+        </div>
+        
+        <div class="level-info">
+            <span>Level: <span id="level-db">-∞</span> dB</span>
+            <span>Peak: <span id="peak-db">-∞</span> dB</span>
+        </div>
+    </div>
+    
+    <!-- Test Results -->
+    <div id="test-results" class="test-results"></div>
+</div>
+
+<style>
+.audio-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.test-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin: 2rem 0;
+}
+
+.test-section {
+    background: rgba(0,0,0,0.05);
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+}
+
+.test-section h2 {
+    margin-top: 0;
+}
+
+.device-item {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: white;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.device-item:hover {
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.device-item.selected {
+    border: 2px solid #007bff;
+}
+
+.device-info {
+    font-size: 0.9em;
+    color: #666;
+}
+
+.monitor-section {
+    margin: 3rem 0;
+    padding: 2rem;
+    background: rgba(0,0,0,0.05);
+    border-radius: 0.5rem;
+}
+
+.audio-meter {
+    width: 100%;
+    height: 30px;
+    background: #333;
+    border-radius: 15px;
+    overflow: hidden;
+    margin: 1rem 0;
+}
+
+.audio-meter-bar {
+    height: 100%;
+    background: linear-gradient(to right, #28a745 0%, #28a745 60%, #ffc107 80%, #dc3545 100%);
+    transition: width 0.1s ease;
+    width: 0%;
+}
+
+.level-info {
+    display: flex;
+    justify-content: space-between;
+    font-family: monospace;
+}
+
+.test-results {
+    margin-top: 2rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 0.5rem;
+    min-height: 100px;
+}
+
+.test-button {
+    padding: 0.5rem 1rem;
+    margin-left: 0.5rem;
+    cursor: pointer;
+}
+
+@media (max-width: 768px) {
+    .test-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<script>
+let devices = { input: [], output: [] };
+let monitoringInterval = null;
+let selectedInput = null;
+let peakLevel = -Infinity;
+
+async function loadDevices() {
+    try {
+        const response = await fetch('/api/audio/devices');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            devices.input = data.input_devices;
+            devices.output = data.output_devices;
+            displayDevices();
+        } else {
+            showError('Failed to load devices: ' + data.message);
+        }
+    } catch (error) {
+        showError('Error loading devices: ' + error.message);
+    }
+}
+
+function displayDevices() {
+    // Display input devices
+    const inputList = document.getElementById('input-devices-list');
+    inputList.innerHTML = devices.input.map(device => `
+        <div class="device-item" onclick="selectInputDevice(${device.id})">
+            <strong>${device.name}</strong>
+            <div class="device-info">ID: ${device.id} | Channels: ${device.channels}</div>
+            <button class="test-button button" onclick="testDevice(${device.id}, 'input', event)">Test</button>
+        </div>
+    `).join('');
+    
+    // Display output devices
+    const outputList = document.getElementById('output-devices-list');
+    outputList.innerHTML = devices.output.map(device => `
+        <div class="device-item">
+            <strong>${device.name}</strong>
+            <div class="device-info">ID: ${device.id} | Channels: ${device.channels}</div>
+            <button class="test-button button" onclick="testDevice(${device.id}, 'output', event)">Test</button>
+        </div>
+    `).join('');
+}
+
+function selectInputDevice(deviceId) {
+    selectedInput = deviceId;
+    
+    // Update UI
+    document.querySelectorAll('.device-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+    event.currentTarget.classList.add('selected');
+    
+    // Start monitoring
+    startMonitoring(deviceId);
+}
+
+function startMonitoring(deviceId) {
+    // Simulated monitoring for demo
+    if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+    }
+    
+    peakLevel = -Infinity;
+    
+    monitoringInterval = setInterval(() => {
+        // Simulate audio level (replace with actual monitoring)
+        const level = -60 + Math.random() * 50;
+        updateLevel(level);
+    }, 100);
+}
+
+function updateLevel(dbLevel) {
+    const percent = Math.min(100, Math.max(0, (dbLevel + 60) * 1.67));
+    document.getElementById('level-bar').style.width = percent + '%';
+    document.getElementById('level-db').textContent = dbLevel.toFixed(1);
+    
+    if (dbLevel > peakLevel) {
+        peakLevel = dbLevel;
+        document.getElementById('peak-db').textContent = peakLevel.toFixed(1);
+    }
+}
+
+async function testDevice(deviceId, type, event) {
+    event.stopPropagation();
+    
+    try {
+        const response = await fetch('/api/audio/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ device_id: deviceId, type: type })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            showResult('✓ ' + data.message, 'success');
+        } else {
+            showResult('✗ ' + data.message, 'error');
+        }
+    } catch (error) {
+        showResult('✗ Test failed: ' + error.message, 'error');
+    }
+}
+
+function showResult(message, type) {
+    const results = document.getElementById('test-results');
+    const entry = document.createElement('div');
+    entry.className = 'result-entry ' + type;
+    entry.textContent = new Date().toLocaleTimeString() + ' - ' + message;
+    results.insertBefore(entry, results.firstChild);
+    
+    // Keep only last 10 results
+    while (results.children.length > 10) {
+        results.removeChild(results.lastChild);
+    }
+}
+
+function showError(message) {
+    showResult(message, 'error');
+}
+
+function refreshDevices() {
+    showResult('Refreshing device list...', 'info');
+    loadDevices();
+}
+
+// Initialize on load
+loadDevices();
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+    }
+});
+</script>
+{% endblock %}

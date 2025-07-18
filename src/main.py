@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import load_config, AppConfig
 from personality import PersonalityProfile
 from utils.logger import setup_logging, get_logger
-from openai_client.realtime import OpenAIRealtimeClient
+from openai_client.realtime import OpenAIRealtimeClient, ConnectionState
 from services.ha_client.mcp_official import MCPClient
 from audio.capture import AudioCapture
 from audio.playback import AudioPlayback
@@ -74,6 +74,10 @@ class VoiceAssistant:
         self.multi_turn_timeout_task = None
         self.last_user_input = None
         
+        # Extended silence tracking for natural conversation end
+        self.last_speech_activity_time = None
+        self.silence_monitor_task = None
+        
         # Session watchdog for stuck session detection
         self.last_state_change = asyncio.get_event_loop().time()
         self.max_state_duration = 60.0  # 60 seconds max in any state
@@ -89,10 +93,18 @@ class VoiceAssistant:
         self.cleanup_task = None
         self.cleanup_interval = 30.0  # Check every 30 seconds
         
+        # Periodic status broadcast task
+        self.status_broadcast_task = None
+        self.status_broadcast_interval = 5.0  # Broadcast every 5 seconds
+        
         # Device cache
         self._device_cache = None
         self._device_cache_time = None
         self._device_cache_ttl = 300.0  # 5 minutes TTL for device cache
+        
+        # Audio level broadcasting throttle
+        self._last_audio_level_broadcast = 0
+        self._audio_level_broadcast_interval = 0.1  # Broadcast every 100ms max
     
     async def start(self) -> None:
         """Start the voice assistant"""
@@ -115,6 +127,11 @@ class VoiceAssistant:
             # Start periodic cleanup task
             self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
             
+            # Start periodic status broadcast if web UI is enabled
+            if hasattr(self, 'web_app') and self.web_app:
+                self.status_broadcast_task = asyncio.create_task(self._periodic_status_broadcast())
+                self.logger.debug("Started periodic status broadcast task")
+            
             self.logger.debug("Starting main loop")
             # Start main loop
             self.running = True
@@ -133,6 +150,15 @@ class VoiceAssistant:
         # Cancel cleanup task
         if self.cleanup_task and not self.cleanup_task.done():
             self.cleanup_task.cancel()
+        
+        # Cancel status broadcast task
+        if self.status_broadcast_task and not self.status_broadcast_task.done():
+            self.status_broadcast_task.cancel()
+        
+        # Stop web UI if running
+        if hasattr(self, 'web_app') and self.web_app:
+            self.logger.info("Stopping web UI...")
+            await self.web_app.stop()
         
         # Cleanup components
         await self._cleanup_components()
@@ -198,6 +224,9 @@ class VoiceAssistant:
             elif new_state == SessionState.MULTI_TURN_LISTENING:
                 self.logger.info(f"Session entering MULTI_TURN_LISTENING state - ready for follow-up questions")
                 print("*** SESSION ENTERING MULTI-TURN LISTENING STATE - SPEAK YOUR FOLLOW-UP QUESTION ***")
+            
+            # Broadcast state change to web UI
+            asyncio.create_task(self._broadcast_state_change(old_state, new_state))
     
     def _validate_state_transition(self, old_state: SessionState, new_state: SessionState) -> bool:
         """Validate that a state transition is allowed"""
@@ -940,6 +969,18 @@ class VoiceAssistant:
             self.audio_capture.add_callback(self._on_audio_captured_direct)
         
         self.logger.info("All components initialized successfully")
+        
+        # Broadcast initial status to web UI
+        await self._broadcast_connection_status()
+        
+        # Send startup activity
+        if hasattr(self, 'web_app') and self.web_app:
+            await self.web_app.broadcast_event('activity', {
+                'message': 'Voice assistant started'
+            })
+            await self.web_app.broadcast_event('activity', {
+                'message': 'All systems operational'
+            })
     
     async def _cleanup_components(self) -> None:
         """Cleanup all components"""
@@ -1234,9 +1275,17 @@ class VoiceAssistant:
             self.logger.info("Cancelled multi-turn timeout task during session end")
             print("*** MULTI-TURN TIMEOUT TASK CANCELLED DURING SESSION END ***")
         
+        # Cancel silence monitor task if it exists
+        if self.silence_monitor_task and not self.silence_monitor_task.done():
+            self.silence_monitor_task.cancel()
+            self.silence_monitor_task = None
+            self.logger.info("Cancelled silence monitor task during session end")
+            print("*** SILENCE MONITOR TASK CANCELLED DURING SESSION END ***")
+        
         # Reset multi-turn conversation state
         self.conversation_turn_count = 0
         self.last_user_input = None
+        self.last_speech_activity_time = None
         
         # Reset audio streaming counters for clean logging
         if hasattr(self, '_openai_audio_counter'):
@@ -1357,6 +1406,13 @@ class VoiceAssistant:
                 print(f"*** [MUTED] AUDIO MUTED DURING {self.session_state.value.upper()} STATE ***")
             return
         
+        # Calculate and broadcast audio level (throttled)
+        current_time = asyncio.get_event_loop().time()
+        if current_time - self._last_audio_level_broadcast >= self._audio_level_broadcast_interval:
+            audio_level = self._calculate_audio_level(audio_data)
+            asyncio.create_task(self._broadcast_audio_level(audio_level))
+            self._last_audio_level_broadcast = current_time
+        
         if not self.session_active:
             # Send audio to wake word detector with proper sample rate
             if self.wake_word_detector:
@@ -1409,6 +1465,13 @@ class VoiceAssistant:
     
     async def _on_audio_captured_direct(self, audio_data: bytes) -> None:
         """Handle captured audio directly (development mode without wake word)"""
+        # Calculate and broadcast audio level (throttled)
+        current_time = asyncio.get_event_loop().time()
+        if current_time - self._last_audio_level_broadcast >= self._audio_level_broadcast_interval:
+            audio_level = self._calculate_audio_level(audio_data)
+            asyncio.create_task(self._broadcast_audio_level(audio_level))
+            self._last_audio_level_broadcast = current_time
+        
         # ENHANCED: Check multiple conditions for muting audio during response/cooldown
         should_mute = (
             self.config.audio.mute_during_response and 
@@ -1699,6 +1762,12 @@ class VoiceAssistant:
                     self.logger.warning(f"Failed to restore VAD settings: {e}")
                     # Don't fail the entire completion handler for this
             
+            # Calculate and broadcast response time
+            if self.response_start_time:
+                response_time = asyncio.get_event_loop().time() - self.response_start_time
+                await self._broadcast_response_complete(response_time)
+                self.response_start_time = None
+            
             # Check if multi-turn conversation mode is enabled
             conversation_mode = getattr(self.config.session, 'conversation_mode', 'single_turn')
             self.logger.info(f"Audio completion - conversation mode: {conversation_mode}, session_active: {self.session_active}, state: {self.session_state.value}")
@@ -1739,11 +1808,16 @@ class VoiceAssistant:
                 
                 self._transition_to_state(SessionState.MULTI_TURN_LISTENING)
                 
-                # Set up timeout for multi-turn conversation
+                # Set up safety timeout for multi-turn conversation
                 self.multi_turn_timeout_task = asyncio.create_task(self._handle_multi_turn_timeout())
                 task_id = id(self.multi_turn_timeout_task)
-                self.logger.info(f"Created multi-turn timeout task {task_id} (timeout: {multi_turn_timeout}s)")
-                print(f"*** MULTI-TURN TIMEOUT TASK {task_id} CREATED: {multi_turn_timeout}s ***")
+                self.logger.info(f"Created multi-turn safety timeout task {task_id} (fallback: {multi_turn_timeout}s)")
+                print(f"*** MULTI-TURN SAFETY TIMEOUT {task_id} CREATED: {multi_turn_timeout}s (FALLBACK) ***")
+                
+                # Start silence monitoring for natural conversation end
+                self.silence_monitor_task = asyncio.create_task(self._monitor_extended_silence())
+                self.logger.info(f"Started silence monitoring (threshold: {self.config.session.extended_silence_threshold}s)")
+                print(f"*** SILENCE MONITORING STARTED: {self.config.session.extended_silence_threshold}s THRESHOLD ***")
                 
                 return
         
@@ -1816,37 +1890,74 @@ class VoiceAssistant:
             self._transition_to_state(SessionState.IDLE)
     
     async def _handle_multi_turn_timeout(self) -> None:
-        """Handle timeout for multi-turn conversations"""
+        """Handle safety timeout for multi-turn conversations (fallback only)"""
         task_id = id(asyncio.current_task())
         start_time = asyncio.get_event_loop().time()
         
         try:
-            self.logger.info(f"Multi-turn timeout task {task_id} started - will wait {self.config.session.multi_turn_timeout}s")
-            print(f"*** MULTI-TURN TIMEOUT TASK {task_id} STARTED: WAITING {self.config.session.multi_turn_timeout}s ***")
+            self.logger.info(f"Multi-turn safety timeout {task_id} started - fallback timer: {self.config.session.multi_turn_timeout}s")
+            print(f"*** MULTI-TURN SAFETY TIMEOUT {task_id} STARTED: {self.config.session.multi_turn_timeout}s FALLBACK ***")
             
-            # Wait for multi-turn timeout
+            # Wait for safety timeout (should rarely trigger - silence detection handles normal endings)
             await asyncio.sleep(self.config.session.multi_turn_timeout)
             
-            # If we reach here, no follow-up question was received
+            # If we reach here, conversation has been stuck for too long
             elapsed = asyncio.get_event_loop().time() - start_time
-            self.logger.info(f"Multi-turn timeout task {task_id} completed after {elapsed:.1f}s - checking session state")
-            print(f"*** MULTI-TURN TIMEOUT {task_id} COMPLETED AFTER {elapsed:.1f}S - SESSION STATE: {self.session_state.value} ***")
+            self.logger.warning(f"Multi-turn safety timeout {task_id} triggered after {elapsed:.1f}s - forcing session end")
+            print(f"*** MULTI-TURN SAFETY TIMEOUT TRIGGERED AFTER {elapsed:.1f}S - FORCING SESSION END ***")
             
             if self.session_active and self.session_state == SessionState.MULTI_TURN_LISTENING:
-                self.logger.info(f"Multi-turn conversation timeout after {elapsed:.1f}s - ending session")
-                print(f"*** MULTI-TURN TIMEOUT AFTER {elapsed:.1f}S - ENDING SESSION ***")
+                self.logger.warning(f"Safety timeout forcing session end after {elapsed:.1f}s")
+                print(f"*** SAFETY TIMEOUT: FORCING SESSION END AFTER {elapsed:.1f}S ***")
                 await self._end_session()
             else:
-                self.logger.info(f"Multi-turn timeout completed but session not in MULTI_TURN_LISTENING state (active: {self.session_active}, state: {self.session_state.value})")
-                print(f"*** MULTI-TURN TIMEOUT COMPLETED BUT SESSION STATE CHANGED: active={self.session_active}, state={self.session_state.value} ***")
+                self.logger.info(f"Safety timeout completed but session already ended (active: {self.session_active}, state: {self.session_state.value})")
+                print(f"*** SAFETY TIMEOUT COMPLETED BUT SESSION ALREADY ENDED ***")
         except asyncio.CancelledError:
-            # Task was cancelled (user spoke again)
+            # Task was cancelled (normal - user activity or natural end)
             elapsed = asyncio.get_event_loop().time() - start_time
-            self.logger.info(f"Multi-turn timeout task {task_id} cancelled after {elapsed:.1f}s - user spoke again or session ended")
-            print(f"*** MULTI-TURN TIMEOUT TASK {task_id} CANCELLED AFTER {elapsed:.1f}S ***")
+            self.logger.debug(f"Multi-turn safety timeout {task_id} cancelled after {elapsed:.1f}s (normal)")
             raise  # Re-raise to properly handle cancellation
         except Exception as e:
-            self.logger.error(f"Error in multi-turn timeout handler {task_id}: {e}")
+            self.logger.error(f"Error in multi-turn safety timeout {task_id}: {e}")
+    
+    async def _monitor_extended_silence(self) -> None:
+        """Monitor for extended silence to naturally end conversations"""
+        try:
+            # Initialize last speech time to now
+            self.last_speech_activity_time = asyncio.get_event_loop().time()
+            threshold = self.config.session.extended_silence_threshold
+            
+            self.logger.info(f"Silence monitoring started with {threshold}s threshold")
+            
+            while self.session_active and self.session_state == SessionState.MULTI_TURN_LISTENING:
+                current_time = asyncio.get_event_loop().time()
+                silence_duration = current_time - self.last_speech_activity_time
+                
+                if silence_duration >= threshold:
+                    self.logger.info(f"Extended silence detected ({silence_duration:.1f}s) - ending conversation naturally")
+                    print(f"*** EXTENDED SILENCE ({silence_duration:.1f}s) - ENDING CONVERSATION NATURALLY ***")
+                    
+                    # Cancel safety timeout since we're ending naturally
+                    if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
+                        self.multi_turn_timeout_task.cancel()
+                    
+                    await self._end_session()
+                    break
+                
+                # Check every second
+                await asyncio.sleep(1.0)
+                
+                # Log progress occasionally
+                if int(silence_duration) % 3 == 0 and silence_duration > 0:
+                    remaining = threshold - silence_duration
+                    self.logger.debug(f"Silence duration: {silence_duration:.1f}s, {remaining:.1f}s until natural end")
+                    
+        except asyncio.CancelledError:
+            self.logger.debug("Silence monitoring cancelled (normal)")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error in silence monitoring: {e}")
     
     async def _check_non_audio_response_completion(self) -> None:
         """Check if a response without audio should complete"""
@@ -1982,10 +2093,154 @@ class VoiceAssistant:
                 # Continue cleanup loop even on error
                 await asyncio.sleep(5.0)
     
+    async def _broadcast_state_change(self, old_state: SessionState, new_state: SessionState) -> None:
+        """Broadcast state change to web UI"""
+        if not hasattr(self, 'web_app') or not self.web_app:
+            return
+            
+        try:
+            await self.web_app.broadcast_event('state_change', {
+                'old_state': old_state.value,
+                'new_state': new_state.value,
+                'session_active': self.session_active,
+                'response_active': self.response_active,
+                'timestamp': asyncio.get_event_loop().time()
+            })
+            
+            # Also send as activity for the activity log
+            state_messages = {
+                SessionState.IDLE: "Waiting for wake word",
+                SessionState.LISTENING: "Listening for user input",
+                SessionState.PROCESSING: "Processing speech",
+                SessionState.RESPONDING: "Generating response",
+                SessionState.AUDIO_PLAYING: "Playing response",
+                SessionState.COOLDOWN: "Session ending",
+                SessionState.MULTI_TURN_LISTENING: "Listening for follow-up"
+            }
+            
+            if new_state in state_messages:
+                await self.web_app.broadcast_event('activity', {
+                    'message': state_messages[new_state]
+                })
+        except Exception as e:
+            self.logger.error(f"Error broadcasting state change: {e}")
+    
+    async def _broadcast_audio_level(self, level: float) -> None:
+        """Broadcast audio level to web UI"""
+        if not hasattr(self, 'web_app') or not self.web_app:
+            return
+            
+        try:
+            await self.web_app.broadcast_event('audio_level', {
+                'level': level
+            })
+        except Exception as e:
+            # Don't log every audio level error to avoid spam
+            pass
+    
+    async def _broadcast_wake_detected(self) -> None:
+        """Broadcast wake word detection to web UI"""
+        if not hasattr(self, 'web_app') or not self.web_app:
+            return
+            
+        try:
+            await self.web_app.broadcast_event('wake_detected', {
+                'timestamp': asyncio.get_event_loop().time()
+            })
+            
+            # Also add to activity log
+            await self.web_app.broadcast_event('activity', {
+                'message': 'Wake word detected'
+            })
+        except Exception as e:
+            self.logger.error(f"Error broadcasting wake detection: {e}")
+    
+    async def _broadcast_response_complete(self, response_time: float) -> None:
+        """Broadcast response completion to web UI"""
+        if not hasattr(self, 'web_app') or not self.web_app:
+            return
+            
+        try:
+            await self.web_app.broadcast_event('command_complete', {
+                'response_time': response_time * 1000,  # Convert to ms
+                'timestamp': asyncio.get_event_loop().time()
+            })
+            
+            # Also add to activity log
+            await self.web_app.broadcast_event('activity', {
+                'message': f'Response completed in {response_time:.1f}s'
+            })
+        except Exception as e:
+            self.logger.error(f"Error broadcasting response complete: {e}")
+    
+    async def _broadcast_connection_status(self) -> None:
+        """Broadcast connection status to web UI"""
+        if not hasattr(self, 'web_app') or not self.web_app:
+            return
+            
+        try:
+            connections = {
+                'openai': bool(self.openai_client and 
+                             self.openai_client.state == ConnectionState.CONNECTED),
+                'home_assistant': bool(self.mcp_client and self.mcp_client.is_connected),
+                'wake_word': bool(self.wake_word_detector and self.wake_word_detector.is_running)
+            }
+            
+            await self.web_app.broadcast_event('status', {
+                'state': self.session_state.value,
+                'connections': connections
+            })
+        except Exception as e:
+            self.logger.error(f"Error broadcasting connection status: {e}")
+    
+    async def _periodic_status_broadcast(self) -> None:
+        """Periodically broadcast connection status to web UI"""
+        while self.running:
+            try:
+                await asyncio.sleep(self.status_broadcast_interval)
+                
+                if not self.running:
+                    break
+                    
+                # Broadcast current status
+                await self._broadcast_connection_status()
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error in periodic status broadcast: {e}")
+                # Continue broadcast loop even on error
+                await asyncio.sleep(1.0)
+    
+    def _calculate_audio_level(self, audio_data: bytes) -> float:
+        """Calculate audio level in dB from audio data"""
+        try:
+            import numpy as np
+            
+            # Convert bytes to numpy array (assuming 16-bit PCM)
+            audio_array = np.frombuffer(audio_data, dtype=np.int16)
+            
+            # Calculate RMS (Root Mean Square)
+            rms = np.sqrt(np.mean(audio_array.astype(np.float64)**2))
+            
+            # Convert to dB (avoid log of zero)
+            if rms > 0:
+                db = 20 * np.log10(rms / 32768.0)  # 32768 is max value for 16-bit audio
+            else:
+                db = -60.0  # Floor value
+                
+            return db
+        except Exception:
+            return -60.0  # Return floor value on error
+    
     async def _on_speech_started(self, event_data: dict) -> None:
         """Handle speech started event from server VAD"""
         self.logger.info(f"Speech started event received in state: {self.session_state.value}")
         print(f"*** SPEECH_STARTED EVENT - STATE: {self.session_state.value}, SESSION_ACTIVE: {self.session_active} ***")
+        
+        # Update last speech activity time for silence monitoring
+        self.last_speech_activity_time = asyncio.get_event_loop().time()
+        self.logger.debug("Updated last speech activity time")
         
         # Cancel multi-turn timeout task since user is speaking
         if self.multi_turn_timeout_task:
@@ -2013,6 +2268,10 @@ class VoiceAssistant:
         time_in_session = event_time - self.session_start_time if hasattr(self, 'session_start_time') else 0
         self.logger.info(f"User speech stopped - server VAD triggered after {time_in_session:.1f}s")
         print(f"*** USER STOPPED SPEAKING - VAD EVENT AT {time_in_session:.1f}s ***")
+        
+        # Update last speech activity time when speech stops
+        self.last_speech_activity_time = event_time
+        self.logger.debug("Updated last speech activity time on speech stop")
         
         # CRITICAL: Ignore speech events during cooldown to prevent false positives
         if self.session_state == SessionState.COOLDOWN:
@@ -2401,6 +2660,9 @@ class VoiceAssistant:
         self.logger.info("Starting voice session from wake word detection")
         print("*** STARTING VOICE SESSION ***")
         asyncio.run_coroutine_threadsafe(self._start_session(), self.loop)
+        
+        # Broadcast wake word detection to web UI
+        asyncio.run_coroutine_threadsafe(self._broadcast_wake_detected(), self.loop)
     
     async def _ensure_openai_connection(self) -> None:
         """Ensure OpenAI client is connected"""
@@ -2467,6 +2729,17 @@ async def main():
         action="store_true",
         help="Skip Home Assistant connection check (for testing only)"
     )
+    parser.add_argument(
+        "--web",
+        action="store_true",
+        help="Enable web UI for configuration and monitoring"
+    )
+    parser.add_argument(
+        "--web-port",
+        type=int,
+        default=None,
+        help="Port for web UI (default: uses config file setting)"
+    )
     
     args = parser.parse_args()
     
@@ -2517,9 +2790,86 @@ async def main():
         logger.info(f"HA URL: {config.home_assistant.url}")
         logger.info(f"Assistant Name: {personality.backstory.name}")
         
+        # Start web UI if requested via CLI or config
+        web_app = None
+        web_ui_enabled = args.web or config.web_ui.enabled
+        web_ui_port = args.web_port if args.web_port is not None else config.web_ui.port
+        web_ui_host = config.web_ui.host  # Always use config for host
+        
+        if web_ui_enabled:
+            logger.info(f"Starting web UI on {web_ui_host}:{web_ui_port}")
+            
+            # Security warning if binding to all interfaces
+            if web_ui_host == "0.0.0.0":
+                logger.warning("Web UI configured to listen on all interfaces (0.0.0.0)")
+                logger.warning("This makes the web UI accessible from any network interface")
+                print("\n" + "="*70)
+                print("SECURITY WARNING: Web UI listening on all interfaces")
+                protocol = "https" if config.web_ui.tls.enabled else "http"
+                print(f"The web UI will be accessible from: {protocol}://<your-ip>:{web_ui_port}")
+                if config.web_ui.tls.enabled:
+                    print("Using HTTPS with self-signed certificate (you'll see a security warning)")
+                if config.web_ui.auth.enabled:
+                    print(f"Authentication required - Username: {config.web_ui.auth.username}")
+                else:
+                    print("WARNING: No authentication enabled!")
+                print("Ensure your network is secure!")
+                print("="*70 + "\n")
+            
+            from web.app import WebApp
+            config_dir = Path(args.config).parent
+            
+            # Convert config objects to dicts for web app
+            auth_config = {
+                'enabled': config.web_ui.auth.enabled,
+                'username': config.web_ui.auth.username,
+                'password_hash': config.web_ui.auth.password_hash,
+                'session_timeout': config.web_ui.auth.session_timeout
+            }
+            
+            tls_config = {
+                'enabled': config.web_ui.tls.enabled,
+                'cert_file': config.web_ui.tls.cert_file,
+                'key_file': config.web_ui.tls.key_file
+            }
+            
+            web_app = WebApp(
+                config_dir, 
+                host=web_ui_host, 
+                port=web_ui_port,
+                auth_config=auth_config,
+                tls_config=tls_config
+            )
+            await web_app.start()
+            
+            # If first run, show setup message
+            if web_app.app['first_run']:
+                print("\n" + "="*70)
+                print("FIRST RUN DETECTED - SETUP REQUIRED")
+                print("="*70)
+                protocol = "https" if config.web_ui.tls.enabled else "http"
+                print(f"Please open {protocol}://localhost:{web_ui_port} to complete setup")
+                if config.web_ui.tls.enabled:
+                    print("Note: You'll see a certificate warning (self-signed cert)")
+                print("="*70 + "\n")
+                
+                # Wait for setup to complete
+                while web_app.app['first_run']:
+                    await asyncio.sleep(1)
+                
+                # Reload configuration after setup
+                config = load_config(args.config)
+                personality = PersonalityProfile(args.persona)
+                logger.info("Setup completed, continuing with startup")
+        
         logger.debug("About to create VoiceAssistant instance")
         # Create and start assistant
         assistant = VoiceAssistant(config, personality, skip_ha_check=args.skip_ha_check)
+        
+        # Store web app reference if available
+        if web_app:
+            assistant.web_app = web_app
+            web_app.set_assistant(assistant)
         
         logger.debug("About to setup signal handlers")
         # Setup signal handlers

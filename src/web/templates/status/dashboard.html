@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="status-container">
+    <h1>Voice Assistant Status</h1>
+    
+    <div class="status-grid">
+        <div class="status-card">
+            <h2>Current State</h2>
+            <div class="state-display">
+                <span class="status-indicator" id="state-indicator"></span>
+                <span id="state-text">Connecting...</span>
+            </div>
+        </div>
+        
+        <div class="status-card">
+            <h2>Connections</h2>
+            <ul class="connection-list">
+                <li>
+                    <span class="status-indicator" id="openai-status"></span>
+                    OpenAI: <span id="openai-text">Checking...</span>
+                </li>
+                <li>
+                    <span class="status-indicator" id="ha-status"></span>
+                    Home Assistant: <span id="ha-text">Checking...</span>
+                </li>
+                <li>
+                    <span class="status-indicator" id="wake-status"></span>
+                    Wake Word: <span id="wake-text">Checking...</span>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="status-card">
+            <h2>Audio Levels</h2>
+            <div class="audio-meter">
+                <div class="audio-meter-bar" id="audio-level"></div>
+            </div>
+            <p>Input Level: <span id="audio-db">0</span> dB</p>
+        </div>
+        
+        <div class="status-card">
+            <h2>Activity</h2>
+            <div id="activity-log" class="activity-log">
+                <p class="activity-entry">Waiting for activity...</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="stats-section">
+        <h2>Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat">
+                <span class="stat-value" id="uptime">0:00:00</span>
+                <span class="stat-label">Uptime</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value" id="wake-count">0</span>
+                <span class="stat-label">Wake Detections</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value" id="command-count">0</span>
+                <span class="stat-label">Commands</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value" id="avg-response">0ms</span>
+                <span class="stat-label">Avg Response</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.status-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+}
+
+.status-card {
+    background: rgba(0,0,0,0.05);
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+}
+
+.status-card h2 {
+    margin-top: 0;
+    font-size: 1.2rem;
+}
+
+.state-display {
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.connection-list {
+    list-style: none;
+    padding: 0;
+}
+
+.connection-list li {
+    display: flex;
+    align-items: center;
+    margin: 0.5rem 0;
+}
+
+.activity-log {
+    height: 150px;
+    overflow-y: auto;
+    background: rgba(0,0,0,0.02);
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.9em;
+}
+
+.activity-entry {
+    margin: 0.25rem 0;
+    padding: 0.25rem;
+}
+
+.stats-section {
+    margin-top: 3rem;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.stat {
+    text-align: center;
+    padding: 1rem;
+    background: rgba(0,0,0,0.05);
+    border-radius: 0.5rem;
+}
+
+.stat-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: bold;
+    color: #007bff;
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 0.5rem;
+}
+</style>
+
+<script>
+// WebSocket connection for real-time updates
+let ws = null;
+let reconnectInterval = null;
+// Use server-provided start time, or fall back to page load time
+let startTime = {{ start_time if start_time else 'Date.now()' }};
+let stats = {
+    wakeCount: 0,
+    commandCount: 0,
+    responseTimes: []
+};
+
+function connectWebSocket() {
+    const wsUrl = "{{ ws_url }}";
+    ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+        console.log('WebSocket connected');
+        clearInterval(reconnectInterval);
+    };
+    
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        updateStatus(data);
+    };
+    
+    ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        // Reconnect after 3 seconds
+        reconnectInterval = setInterval(connectWebSocket, 3000);
+    };
+    
+    ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
+}
+
+function updateStatus(data) {
+    if (data.type === 'status') {
+        // Update state
+        const stateIndicator = document.getElementById('state-indicator');
+        const stateText = document.getElementById('state-text');
+        
+        stateText.textContent = data.state.charAt(0).toUpperCase() + data.state.slice(1);
+        stateIndicator.className = 'status-indicator ' + (data.state === 'idle' ? 'online' : 'connecting');
+        
+        // Update connections
+        if (data.connections) {
+            updateConnection('openai', data.connections.openai);
+            updateConnection('ha', data.connections.home_assistant);
+            updateConnection('wake', data.connections.wake_word);
+        }
+    }
+    
+    if (data.type === 'activity') {
+        addActivity(data.message);
+    }
+    
+    if (data.type === 'audio_level') {
+        updateAudioLevel(data.level);
+    }
+    
+    if (data.type === 'wake_detected') {
+        stats.wakeCount++;
+        document.getElementById('wake-count').textContent = stats.wakeCount;
+    }
+    
+    if (data.type === 'command_complete') {
+        stats.commandCount++;
+        stats.responseTimes.push(data.response_time);
+        document.getElementById('command-count').textContent = stats.commandCount;
+        updateAvgResponse();
+    }
+    
+    if (data.type === 'state_change') {
+        // Update state display based on state change
+        const stateIndicator = document.getElementById('state-indicator');
+        const stateText = document.getElementById('state-text');
+        
+        stateText.textContent = data.new_state.charAt(0).toUpperCase() + data.new_state.slice(1).replace('_', ' ');
+        
+        // Update indicator color based on state
+        if (data.new_state === 'idle') {
+            stateIndicator.className = 'status-indicator online';
+        } else if (data.new_state === 'listening' || data.new_state === 'multi_turn_listening') {
+            stateIndicator.className = 'status-indicator connecting';
+        } else {
+            stateIndicator.className = 'status-indicator offline';
+        }
+    }
+}
+
+function updateConnection(service, status) {
+    const indicator = document.getElementById(service + '-status');
+    const text = document.getElementById(service + '-text');
+    
+    indicator.className = 'status-indicator ' + (status ? 'online' : 'offline');
+    text.textContent = status ? 'Connected' : 'Disconnected';
+}
+
+function updateAudioLevel(level) {
+    const bar = document.getElementById('audio-level');
+    const db = document.getElementById('audio-db');
+    
+    // Convert to percentage (0-100)
+    const percent = Math.min(100, Math.max(0, (level + 60) * 1.67));
+    bar.style.width = percent + '%';
+    db.textContent = level.toFixed(1);
+}
+
+function addActivity(message) {
+    const log = document.getElementById('activity-log');
+    const entry = document.createElement('p');
+    entry.className = 'activity-entry';
+    entry.textContent = new Date().toLocaleTimeString() + ' - ' + message;
+    
+    log.insertBefore(entry, log.firstChild);
+    
+    // Keep only last 20 entries
+    while (log.children.length > 20) {
+        log.removeChild(log.lastChild);
+    }
+}
+
+function updateUptime() {
+    const elapsed = Date.now() - startTime;
+    const hours = Math.floor(elapsed / 3600000);
+    const minutes = Math.floor((elapsed % 3600000) / 60000);
+    const seconds = Math.floor((elapsed % 60000) / 1000);
+    
+    document.getElementById('uptime').textContent = 
+        `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function updateAvgResponse() {
+    if (stats.responseTimes.length > 0) {
+        const avg = stats.responseTimes.reduce((a, b) => a + b, 0) / stats.responseTimes.length;
+        document.getElementById('avg-response').textContent = avg.toFixed(0) + 'ms';
+    }
+}
+
+// Initialize
+connectWebSocket();
+setInterval(updateUptime, 1000);
+
+// Remove demo mode - rely on real events from backend
+</script>
+{% endblock %}
