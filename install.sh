@@ -93,12 +93,21 @@ if [ ! -f ".env" ]; then
     if [ -f ".env.example" ]; then
         cp .env.example .env
         echo -e "${GREEN}✓ Created .env${NC}"
+        # Set secure permissions on .env file
+        chmod 600 .env
+        echo -e "${GREEN}✓ Set secure permissions on .env file${NC}"
     else
         echo -e "${RED}✗ .env.example not found${NC}"
         exit 1
     fi
 else
     echo -e "${YELLOW}  .env already exists${NC}"
+    # Check and fix permissions if needed
+    current_perms=$(stat -c "%a" .env 2>/dev/null || stat -f "%OLp" .env 2>/dev/null)
+    if [ "$current_perms" != "600" ]; then
+        chmod 600 .env
+        echo -e "${GREEN}✓ Fixed permissions on .env file (was $current_perms, now 600)${NC}"
+    fi
 fi
 
 if [ ! -f "config/persona.ini" ]; then
@@ -183,6 +192,10 @@ print(hashed.decode('utf-8'))
         echo "# Web UI Authentication (set by installer)" >> .env
         echo "WEB_UI_PASSWORD_HASH=$web_password_hash" >> .env
     fi
+    
+    # Ensure .env has secure permissions after modification
+    chmod 600 .env
+    echo -e "${GREEN}✓ Ensured secure permissions on .env file${NC}"
     
     echo -e "${GREEN}✓ Web UI authentication configured${NC}"
     echo -e "${GREEN}  Username: $web_username${NC}"

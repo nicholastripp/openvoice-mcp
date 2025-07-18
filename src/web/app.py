@@ -15,6 +15,9 @@ from .routes import setup_routes
 from .utils.config_manager import ConfigManager
 from .auth import create_auth_middleware, create_session_cleanup_task
 from .certs import create_self_signed_cert, create_ssl_context
+from .utils.csrf import CSRFProtection
+from .utils.rate_limit import RateLimitMiddleware
+from .utils.security_headers import SecurityHeaders
 
 logger = logging.getLogger(__name__)
 
@@ -40,22 +43,55 @@ class WebApp:
         """Set up the web application"""
         middlewares = []
         
-        # Add authentication middleware if enabled
+        # Initialize security components
+        csrf_protection = CSRFProtection(secret_key=os.urandom(32))
+        rate_limiter = RateLimitMiddleware()
+        security_headers = SecurityHeaders()
+        
+        # Add security middleware in correct order
+        # 1. Security headers (should be first to apply to all responses)
+        middlewares.append(security_headers.security_headers_middleware)
+        
+        # 2. Rate limiting (before auth to prevent brute force)
+        middlewares.append(rate_limiter.rate_limit_middleware)
+        
+        # 3. CSRF protection (after rate limiting)
+        middlewares.append(csrf_protection.csrf_middleware)
+        
+        # 4. Authentication middleware if enabled
         if self.auth_config.get('enabled', True):
             auth_middleware = create_auth_middleware(self.auth_config)
             middlewares.append(auth_middleware)
             
-        self.app = web.Application(middlewares=middlewares)
+        # Create app with client max size limit (10MB)
+        self.app = web.Application(
+            middlewares=middlewares,
+            client_max_size=10 * 1024 * 1024  # 10MB limit
+        )
         
         # Store auth config in app
         self.app['auth_config'] = self.auth_config
         
+        # Store security components in app
+        self.app['csrf'] = csrf_protection
+        self.app['rate_limiter'] = rate_limiter
+        self.app['security_headers'] = security_headers
+        
         # Set up Jinja2 templates
         template_dir = Path(__file__).parent / "templates"
+        
+        # Context processor to inject CSRF token
+        async def context_processor(request):
+            csrf_token = ""
+            if 'csrf' in request.app:
+                csrf_token = request.app['csrf'].get_csrf_token(request)
+            return {'csrf_token': csrf_token}
+        
         aiohttp_jinja2.setup(
             self.app,
             loader=jinja2.FileSystemLoader(str(template_dir)),
-            autoescape=jinja2.select_autoescape(['html', 'xml'])
+            autoescape=jinja2.select_autoescape(['html', 'xml']),
+            context_processors=[context_processor]
         )
         
         # Set up static file serving
@@ -86,6 +122,15 @@ class WebApp:
                 self.auth_config.get('session_timeout', 3600)
             )
             asyncio.create_task(cleanup_task())
+        
+        # Start rate limiter cleanup
+        await rate_limiter.start_cleanup()
+        
+        # Set up shutdown handler
+        async def on_shutdown(app):
+            await rate_limiter.stop_cleanup()
+            
+        self.app.on_shutdown.append(on_shutdown)
         
         return self.app
         
