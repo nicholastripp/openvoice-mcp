@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import load_config
 from src.main import VoiceAssistant
-from src.personality import load_personality
+from src.personality import PersonalityProfile
 
 
 async def test_device_extraction():
@@ -32,7 +32,7 @@ async def test_device_extraction():
     
     # Load personality
     print("\n2. Loading personality...")
-    personality = load_personality(config)
+    personality = PersonalityProfile("config/persona.ini")
     print("[OK] Personality loaded")
     
     # Create voice assistant instance
