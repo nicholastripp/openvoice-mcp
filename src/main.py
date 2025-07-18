@@ -10,7 +10,7 @@ import argparse
 import signal
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from enum import Enum
 
 # Add src to path for imports
@@ -20,10 +20,10 @@ from config import load_config, AppConfig
 from personality import PersonalityProfile
 from utils.logger import setup_logging, get_logger
 from openai_client.realtime import OpenAIRealtimeClient
-from ha_client.conversation import HomeAssistantConversationClient
+from services.ha_client.mcp_official import MCPClient
 from audio.capture import AudioCapture
 from audio.playback import AudioPlayback
-from function_bridge import FunctionCallBridge
+from function_bridge_mcp import MCPFunctionBridge
 from wake_word import PorcupineDetector
 
 
@@ -54,10 +54,10 @@ class VoiceAssistant:
         
         # Components (will be initialized later)
         self.openai_client: Optional[OpenAIRealtimeClient] = None
-        self.ha_client: Optional[HomeAssistantConversationClient] = None
+        self.mcp_client: Optional[MCPClient] = None
         self.audio_capture: Optional[AudioCapture] = None
         self.audio_playback: Optional[AudioPlayback] = None
-        self.function_bridge: Optional[FunctionCallBridge] = None
+        self.function_bridge: Optional[MCPFunctionBridge] = None
         self.wake_word_detector: Optional[PorcupineDetector] = None
         
         # Session state
@@ -231,7 +231,7 @@ class VoiceAssistant:
         base_prompt = self.personality.generate_prompt()
         
         # If Home Assistant is not connected, return base prompt
-        if not self.ha_client:
+        if not self.mcp_client:
             self.logger.warning("Home Assistant not connected - using base personality without device awareness")
             return base_prompt
         
@@ -252,12 +252,8 @@ class VoiceAssistant:
                 self.logger.info("Fetching fresh device information from Home Assistant...")
                 start_time = asyncio.get_event_loop().time()
                 
-                try:
-                    states = await self.ha_client.rest_client.get_states()
-                except Exception as fetch_error:
-                    self.logger.error(f"Failed to fetch states from Home Assistant: {fetch_error}")
-                    self.logger.error(f"HA URL: {self.ha_client.rest_client.base_url}")
-                    states = None
+                # Fetch device states via MCP
+                states = await self._fetch_device_states_mcp()
                 
                 fetch_time = asyncio.get_event_loop().time() - start_time
                 self.logger.info(f"Device fetch completed in {fetch_time:.2f}s")
@@ -385,6 +381,354 @@ class VoiceAssistant:
         self._device_cache_time = None
         self.logger.debug("Device cache cleared")
     
+    async def _fetch_device_states_mcp(self) -> Optional[List[Dict[str, Any]]]:
+        """Fetch device states using MCP tools via natural language queries."""
+        if not self.mcp_client or not self.mcp_client.is_connected:
+            self.logger.warning("MCP client not connected, cannot fetch device states")
+            return None
+        
+        try:
+            # Find a suitable tool for querying device states
+            tools = self.mcp_client.get_tools()
+            query_tool = None
+            
+            # First priority: Look for GetLiveContext tool (purpose-built for state queries)
+            for tool in tools:
+                if tool['name'] == 'GetLiveContext':
+                    query_tool = tool
+                    self.logger.info("Found GetLiveContext tool - using for device state queries")
+                    break
+            
+            # Fallback: Look for tools that might handle natural language queries
+            if not query_tool:
+                for tool in tools:
+                    name_lower = tool['name'].lower()
+                    desc_lower = tool['description'].lower()
+                    
+                    # Look for tools that can process commands or handle requests
+                    if any(keyword in name_lower or keyword in desc_lower 
+                           for keyword in ['process', 'command', 'handle', 'execute', 'control']):
+                        query_tool = tool
+                        break
+            
+            if not query_tool:
+                self.logger.warning("No suitable MCP tool found for device state queries")
+                return None
+            
+            self.logger.info(f"Using tool '{query_tool['name']}' to query device states")
+            
+            # Try multiple queries to get comprehensive device information
+            # Optimize queries based on tool type
+            if query_tool['name'] == 'GetLiveContext':
+                # GetLiveContext is designed for real-time state queries
+                queries = [
+                    "show all lights",
+                    "show all switches", 
+                    "show all sensors",
+                    "show all climate devices",
+                    "show all media players",
+                    "show all devices in the living room",
+                    "show all devices in the bedroom",
+                    "show all devices in the kitchen"
+                ]
+            else:
+                # Fallback queries for general command tools
+                queries = [
+                    "show me all lights and their current states",
+                    "list all switches and sensors with their current status", 
+                    "what devices are currently on or active",
+                    "show me all available entities and their states"
+                ]
+            
+            all_device_info = []
+            
+            for query in queries:
+                try:
+                    self.logger.debug(f"Querying: {query}")
+                    
+                    # Use the tool to query device states
+                    # GetLiveContext may not need parameters, fallback tools use 'command'
+                    if query_tool['name'] == 'GetLiveContext':
+                        # Try with no parameters first, then with query parameter
+                        try:
+                            result = await self.mcp_client.call_tool(query_tool['name'], {})
+                        except:
+                            # Fallback: try with query parameter
+                            result = await self.mcp_client.call_tool(query_tool['name'], {
+                                "query": query
+                            })
+                    else:
+                        # Most other MCP tools expect a 'command' parameter
+                        result = await self.mcp_client.call_tool(query_tool['name'], {
+                            "command": query
+                        })
+                    
+                    if result:
+                        # Debug: Log the raw response for analysis
+                        self.logger.debug(f"Raw GetLiveContext response for '{query}': {result}")
+                        self.logger.debug(f"Response type: {type(result)}")
+                        if hasattr(result, '__dict__'):
+                            self.logger.info(f"Response attributes: {result.__dict__}")
+                        
+                        # Parse the result to extract device information
+                        device_info = self._parse_mcp_device_response(result, query)
+                        if device_info:
+                            all_device_info.extend(device_info)
+                            self.logger.info(f"Extracted {len(device_info)} devices from query: {query}")
+                        else:
+                            self.logger.info(f"No devices extracted from query: {query}")
+                    else:
+                        self.logger.info(f"No result returned for query: {query}")
+                    
+                except Exception as e:
+                    self.logger.info(f"Query '{query}' failed: {e}")
+                    continue
+            
+            if all_device_info:
+                # Remove duplicates based on entity_id
+                unique_devices = {}
+                for device in all_device_info:
+                    entity_id = device.get('entity_id')
+                    if entity_id and entity_id not in unique_devices:
+                        unique_devices[entity_id] = device
+                
+                final_devices = list(unique_devices.values())
+                self.logger.info(f"Successfully fetched {len(final_devices)} unique devices via MCP")
+                return final_devices
+            else:
+                self.logger.warning("No device information extracted from MCP queries")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error fetching device states via MCP: {e}")
+            return None
+    
+    def _parse_mcp_device_response(self, response: Any, query: str) -> List[Dict[str, Any]]:
+        """Parse MCP tool response to extract device state information."""
+        devices = []
+        
+        try:
+            # Handle different response formats
+            if isinstance(response, list):
+                # Response is a list of content items
+                for item in response:
+                    if hasattr(item, 'text') or (isinstance(item, dict) and 'text' in item):
+                        text = item.text if hasattr(item, 'text') else item['text']
+                        # Check if this is a GetLiveContext JSON response
+                        if text.strip().startswith('{"success":'):
+                            parsed = self._extract_devices_from_getlivecontext(text)
+                        else:
+                            parsed = self._extract_devices_from_text(text)
+                        devices.extend(parsed)
+            elif isinstance(response, dict) and 'content' in response:
+                # Response has content array
+                for item in response['content']:
+                    if item.get('type') == 'text' and 'text' in item:
+                        text = item['text']
+                        if text.strip().startswith('{"success":'):
+                            parsed = self._extract_devices_from_getlivecontext(text)
+                        else:
+                            parsed = self._extract_devices_from_text(text)
+                        devices.extend(parsed)
+            elif isinstance(response, str):
+                # Direct text response
+                if response.strip().startswith('{"success":'):
+                    parsed = self._extract_devices_from_getlivecontext(response)
+                else:
+                    parsed = self._extract_devices_from_text(response)
+                devices.extend(parsed)
+            else:
+                # Try to convert to string and parse
+                text = str(response)
+                if text.strip().startswith('{"success":'):
+                    parsed = self._extract_devices_from_getlivecontext(text)
+                else:
+                    parsed = self._extract_devices_from_text(text)
+                devices.extend(parsed)
+                
+        except Exception as e:
+            self.logger.info(f"Error parsing MCP response: {e}")
+        
+        return devices
+    
+    def _extract_devices_from_text(self, text: str) -> List[Dict[str, Any]]:
+        """Extract device information from text response."""
+        devices = []
+        
+        if not text:
+            return devices
+        
+        try:
+            # Look for common patterns in Home Assistant responses
+            lines = text.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Try to extract entity information from common formats
+                # Example: "light.living_room: on" or "Living Room Light (light.living_room): on"
+                
+                # Pattern 1: entity_id: state
+                if ':' in line and '.' in line:
+                    parts = line.split(':', 1)
+                    if len(parts) == 2:
+                        left_part = parts[0].strip()
+                        state_part = parts[1].strip()
+                        
+                        # Extract entity_id
+                        entity_id = None
+                        friendly_name = None
+                        
+                        if '(' in left_part and ')' in left_part:
+                            # Format: "Friendly Name (entity.id)"
+                            name_part = left_part.split('(')[0].strip()
+                            entity_part = left_part.split('(')[1].split(')')[0].strip()
+                            if '.' in entity_part:
+                                entity_id = entity_part
+                                friendly_name = name_part
+                        elif '.' in left_part and not ' ' in left_part:
+                            # Direct entity_id format
+                            entity_id = left_part
+                            friendly_name = entity_id.replace('_', ' ').title()
+                        
+                        if entity_id:
+                            device = {
+                                'entity_id': entity_id,
+                                'state': state_part.lower(),
+                                'attributes': {
+                                    'friendly_name': friendly_name or entity_id.replace('_', ' ').title()
+                                }
+                            }
+                            devices.append(device)
+                            
+        except Exception as e:
+            self.logger.debug(f"Error extracting devices from text: {e}")
+        
+        return devices
+    
+    def _extract_devices_from_getlivecontext(self, text: str) -> List[Dict[str, Any]]:
+        """Extract device information from GetLiveContext JSON/YAML response."""
+        devices = []
+        
+        if not text:
+            return devices
+        
+        try:
+            # Parse the JSON wrapper
+            import json
+            data = json.loads(text.strip())
+            
+            if not data.get('success') or 'result' not in data:
+                self.logger.debug("GetLiveContext response not successful or missing result")
+                return devices
+            
+            # Extract the YAML-like content from the result field
+            result_text = data['result']
+            
+            # Parse the YAML-like format line by line
+            lines = result_text.split('\n')
+            current_device = None
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Skip the header line
+                if line.startswith('Live Context:'):
+                    continue
+                
+                # New device entry starts with '- names:'
+                if line.startswith('- names:'):
+                    # Save previous device if exists
+                    if current_device and 'domain' in current_device:
+                        # Generate entity_id from domain and name
+                        name = current_device.get('names', 'unknown')
+                        domain = current_device['domain']
+                        
+                        # Sanitize name for entity_id
+                        entity_name = name.lower().replace(' ', '_').replace('-', '_')
+                        entity_name = ''.join(c for c in entity_name if c.isalnum() or c == '_')
+                        
+                        entity_id = f"{domain}.{entity_name}"
+                        
+                        # Create device entry
+                        device = {
+                            'entity_id': entity_id,
+                            'state': current_device.get('state', 'unknown'),
+                            'attributes': {
+                                'friendly_name': name
+                            }
+                        }
+                        
+                        # Add area if present
+                        if 'areas' in current_device:
+                            device['attributes']['area'] = current_device['areas']
+                        
+                        # Add any additional attributes
+                        if 'attributes' in current_device:
+                            device['attributes'].update(current_device['attributes'])
+                        
+                        devices.append(device)
+                    
+                    # Start new device
+                    current_device = {
+                        'names': line.split(':', 1)[1].strip()
+                    }
+                
+                elif current_device and ':' in line:
+                    # Parse attribute line
+                    key, value = line.split(':', 1)
+                    key = key.strip()
+                    value = value.strip().strip("'\"")
+                    
+                    if key == 'attributes':
+                        # Start of attributes section - parse nested attributes
+                        current_device['attributes'] = {}
+                    elif line.startswith('  ') and 'attributes' in current_device:
+                        # Nested attribute line
+                        current_device['attributes'][key] = value
+                    else:
+                        # Regular attribute
+                        current_device[key] = value
+            
+            # Don't forget the last device
+            if current_device and 'domain' in current_device:
+                name = current_device.get('names', 'unknown')
+                domain = current_device['domain']
+                
+                # Sanitize name for entity_id
+                entity_name = name.lower().replace(' ', '_').replace('-', '_')
+                entity_name = ''.join(c for c in entity_name if c.isalnum() or c == '_')
+                
+                entity_id = f"{domain}.{entity_name}"
+                
+                device = {
+                    'entity_id': entity_id,
+                    'state': current_device.get('state', 'unknown'),
+                    'attributes': {
+                        'friendly_name': name
+                    }
+                }
+                
+                if 'areas' in current_device:
+                    device['attributes']['area'] = current_device['areas']
+                
+                if 'attributes' in current_device:
+                    device['attributes'].update(current_device['attributes'])
+                
+                devices.append(device)
+            
+            self.logger.info(f"Extracted {len(devices)} devices from GetLiveContext response")
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing GetLiveContext response: {e}")
+            self.logger.debug(f"Response text: {text[:500]}...")
+        
+        return devices
+    
     async def diagnose_device_exposure(self) -> Dict[str, Any]:
         """Diagnostic method to test device exposure and loading
         
@@ -413,7 +757,8 @@ class VoiceAssistant:
             self._clear_device_cache()
             
             start_time = asyncio.get_event_loop().time()
-            states = await self.ha_client.rest_client.get_states()
+            # Fetch device states via MCP
+            states = await self._fetch_device_states_mcp()
             fetch_time = asyncio.get_event_loop().time() - start_time
             diagnostics["fetch_time"] = fetch_time
             
@@ -455,20 +800,27 @@ class VoiceAssistant:
         if wake_word_only_mode:
             self.logger.info("WAKE WORD TEST MODE: Skipping Home Assistant and OpenAI initialization")
             self.logger.info(f"TEST MODE VALUE: {self.config.wake_word.test_mode}")
-            self.ha_client = None
+            self.mcp_client = None
             self.function_bridge = None
             self.openai_client = None
         else:
             self.logger.debug("About to initialize Home Assistant client")
             # Initialize Home Assistant client with graceful failure handling
-            self.logger.info("Initializing Home Assistant client...")
+            self.logger.info("Initializing MCP client for Home Assistant...")
             try:
-                self.ha_client = HomeAssistantConversationClient(self.config.home_assistant)
-                await self.ha_client.start()
-                self.logger.debug("Home Assistant client initialized")
+                self.mcp_client = MCPClient(
+                    base_url=self.config.home_assistant.url,
+                    access_token=self.config.home_assistant.token,
+                    sse_endpoint=self.config.home_assistant.mcp.sse_endpoint,
+                    connection_timeout=self.config.home_assistant.mcp.connection_timeout,
+                    ssl_verify=self.config.home_assistant.mcp.ssl_verify
+                )
+                await self.mcp_client.connect()
+                self.logger.debug("MCP client connected to Home Assistant")
                 
                 # Initialize function bridge
-                self.function_bridge = FunctionCallBridge(self.ha_client)
+                self.function_bridge = MCPFunctionBridge(self.mcp_client)
+                await self.function_bridge.initialize()
                 
             except ConnectionError as e:
                 # User-friendly error message already formatted by conversation client
@@ -482,7 +834,7 @@ class VoiceAssistant:
                 if self.skip_ha_check:
                     print("WARNING: --skip-ha-check flag is set, continuing without Home Assistant")
                     print("Home Assistant functionality will not be available")
-                    self.ha_client = None
+                    self.mcp_client = None
                     self.function_bridge = None
                 else:
                     # Check if user wants to continue in wake word only mode
@@ -514,7 +866,7 @@ class VoiceAssistant:
                 if self.skip_ha_check:
                     print("WARNING: --skip-ha-check flag is set, continuing without Home Assistant")
                     print("Home Assistant functionality will not be available")
-                    self.ha_client = None
+                    self.mcp_client = None
                     self.function_bridge = None
                 else:
                     print("\nOr run with --skip-ha-check to continue without Home Assistant (limited functionality)")
@@ -596,7 +948,7 @@ class VoiceAssistant:
             ("audio_capture", self.audio_capture),
             ("audio_playback", self.audio_playback),
             ("openai_client", self.openai_client),
-            ("ha_client", self.ha_client)
+            ("ha_client", self.mcp_client)
         ]
         
         for name, component in components:
@@ -651,8 +1003,6 @@ class VoiceAssistant:
                     except:
                         pass
                 
-                # TODO: Handle wake word detection
-                # For now, we'll assume always listening (for development)
                 
                 # Wait briefly before next iteration
                 await asyncio.sleep(0.1)
@@ -802,7 +1152,7 @@ class VoiceAssistant:
             self.logger.debug("Reset conversation context")
         
         # Refresh device list and update personality for this session
-        if self.openai_client and self.ha_client:
+        if self.openai_client and self.mcp_client:
             try:
                 self.logger.info("Refreshing Home Assistant device list for new session...")
                 updated_personality = await self._generate_device_aware_personality()
@@ -956,6 +1306,9 @@ class VoiceAssistant:
         
         # Audio response complete handler
         self.openai_client.on("audio_response_done", self._on_audio_response_done)
+        
+        # Speech started handler (user started talking)
+        self.openai_client.on("speech_started", self._on_speech_started)
         
         # Speech stopped handler (user stopped talking)
         self.openai_client.on("speech_stopped", self._on_speech_stopped)
@@ -1232,6 +1585,14 @@ class VoiceAssistant:
     
     async def _on_audio_response(self, audio_data: bytes) -> None:
         """Handle audio response from OpenAI"""
+        # Cancel multi-turn timeout if we receive audio during multi-turn listening
+        if self.session_state == SessionState.MULTI_TURN_LISTENING and self.multi_turn_timeout_task:
+            if not self.multi_turn_timeout_task.done():
+                self.multi_turn_timeout_task.cancel()
+                self.multi_turn_timeout_task = None
+                self.logger.info("Cancelled multi-turn timeout - OpenAI is sending audio response")
+                print("*** MULTI-TURN TIMEOUT CANCELLED - OPENAI SENDING AUDIO ***")
+        
         # Mark that we've received audio
         self._audio_response_received = True
         
@@ -1611,6 +1972,15 @@ class VoiceAssistant:
                 self.logger.error(f"Error in periodic cleanup: {e}")
                 # Continue cleanup loop even on error
                 await asyncio.sleep(5.0)
+    
+    async def _on_speech_started(self, event_data: dict) -> None:
+        """Handle speech started event from server VAD"""
+        # Cancel multi-turn timeout task since user is speaking
+        if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
+            self.multi_turn_timeout_task.cancel()
+            self.multi_turn_timeout_task = None
+            self.logger.info("Cancelled multi-turn timeout - user started speaking")
+            print("*** MULTI-TURN TIMEOUT CANCELLED - USER STARTED SPEAKING ***")
     
     async def _on_speech_stopped(self, event_data) -> None:
         """Handle user speech stopped"""

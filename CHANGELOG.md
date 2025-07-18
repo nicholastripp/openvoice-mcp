@@ -5,6 +5,42 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2025-07-18
+
+### BREAKING CHANGES
+- Replaced Home Assistant Conversation API with Model Context Protocol (MCP)
+- Requires Home Assistant 2025.2 or later
+- Requires MCP Server integration to be installed and enabled
+- No backward compatibility with previous versions
+
+### Added
+- **Model Context Protocol (MCP) integration** - Direct tool-based control of Home Assistant
+- **GetLiveContext tool support** - Comprehensive device state awareness
+- **Automatic tool discovery** - Dynamically discovers and maps all available MCP tools
+- **SSL certificate verification options** - Support for self-signed certificates
+- **Enhanced multi-turn conversation** - Fixed timeout issues for smoother conversations
+- **Improved error handling** - Better user feedback for connection and execution errors
+
+### Fixed
+- Multi-turn conversation timeouts no longer cut off audio responses
+- JSON serialization errors with MCP TextContent objects
+- Unicode encoding issues on Raspberry Pi
+- Audio responses after function calls now play to completion
+- GetLiveContext response logging moved to DEBUG level
+
+### Changed
+- Complete rewrite of Home Assistant integration layer using MCP
+- Improved device state caching and management
+- Better error handling with specific MCP error messages
+- Enhanced logging for debugging MCP connections
+- Reduced console output for cleaner user experience
+
+### Removed
+- Home Assistant Conversation API support (replaced by MCP)
+- Legacy REST API client code
+- Over 70 development test scripts (cleaned up for release)
+- Backward compatibility with pre-MCP versions
+
 ## [0.5.0-beta] - 2025-01-16
 
 ### Added

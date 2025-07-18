@@ -12,6 +12,10 @@ scipy>=1.11.0
 # HTTP client for Home Assistant API
 aiohttp>=3.9.0
 
+# Model Context Protocol SDK
+mcp>=1.0.0
+httpx-sse>=0.4.0
+
 # Configuration and environment
 python-dotenv>=1.0.0
 pyyaml>=6.0
