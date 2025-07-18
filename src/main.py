@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import load_config, AppConfig
 from personality import PersonalityProfile
 from utils.logger import setup_logging, get_logger
-from openai_client.realtime import OpenAIRealtimeClient
+from openai_client.realtime import OpenAIRealtimeClient, ConnectionState
 from services.ha_client.mcp_official import MCPClient
 from audio.capture import AudioCapture
 from audio.playback import AudioPlayback
@@ -2113,8 +2113,8 @@ class VoiceAssistant:
             
         try:
             connections = {
-                'openai': bool(self.openai_client and self.openai_client.client and 
-                             self.openai_client.client.closed == False),
+                'openai': bool(self.openai_client and 
+                             self.openai_client.state == ConnectionState.CONNECTED),
                 'home_assistant': bool(self.mcp_client and self.mcp_client.is_connected),
                 'wake_word': bool(self.wake_word_detector and self.wake_word_detector.initialized)
             }
