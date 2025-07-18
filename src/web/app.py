@@ -10,8 +10,8 @@ import aiohttp_jinja2
 import jinja2
 from aiohttp import web
 
-from src.web.routes import setup_routes
-from src.web.utils.config_manager import ConfigManager
+from .routes import setup_routes
+from .utils.config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 

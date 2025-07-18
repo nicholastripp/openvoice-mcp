@@ -2537,7 +2537,7 @@ async def main():
         web_app = None
         if args.web:
             logger.info(f"Starting web UI on port {args.web_port}")
-            from src.web.app import WebApp
+            from web.app import WebApp
             config_dir = Path(args.config).parent
             web_app = WebApp(config_dir, port=args.web_port)
             await web_app.start()
