@@ -35,6 +35,13 @@
                 <option value="gpt-4o-mini-realtime-preview" {% if config.openai.model == 'gpt-4o-mini-realtime-preview' %}selected{% endif %}>GPT-4o Mini Realtime (Preview)</option>
                 <option value="gpt-4o-realtime-preview" {% if config.openai.model == 'gpt-4o-realtime-preview' %}selected{% endif %}>GPT-4o Realtime (Preview)</option>
             </select>
+            
+            <label for="conversation_mode">Conversation Mode:</label>
+            <select id="conversation_mode" name="session.conversation_mode">
+                <option value="single_turn" {% if config.session.conversation_mode == 'single_turn' %}selected{% endif %}>Single Turn</option>
+                <option value="multi_turn" {% if config.session.conversation_mode == 'multi_turn' %}selected{% endif %}>Multi Turn</option>
+            </select>
+            <small style="display: block; margin-top: -0.5rem; margin-bottom: 1rem; color: #666;">Single Turn: One question/response. Multi Turn: Continuous conversation.</small>
         </div>
         
         <!-- Audio Settings -->
