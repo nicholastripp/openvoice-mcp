@@ -66,8 +66,10 @@ wake_word:
   
   # Available Porcupine built-in keywords (use these exact names in 'model' field):
   #   alexa, americano, blueberry, bumblebee, computer, grapefruit,
-  #   grasshopper, hey google, hey siri, jarvis, ok google, picovoice,
-  #   porcupine, terminator
+  #   grasshopper, picovoice, porcupine, terminator
+  #
+  # Note: Popular wake words like "jarvis", "hey google", "hey siri", "ok google"
+  # are NOT built-in and require custom wake word creation at https://console.picovoice.ai/
   #
   # For custom wake words:
   # 1. Create at https://console.picovoice.ai/
