@@ -73,6 +73,9 @@ Thumbs.db
 # Project specific
 config/config.yaml
 config/persona.ini
+config/certs/*.crt
+config/certs/*.key
+config/certs/*.pem
 logs/
 *.log
 debug_audio/

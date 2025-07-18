@@ -111,10 +111,21 @@ system:
 web_ui:
   enabled: false                # Enable web UI on startup
   host: "0.0.0.0"              # Listen address: 0.0.0.0 for all interfaces, 127.0.0.1 for localhost only
-  port: 8080                   # Web UI port
-  # SECURITY WARNING: Setting host to 0.0.0.0 makes the web UI accessible from any network interface.
-  # This allows remote access but could expose your configuration to anyone on your network.
-  # Consider using 127.0.0.1 and SSH tunneling, or ensure your network is secure.
+  port: 8443                   # Web UI port (8443 for HTTPS by default)
+  
+  # Authentication settings
+  auth:
+    enabled: true              # Require login (highly recommended when host is 0.0.0.0)
+    username: "admin"          # Default username
+    password_hash: ""          # BCrypt hash of password (set during install)
+    session_timeout: 3600      # Session timeout in seconds (1 hour)
+  
+  # TLS/HTTPS settings
+  tls:
+    enabled: true              # Use HTTPS (highly recommended for remote access)
+    cert_file: ""              # Path to certificate file (empty = use self-signed)
+    key_file: ""               # Path to private key file (empty = use self-signed)
+    # Self-signed certificates are generated automatically if cert_file is empty
 
 # Advanced Configuration
 advanced:

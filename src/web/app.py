@@ -1,6 +1,7 @@
 """
 Main web application for configuration and monitoring
 """
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -12,6 +13,8 @@ from aiohttp import web
 
 from .routes import setup_routes
 from .utils.config_manager import ConfigManager
+from .auth import create_auth_middleware, create_session_cleanup_task
+from .certs import create_self_signed_cert, create_ssl_context
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +22,32 @@ logger = logging.getLogger(__name__)
 class WebApp:
     """Web application for configuration and monitoring"""
     
-    def __init__(self, config_dir: Path, host: str = "127.0.0.1", port: int = 8080):
+    def __init__(self, config_dir: Path, host: str = "127.0.0.1", port: int = 8080, 
+                 auth_config: Optional[dict] = None, tls_config: Optional[dict] = None):
         self.config_dir = config_dir
         self.host = host
         self.port = port
+        self.auth_config = auth_config or {}
+        self.tls_config = tls_config or {}
         self.app: Optional[web.Application] = None
         self.runner: Optional[web.AppRunner] = None
         self.config_manager = ConfigManager(config_dir)
         self.start_time = None  # Will be set when server starts
+        self.ssl_context = None  # Will be set if TLS is enabled
         
     async def setup(self) -> web.Application:
         """Set up the web application"""
-        self.app = web.Application()
+        middlewares = []
+        
+        # Add authentication middleware if enabled
+        if self.auth_config.get('enabled', True):
+            auth_middleware = create_auth_middleware(self.auth_config)
+            middlewares.append(auth_middleware)
+            
+        self.app = web.Application(middlewares=middlewares)
+        
+        # Store auth config in app
+        self.app['auth_config'] = self.auth_config
         
         # Set up Jinja2 templates
         template_dir = Path(__file__).parent / "templates"
@@ -54,7 +71,38 @@ class WebApp:
         env_path = self.config_dir.parent / ".env"
         self.app['first_run'] = not env_path.exists()
         
+        # Set up TLS if enabled
+        if self.tls_config.get('enabled', True):
+            await self._setup_tls()
+        
+        # Start session cleanup task if auth is enabled
+        if self.auth_config.get('enabled', True):
+            cleanup_task = create_session_cleanup_task(
+                self.app, 
+                self.auth_config.get('session_timeout', 3600)
+            )
+            asyncio.create_task(cleanup_task())
+        
         return self.app
+        
+    async def _setup_tls(self):
+        """Set up TLS/HTTPS"""
+        cert_file = self.tls_config.get('cert_file', '')
+        key_file = self.tls_config.get('key_file', '')
+        
+        # Use self-signed cert if no cert specified
+        if not cert_file or not key_file:
+            cert_dir = self.config_dir / "certs"
+            cert_file, key_file = create_self_signed_cert(cert_dir, self.host)
+            
+        cert_path = Path(cert_file)
+        key_path = Path(key_file)
+        
+        if not cert_path.exists() or not key_path.exists():
+            raise FileNotFoundError(f"Certificate files not found: {cert_file}, {key_file}")
+            
+        # Create SSL context
+        self.ssl_context = create_ssl_context(cert_path, key_path)
         
     async def start(self):
         """Start the web server"""
@@ -69,10 +117,11 @@ class WebApp:
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()
         
-        site = web.TCPSite(self.runner, self.host, self.port)
+        site = web.TCPSite(self.runner, self.host, self.port, ssl_context=self.ssl_context)
         await site.start()
         
-        logger.info(f"Web UI started at http://{self.host}:{self.port}")
+        protocol = "https" if self.ssl_context else "http"
+        logger.info(f"Web UI started at {protocol}://{self.host}:{self.port}")
         if self.app['first_run']:
             logger.info("First run detected - setup wizard available")
             

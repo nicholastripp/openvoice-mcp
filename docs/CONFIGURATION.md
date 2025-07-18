@@ -130,16 +130,35 @@ system:
 
 ### Web UI Configuration
 
-Enable and configure the optional web interface:
+Enable and configure the optional web interface with security features:
 
 ```yaml
 web_ui:
   enabled: false                # Enable web UI on startup
   host: "0.0.0.0"              # Listen address (0.0.0.0 for all interfaces, 127.0.0.1 for localhost only)
-  port: 8080                   # Web UI port
+  port: 8443                   # Web UI port (8443 for HTTPS by default)
+  
+  # Authentication settings
+  auth:
+    enabled: true              # Require login (highly recommended)
+    username: "admin"          # Default username
+    password_hash: ""          # Set by installer (never store plaintext)
+    session_timeout: 3600      # Session timeout in seconds
+  
+  # TLS/HTTPS settings
+  tls:
+    enabled: true              # Use HTTPS (highly recommended)
+    cert_file: ""              # Path to certificate (empty = self-signed)
+    key_file: ""               # Path to private key (empty = self-signed)
 ```
 
-**Security Note**: Setting `host: "0.0.0.0"` makes the web UI accessible from any network interface. This is convenient for remote access but could expose your configuration. Ensure your network is secure or use `host: "127.0.0.1"` with SSH tunneling.
+**Security Features**:
+- **Authentication**: Basic auth with hashed passwords
+- **HTTPS**: Encrypted connections with TLS 1.2+
+- **Self-signed certificates**: Generated automatically
+- **Session management**: Configurable timeouts
+
+**Setup**: The installer will prompt you to configure web UI security during installation.
 
 ## Personality Configuration (config/persona.ini)
 

@@ -2548,13 +2548,41 @@ async def main():
                 logger.warning("This makes the web UI accessible from any network interface")
                 print("\n" + "="*70)
                 print("SECURITY WARNING: Web UI listening on all interfaces")
-                print("The web UI will be accessible from: http://<your-ip>:" + str(web_ui_port))
+                protocol = "https" if config.web_ui.tls.enabled else "http"
+                print(f"The web UI will be accessible from: {protocol}://<your-ip>:{web_ui_port}")
+                if config.web_ui.tls.enabled:
+                    print("Using HTTPS with self-signed certificate (you'll see a security warning)")
+                if config.web_ui.auth.enabled:
+                    print(f"Authentication required - Username: {config.web_ui.auth.username}")
+                else:
+                    print("WARNING: No authentication enabled!")
                 print("Ensure your network is secure!")
                 print("="*70 + "\n")
             
             from web.app import WebApp
             config_dir = Path(args.config).parent
-            web_app = WebApp(config_dir, host=web_ui_host, port=web_ui_port)
+            
+            # Convert config objects to dicts for web app
+            auth_config = {
+                'enabled': config.web_ui.auth.enabled,
+                'username': config.web_ui.auth.username,
+                'password_hash': config.web_ui.auth.password_hash,
+                'session_timeout': config.web_ui.auth.session_timeout
+            }
+            
+            tls_config = {
+                'enabled': config.web_ui.tls.enabled,
+                'cert_file': config.web_ui.tls.cert_file,
+                'key_file': config.web_ui.tls.key_file
+            }
+            
+            web_app = WebApp(
+                config_dir, 
+                host=web_ui_host, 
+                port=web_ui_port,
+                auth_config=auth_config,
+                tls_config=tls_config
+            )
             await web_app.start()
             
             # If first run, show setup message
@@ -2562,7 +2590,10 @@ async def main():
                 print("\n" + "="*70)
                 print("FIRST RUN DETECTED - SETUP REQUIRED")
                 print("="*70)
-                print(f"Please open http://localhost:{args.web_port} to complete setup")
+                protocol = "https" if config.web_ui.tls.enabled else "http"
+                print(f"Please open {protocol}://localhost:{web_ui_port} to complete setup")
+                if config.web_ui.tls.enabled:
+                    print("Note: You'll see a certificate warning (self-signed cert)")
                 print("="*70 + "\n")
                 
                 # Wait for setup to complete

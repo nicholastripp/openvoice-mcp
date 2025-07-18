@@ -126,11 +126,30 @@ class SystemConfig:
 
 
 @dataclass
+class WebUIAuthConfig:
+    """Web UI authentication configuration"""
+    enabled: bool = True
+    username: str = "admin"
+    password_hash: str = ""
+    session_timeout: int = 3600
+
+
+@dataclass
+class WebUITLSConfig:
+    """Web UI TLS/HTTPS configuration"""
+    enabled: bool = True
+    cert_file: str = ""
+    key_file: str = ""
+
+
+@dataclass
 class WebUIConfig:
     """Web UI configuration"""
     enabled: bool = False
     host: str = "0.0.0.0"
-    port: int = 8080
+    port: int = 8443
+    auth: WebUIAuthConfig = field(default_factory=WebUIAuthConfig)
+    tls: WebUITLSConfig = field(default_factory=WebUITLSConfig)
 
 
 @dataclass

@@ -137,14 +137,63 @@ The web UI includes a consistent navigation bar with links to all major sections
 
 ## Security
 
-- Default configuration listens on all interfaces (0.0.0.0) for easy remote access
-- To restrict to localhost only, set `host: "127.0.0.1"` in config.yaml
-- API keys are masked in the interface
-- No built-in authentication - ensure your network is secure
-- For public networks, consider:
-  - Using SSH tunneling: `ssh -L 8080:localhost:8080 pi@your-pi`
-  - Setting up a reverse proxy with authentication
-  - Restricting to localhost and using VPN
+The web UI now includes comprehensive security features:
+
+### Authentication
+- **Basic Authentication** required by default
+- Username and password configured during installation
+- Secure session management with configurable timeout
+- Password stored as SHA256 hash (never plaintext)
+
+### HTTPS/TLS
+- **HTTPS enabled by default** using self-signed certificates
+- Automatic certificate generation on first run
+- Support for custom certificates
+- Strong cipher suites and TLS 1.2+ only
+
+### Configuration
+```yaml
+web_ui:
+  enabled: true
+  host: "0.0.0.0"      # Listen address
+  port: 8443           # HTTPS port
+  auth:
+    enabled: true      # Require authentication
+    username: "admin"
+    password_hash: ""  # Set by installer
+    session_timeout: 3600
+  tls:
+    enabled: true      # Use HTTPS
+    cert_file: ""      # Custom cert (optional)
+    key_file: ""       # Custom key (optional)
+```
+
+### Security Best Practices
+1. **Always use authentication** when host is "0.0.0.0"
+2. **Accept the self-signed certificate** on first access
+3. **Use strong passwords** during installation
+4. **Consider custom certificates** for production use
+5. **Monitor access logs** for unauthorized attempts
+
+### Custom Certificates
+To use your own SSL certificate:
+1. Place your certificate and key files in a secure location
+2. Update config.yaml:
+   ```yaml
+   tls:
+     cert_file: "/path/to/your/cert.pem"
+     key_file: "/path/to/your/key.pem"
+   ```
+3. Restart the assistant
+
+### SSH Tunneling (Alternative)
+For maximum security, use localhost with SSH tunnel:
+```bash
+# On your computer
+ssh -L 8443:localhost:8443 pi@your-pi
+
+# Then access https://localhost:8443
+```
 
 ## Troubleshooting
 
