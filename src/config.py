@@ -305,7 +305,15 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
         
         session_config = SessionConfig(**config_data.get("session", {}))
         system_config = SystemConfig(**config_data.get("system", {}))
-        web_ui_config = WebUIConfig(**config_data.get("web_ui", {}))
+        
+        # Create WebUIConfig with nested dataclasses
+        web_ui_data = config_data.get("web_ui", {})
+        if "auth" in web_ui_data:
+            web_ui_data["auth"] = WebUIAuthConfig(**web_ui_data["auth"])
+        if "tls" in web_ui_data:
+            web_ui_data["tls"] = WebUITLSConfig(**web_ui_data["tls"])
+        web_ui_config = WebUIConfig(**web_ui_data)
+        
         advanced_config = AdvancedConfig(**config_data.get("advanced", {}))
         
         return AppConfig(
