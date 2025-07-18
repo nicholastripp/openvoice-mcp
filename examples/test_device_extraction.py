@@ -17,6 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.config import load_config
 from src.main import VoiceAssistant
 from src.personality import PersonalityProfile
+from src.utils.logger import get_logger
+from src.services.ha_client.mcp_official import MCPClient
 
 
 async def test_device_extraction():
@@ -38,6 +40,19 @@ async def test_device_extraction():
     # Create voice assistant instance
     print("\n3. Creating voice assistant instance...")
     assistant = VoiceAssistant(config, personality, skip_ha_check=True)
+    
+    # Initialize logger for the test (normally done in start())
+    assistant.logger = get_logger("ha_voice_assistant")
+    
+    # Initialize MCP client (normally done in _initialize_components())
+    assistant.mcp_client = MCPClient(
+        base_url=config.home_assistant.url,
+        access_token=config.home_assistant.token,
+        sse_endpoint=config.home_assistant.mcp.sse_endpoint,
+        connection_timeout=config.home_assistant.mcp.connection_timeout,
+        ssl_verify=config.home_assistant.mcp.ssl_verify
+    )
+    
     print("[OK] Voice assistant created")
     
     # Test GetLiveContext response parsing
