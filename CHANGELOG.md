@@ -5,7 +5,53 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2025-07-18
+## [1.1.0] - 2025-01-18
+
+### Added
+- **Complete Web UI** - Full-featured web interface for configuration and monitoring
+  - Setup wizard for first-time configuration
+  - Environment variable editor with secure handling
+  - YAML configuration editor
+  - Personality editor with visual sliders and preview
+  - Real-time status dashboard with WebSocket updates
+  - Audio device testing and configuration
+  - Log viewer with syntax highlighting
+- **Security Features**
+  - HTTPS/TLS support with automatic self-signed certificate generation
+  - Basic authentication with bcrypt password hashing
+  - Secure session management with configurable timeout
+  - Password configuration during installation
+- **Enhanced Installation**
+  - Interactive web UI security setup in install.sh
+  - Automatic bcrypt password hashing
+  - Environment variable storage for password hash
+
+### Changed
+- **Password Storage** - Migrated from SHA256 to bcrypt for improved security
+- **Web UI Port** - Now respects config file port setting when using --web flag
+- **Installation Process** - Added optional web UI security configuration prompts
+- **Multi-turn Conversations** - Natural conversation endings using VAD-based silence detection
+  - Replaced fixed 30s timeout with 8s extended silence threshold
+  - Multi-turn timeout increased to 5 minutes (safety fallback only)
+  - Conversations end naturally when both parties stop talking
+
+### Fixed
+- Web UI port configuration now correctly uses config.yaml settings
+- WebUIConfig creation error with nested dataclasses resolved
+- Multi-turn conversation response completion issues
+- Certificate generation for web UI HTTPS support
+- WebSocket real-time status updates (proper wss:// protocol for HTTPS)
+- Config file preservation when saving through web UI (deep merge)
+- Web UI connection status display showing actual states
+- Installer now updates password_hash field in existing config files
+
+### Security
+- Passwords are now hashed using bcrypt (12 rounds) instead of SHA256
+- Password hashes stored in .env file instead of config.yaml
+- HTTPS enabled by default for web UI with strong cipher suites
+- Authentication required by default when web UI listens on all interfaces
+
+## [1.0.0] - 2025-01-18
 
 ### BREAKING CHANGES
 - Replaced Home Assistant Conversation API with Model Context Protocol (MCP)

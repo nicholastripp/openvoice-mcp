@@ -21,7 +21,7 @@ OPENAI_API_KEY=sk-your-openai-api-key-here
 # Home Assistant Long-Lived Access Token
 HA_TOKEN=your-home-assistant-token-here
 
-# Web UI Password Hash (set by installer)
+# Web UI Password Hash (set by installer, uses bcrypt)
 WEB_UI_PASSWORD_HASH=
 ```
 
@@ -111,7 +111,8 @@ session:
   
   # Multi-turn conversation settings
   conversation_mode: "multi_turn"  # "single_turn" or "multi_turn"
-  multi_turn_timeout: 30.0        # Wait time for follow-ups
+  multi_turn_timeout: 300.0       # Safety fallback timeout (5 minutes)
+  extended_silence_threshold: 8.0 # Natural conversation end after extended silence
   multi_turn_max_turns: 10        # Max conversation turns
   multi_turn_end_phrases:         # Phrases to end conversation
     - "goodbye"
@@ -120,6 +121,12 @@ session:
     - "thank you"
     - "bye"
 ```
+
+**v1.1.0 Multi-turn Improvements**:
+- Natural conversation endings based on VAD-detected silence
+- Extended silence threshold (default 8s) replaces the fixed 30s timeout
+- Multi-turn timeout increased to 5 minutes (safety fallback only)
+- Conversations end naturally when both parties stop talking
 
 ### System Configuration
 
@@ -156,7 +163,7 @@ web_ui:
 ```
 
 **Security Features**:
-- **Authentication**: Basic auth with bcrypt hashed passwords
+- **Authentication**: Basic auth with bcrypt hashed passwords (12 rounds)
 - **HTTPS**: Encrypted connections with TLS 1.2+
 - **Self-signed certificates**: Generated automatically using OpenSSL
 - **Session management**: Configurable timeouts with secure cookies
@@ -165,7 +172,7 @@ web_ui:
 1. Choose a username (default: admin)
 2. Set a secure password (min 8 characters recommended)
 3. The installer automatically:
-   - Hashes your password with bcrypt
+   - Hashes your password with bcrypt (12 rounds)
    - Stores the hash in .env file
    - Generates a self-signed certificate
    - Updates config.yaml with username

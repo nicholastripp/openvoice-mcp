@@ -197,3 +197,115 @@ pip install -r requirements.txt
 ```
 
 Note: Version 0.5.x will not receive further updates. We recommend completing the migration to 1.0.0 for continued support.
+
+---
+
+# Migration Guide: 1.0.0 to 1.1.0
+
+This guide helps you upgrade from version 1.0.0 to 1.1.0 of the Home Assistant Realtime Voice Assistant.
+
+## ✅ Non-Breaking Update
+
+Version 1.1.0 is a feature release that adds the web UI without breaking existing functionality. Your current installation will continue to work exactly as before.
+
+## What's New in 1.1.0
+
+- **Complete Web UI** with setup wizard and real-time monitoring
+- **Security features** including HTTPS and authentication
+- **Visual configuration** editors for all settings
+- **Enhanced installation** process with optional web UI setup
+- **Natural multi-turn conversations** with VAD-based silence detection
+  - Conversations end naturally after 8 seconds of silence
+  - Replaced arbitrary 30s timeout with intelligent silence detection
+  - 5-minute safety timeout for extended conversations
+
+## Upgrade Steps
+
+### Step 1: Update Your Installation
+
+```bash
+# Navigate to your installation directory
+cd ~/ha-realtime-assist
+
+# Pull the latest code
+git pull origin main
+
+# Update dependencies
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Step 2: Enable Web UI (Optional)
+
+The web UI is disabled by default. To enable it:
+
+#### Option A: Run the installer for security setup
+```bash
+./install.sh
+```
+
+When prompted:
+1. Choose to enable web UI with authentication
+2. Set a username (default: admin)
+3. Enter a secure password
+
+#### Option B: Manual configuration
+1. Edit `config/config.yaml`:
+   ```yaml
+   web_ui:
+     enabled: true
+     host: "0.0.0.0"  # Or "127.0.0.1" for localhost only
+     port: 8443
+   ```
+
+2. If you want authentication (recommended):
+   ```bash
+   # Generate a password hash
+   python -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(12)).decode())"
+   
+   # Add to .env file
+   echo "WEB_UI_PASSWORD_HASH=your-hash-here" >> .env
+   ```
+
+### Step 3: Access the Web UI
+
+Start the assistant with web UI:
+```bash
+python src/main.py --web
+```
+
+Access at `https://localhost:8443` (accept the self-signed certificate warning).
+
+## New Features Usage
+
+### Web UI Features
+- **Setup Wizard**: Automatically shown on first run without .env
+- **Configuration Editor**: Edit all settings via `https://localhost:8443/config/yaml`
+- **Personality Editor**: Customize assistant at `https://localhost:8443/persona`
+- **Status Dashboard**: Monitor in real-time at `https://localhost:8443/status`
+- **Audio Testing**: Configure devices at `https://localhost:8443/config/audio`
+
+### Security Configuration
+- **HTTPS**: Enabled by default with self-signed certificates
+- **Authentication**: Basic auth with bcrypt password hashing
+- **Session Management**: Configurable timeout (default 1 hour)
+
+### Using Custom Certificates
+```yaml
+web_ui:
+  tls:
+    cert_file: "/path/to/cert.pem"
+    key_file: "/path/to/key.pem"
+```
+
+### Multi-turn Conversation Improvements
+The multi-turn conversation behavior has been enhanced:
+```yaml
+session:
+  multi_turn_timeout: 300.0       # Increased from 30s to 5 minutes (safety only)
+  extended_silence_threshold: 8.0 # New: Natural conversation end after silence
+```
+
+## No Action Required
+
+If you don't want to use the web UI, no action is required. The assistant will continue to work exactly as it did in v1.0.0.

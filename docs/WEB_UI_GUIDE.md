@@ -147,7 +147,7 @@ The web UI now includes comprehensive security features:
 - **Basic Authentication** required by default
 - Username and password configured during installation
 - Secure session management with configurable timeout
-- Password stored as SHA256 hash (never plaintext)
+- Password stored as bcrypt hash (never plaintext)
 
 ### HTTPS/TLS
 - **HTTPS enabled by default** using self-signed certificates
