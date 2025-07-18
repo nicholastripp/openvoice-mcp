@@ -163,7 +163,8 @@
 // WebSocket connection for real-time updates
 let ws = null;
 let reconnectInterval = null;
-let startTime = Date.now();
+// Use server-provided start time, or fall back to page load time
+let startTime = {{ start_time if start_time else 'Date.now()' }};
 let stats = {
     wakeCount: 0,
     commandCount: 0,

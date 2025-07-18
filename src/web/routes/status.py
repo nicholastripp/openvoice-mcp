@@ -12,9 +12,13 @@ logger = logging.getLogger(__name__)
 @aiohttp_jinja2.template('status/dashboard.html')
 async def status_dashboard(request: web.Request) -> dict:
     """Main status dashboard"""
+    # Get app start time
+    start_time = request.app.get('start_time', 0)
+    
     return {
         'title': 'Voice Assistant Status',
-        'ws_url': f"ws://{request.host}/ws/status"
+        'ws_url': f"ws://{request.host}/ws/status",
+        'start_time': int(start_time * 1000)  # Convert to milliseconds for JavaScript
     }
 
 

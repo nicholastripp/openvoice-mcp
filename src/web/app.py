@@ -26,6 +26,7 @@ class WebApp:
         self.app: Optional[web.Application] = None
         self.runner: Optional[web.AppRunner] = None
         self.config_manager = ConfigManager(config_dir)
+        self.start_time = None  # Will be set when server starts
         
     async def setup(self) -> web.Application:
         """Set up the web application"""
@@ -59,6 +60,11 @@ class WebApp:
         """Start the web server"""
         if not self.app:
             await self.setup()
+            
+        # Record start time
+        import time
+        self.start_time = time.time()
+        self.app['start_time'] = self.start_time
             
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()
