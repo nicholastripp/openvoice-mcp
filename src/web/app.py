@@ -5,7 +5,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import aiohttp_jinja2
 import jinja2
@@ -63,6 +63,9 @@ class WebApp:
         
         # Store config manager in app
         self.app['config_manager'] = self.config_manager
+        
+        # Initialize websocket list
+        self.app['websockets'] = []
         
         # Set up routes
         setup_routes(self.app)
@@ -130,3 +133,30 @@ class WebApp:
         if self.runner:
             await self.runner.cleanup()
             logger.info("Web UI stopped")
+            
+    async def broadcast_event(self, event_type: str, data: Dict[str, Any]) -> None:
+        """Broadcast an event to all connected WebSocket clients"""
+        if not self.app or 'websockets' not in self.app:
+            return
+            
+        # Prepare the message
+        message = {
+            'type': event_type,
+            **data
+        }
+        
+        # Send to all connected clients
+        disconnected = []
+        for ws in self.app['websockets']:
+            try:
+                await ws.send_json(message)
+            except ConnectionResetError:
+                disconnected.append(ws)
+            except Exception as e:
+                logger.error(f"Error broadcasting to WebSocket: {e}")
+                disconnected.append(ws)
+                
+        # Clean up disconnected clients
+        for ws in disconnected:
+            if ws in self.app['websockets']:
+                self.app['websockets'].remove(ws)

@@ -93,6 +93,10 @@ class VoiceAssistant:
         self._device_cache = None
         self._device_cache_time = None
         self._device_cache_ttl = 300.0  # 5 minutes TTL for device cache
+        
+        # Audio level broadcasting throttle
+        self._last_audio_level_broadcast = 0
+        self._audio_level_broadcast_interval = 0.1  # Broadcast every 100ms max
     
     async def start(self) -> None:
         """Start the voice assistant"""
@@ -203,6 +207,9 @@ class VoiceAssistant:
             elif new_state == SessionState.MULTI_TURN_LISTENING:
                 self.logger.info(f"Session entering MULTI_TURN_LISTENING state - ready for follow-up questions")
                 print("*** SESSION ENTERING MULTI-TURN LISTENING STATE - SPEAK YOUR FOLLOW-UP QUESTION ***")
+            
+            # Broadcast state change to web UI
+            asyncio.create_task(self._broadcast_state_change(old_state, new_state))
     
     def _validate_state_transition(self, old_state: SessionState, new_state: SessionState) -> bool:
         """Validate that a state transition is allowed"""
@@ -945,6 +952,18 @@ class VoiceAssistant:
             self.audio_capture.add_callback(self._on_audio_captured_direct)
         
         self.logger.info("All components initialized successfully")
+        
+        # Broadcast initial status to web UI
+        await self._broadcast_connection_status()
+        
+        # Send startup activity
+        if hasattr(self, 'web_app') and self.web_app:
+            await self.web_app.broadcast_event('activity', {
+                'message': 'Voice assistant started'
+            })
+            await self.web_app.broadcast_event('activity', {
+                'message': 'All systems operational'
+            })
     
     async def _cleanup_components(self) -> None:
         """Cleanup all components"""
@@ -1362,6 +1381,13 @@ class VoiceAssistant:
                 print(f"*** [MUTED] AUDIO MUTED DURING {self.session_state.value.upper()} STATE ***")
             return
         
+        # Calculate and broadcast audio level (throttled)
+        current_time = asyncio.get_event_loop().time()
+        if current_time - self._last_audio_level_broadcast >= self._audio_level_broadcast_interval:
+            audio_level = self._calculate_audio_level(audio_data)
+            asyncio.create_task(self._broadcast_audio_level(audio_level))
+            self._last_audio_level_broadcast = current_time
+        
         if not self.session_active:
             # Send audio to wake word detector with proper sample rate
             if self.wake_word_detector:
@@ -1414,6 +1440,13 @@ class VoiceAssistant:
     
     async def _on_audio_captured_direct(self, audio_data: bytes) -> None:
         """Handle captured audio directly (development mode without wake word)"""
+        # Calculate and broadcast audio level (throttled)
+        current_time = asyncio.get_event_loop().time()
+        if current_time - self._last_audio_level_broadcast >= self._audio_level_broadcast_interval:
+            audio_level = self._calculate_audio_level(audio_data)
+            asyncio.create_task(self._broadcast_audio_level(audio_level))
+            self._last_audio_level_broadcast = current_time
+        
         # ENHANCED: Check multiple conditions for muting audio during response/cooldown
         should_mute = (
             self.config.audio.mute_during_response and 
@@ -1704,6 +1737,12 @@ class VoiceAssistant:
                     self.logger.warning(f"Failed to restore VAD settings: {e}")
                     # Don't fail the entire completion handler for this
             
+            # Calculate and broadcast response time
+            if self.response_start_time:
+                response_time = asyncio.get_event_loop().time() - self.response_start_time
+                await self._broadcast_response_complete(response_time)
+                self.response_start_time = None
+            
             # Check if multi-turn conversation mode is enabled
             conversation_mode = getattr(self.config.session, 'conversation_mode', 'single_turn')
             self.logger.info(f"Audio completion - conversation mode: {conversation_mode}, session_active: {self.session_active}, state: {self.session_state.value}")
@@ -1986,6 +2025,127 @@ class VoiceAssistant:
                 self.logger.error(f"Error in periodic cleanup: {e}")
                 # Continue cleanup loop even on error
                 await asyncio.sleep(5.0)
+    
+    async def _broadcast_state_change(self, old_state: SessionState, new_state: SessionState) -> None:
+        """Broadcast state change to web UI"""
+        if not hasattr(self, 'web_app') or not self.web_app:
+            return
+            
+        try:
+            await self.web_app.broadcast_event('state_change', {
+                'old_state': old_state.value,
+                'new_state': new_state.value,
+                'session_active': self.session_active,
+                'response_active': self.response_active,
+                'timestamp': asyncio.get_event_loop().time()
+            })
+            
+            # Also send as activity for the activity log
+            state_messages = {
+                SessionState.IDLE: "Waiting for wake word",
+                SessionState.LISTENING: "Listening for user input",
+                SessionState.PROCESSING: "Processing speech",
+                SessionState.RESPONDING: "Generating response",
+                SessionState.AUDIO_PLAYING: "Playing response",
+                SessionState.COOLDOWN: "Session ending",
+                SessionState.MULTI_TURN_LISTENING: "Listening for follow-up"
+            }
+            
+            if new_state in state_messages:
+                await self.web_app.broadcast_event('activity', {
+                    'message': state_messages[new_state]
+                })
+        except Exception as e:
+            self.logger.error(f"Error broadcasting state change: {e}")
+    
+    async def _broadcast_audio_level(self, level: float) -> None:
+        """Broadcast audio level to web UI"""
+        if not hasattr(self, 'web_app') or not self.web_app:
+            return
+            
+        try:
+            await self.web_app.broadcast_event('audio_level', {
+                'level': level
+            })
+        except Exception as e:
+            # Don't log every audio level error to avoid spam
+            pass
+    
+    async def _broadcast_wake_detected(self) -> None:
+        """Broadcast wake word detection to web UI"""
+        if not hasattr(self, 'web_app') or not self.web_app:
+            return
+            
+        try:
+            await self.web_app.broadcast_event('wake_detected', {
+                'timestamp': asyncio.get_event_loop().time()
+            })
+            
+            # Also add to activity log
+            await self.web_app.broadcast_event('activity', {
+                'message': 'Wake word detected'
+            })
+        except Exception as e:
+            self.logger.error(f"Error broadcasting wake detection: {e}")
+    
+    async def _broadcast_response_complete(self, response_time: float) -> None:
+        """Broadcast response completion to web UI"""
+        if not hasattr(self, 'web_app') or not self.web_app:
+            return
+            
+        try:
+            await self.web_app.broadcast_event('command_complete', {
+                'response_time': response_time * 1000,  # Convert to ms
+                'timestamp': asyncio.get_event_loop().time()
+            })
+            
+            # Also add to activity log
+            await self.web_app.broadcast_event('activity', {
+                'message': f'Response completed in {response_time:.1f}s'
+            })
+        except Exception as e:
+            self.logger.error(f"Error broadcasting response complete: {e}")
+    
+    async def _broadcast_connection_status(self) -> None:
+        """Broadcast connection status to web UI"""
+        if not hasattr(self, 'web_app') or not self.web_app:
+            return
+            
+        try:
+            connections = {
+                'openai': bool(self.openai_client and self.openai_client.client and 
+                             self.openai_client.client.closed == False),
+                'home_assistant': bool(self.mcp_client and self.mcp_client.is_connected),
+                'wake_word': bool(self.wake_word_detector and self.wake_word_detector.initialized)
+            }
+            
+            await self.web_app.broadcast_event('status', {
+                'state': self.session_state.value,
+                'connections': connections
+            })
+        except Exception as e:
+            self.logger.error(f"Error broadcasting connection status: {e}")
+    
+    def _calculate_audio_level(self, audio_data: bytes) -> float:
+        """Calculate audio level in dB from audio data"""
+        try:
+            import numpy as np
+            
+            # Convert bytes to numpy array (assuming 16-bit PCM)
+            audio_array = np.frombuffer(audio_data, dtype=np.int16)
+            
+            # Calculate RMS (Root Mean Square)
+            rms = np.sqrt(np.mean(audio_array.astype(np.float64)**2))
+            
+            # Convert to dB (avoid log of zero)
+            if rms > 0:
+                db = 20 * np.log10(rms / 32768.0)  # 32768 is max value for 16-bit audio
+            else:
+                db = -60.0  # Floor value
+                
+            return db
+        except Exception:
+            return -60.0  # Return floor value on error
     
     async def _on_speech_started(self, event_data: dict) -> None:
         """Handle speech started event from server VAD"""
@@ -2406,6 +2566,9 @@ class VoiceAssistant:
         self.logger.info("Starting voice session from wake word detection")
         print("*** STARTING VOICE SESSION ***")
         asyncio.run_coroutine_threadsafe(self._start_session(), self.loop)
+        
+        # Broadcast wake word detection to web UI
+        asyncio.run_coroutine_threadsafe(self._broadcast_wake_detected(), self.loop)
     
     async def _ensure_openai_connection(self) -> None:
         """Ensure OpenAI client is connected"""

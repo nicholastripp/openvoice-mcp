@@ -232,6 +232,23 @@ function updateStatus(data) {
         document.getElementById('command-count').textContent = stats.commandCount;
         updateAvgResponse();
     }
+    
+    if (data.type === 'state_change') {
+        // Update state display based on state change
+        const stateIndicator = document.getElementById('state-indicator');
+        const stateText = document.getElementById('state-text');
+        
+        stateText.textContent = data.new_state.charAt(0).toUpperCase() + data.new_state.slice(1).replace('_', ' ');
+        
+        // Update indicator color based on state
+        if (data.new_state === 'idle') {
+            stateIndicator.className = 'status-indicator online';
+        } else if (data.new_state === 'listening' || data.new_state === 'multi_turn_listening') {
+            stateIndicator.className = 'status-indicator connecting';
+        } else {
+            stateIndicator.className = 'status-indicator offline';
+        }
+    }
 }
 
 function updateConnection(service, status) {
@@ -287,22 +304,6 @@ function updateAvgResponse() {
 connectWebSocket();
 setInterval(updateUptime, 1000);
 
-// Simulate some data for demo
-setTimeout(() => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        // Demo mode when not connected
-        updateStatus({
-            type: 'status',
-            state: 'idle',
-            connections: {
-                openai: true,
-                home_assistant: true,
-                wake_word: true
-            }
-        });
-        addActivity('Voice assistant started');
-        addActivity('All systems operational');
-    }
-}, 1000);
+// Remove demo mode - rely on real events from backend
 </script>
 {% endblock %}

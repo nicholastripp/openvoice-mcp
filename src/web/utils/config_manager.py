@@ -149,7 +149,7 @@ class ConfigManager:
         
     async def read_logs(self, lines: int = 100) -> str:
         """Read last N lines from log file"""
-        log_file = self.logs_dir / "voice_assistant.log"
+        log_file = self.logs_dir / "assistant.log"
         
         if not log_file.exists():
             return "No logs available"
