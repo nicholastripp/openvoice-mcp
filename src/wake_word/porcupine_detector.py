@@ -103,8 +103,9 @@ class PorcupineDetector:
             raise
         
         # Performance tracking
-        self.last_detection_time = 0
         self.detection_cooldown = config.cooldown
+        # Initialize to negative cooldown to ensure first detection works
+        self.last_detection_time = -self.detection_cooldown
         
         # Audio gain configuration from config
         self.audio_gain = config.audio_gain if hasattr(config, 'audio_gain') else 1.0
@@ -378,7 +379,8 @@ class PorcupineDetector:
         if not hasattr(self, '_process_counter'):
             self._process_counter = 0
             if self.logger:
-                self.logger.debug(f"Porcupine process_audio first call - input_rate: {input_sample_rate}Hz, data: {len(audio_data)} bytes")
+                self.logger.info(f"Wake word detector receiving first audio - input_rate: {input_sample_rate}Hz, data: {len(audio_data)} bytes")
+                self.logger.debug(f"Detection state: running={self.is_running}, queue_size={self.audio_queue.qsize()}")
         
         self._process_counter += 1
         
@@ -541,7 +543,8 @@ class PorcupineDetector:
                 
                 # Log processing activity
                 if frames_processed == 1:
-                    self.logger.debug(f"First frame received in detection loop, shape: {audio_frame.shape}, dtype: {audio_frame.dtype}")
+                    self.logger.info(f"Wake word detection started - first frame received, shape: {audio_frame.shape}, dtype: {audio_frame.dtype}")
+                    self.logger.debug(f"Audio frame stats: min={np.min(audio_frame)}, max={np.max(audio_frame)}, mean={np.mean(audio_frame):.2f}")
                 elif frames_processed % 100 == 0:
                     audio_level = np.max(np.abs(audio_frame)) if len(audio_frame) > 0 else 0
                     self.logger.debug(f"Detection loop processed {frames_processed} frames, current level: {audio_level}, queue: {self.audio_queue.qsize()}")
@@ -597,6 +600,12 @@ class PorcupineDetector:
                     
                     current_time = time.time()
                     time_since_last = current_time - self.last_detection_time
+                    
+                    # Debug logging for first detection
+                    if self.last_detection_time < 0:
+                        self.logger.info(f"First wake word detection after startup - cooldown check will pass")
+                    
+                    self.logger.debug(f"Cooldown check: time_since_last={time_since_last:.2f}s, cooldown={self.detection_cooldown}s")
                     
                     # Check cooldown
                     if time_since_last >= self.detection_cooldown:
