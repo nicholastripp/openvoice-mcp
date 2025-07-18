@@ -31,9 +31,22 @@ async def yaml_editor(request: web.Request) -> dict:
     # Load current config.yaml
     config = await config_manager.load_yaml_config()
     
+    # Scan for custom wake word models
+    import os
+    from pathlib import Path
+    
+    wake_words_dir = Path('wake_words')
+    custom_wake_words = []
+    
+    if wake_words_dir.exists():
+        for file in wake_words_dir.glob('*.ppn'):
+            # Get filename without extension as the wake word name
+            custom_wake_words.append(file.stem)
+    
     return {
         'title': 'Configuration Settings',
-        'config': config
+        'config': config,
+        'custom_wake_words': custom_wake_words
     }
 
 

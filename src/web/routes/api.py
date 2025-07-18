@@ -4,6 +4,7 @@ API routes for testing and validation
 import logging
 import asyncio
 from typing import Dict
+from pathlib import Path
 
 from aiohttp import web
 import sounddevice as sd
@@ -190,6 +191,68 @@ async def test_audio_device(request: web.Request) -> web.Response:
         }, status=500)
 
 
+async def upload_wake_word(request: web.Request) -> web.Response:
+    """Upload custom wake word model"""
+    try:
+        reader = await request.multipart()
+        
+        # Read the file part
+        field = await reader.next()
+        if field.name != 'file':
+            return web.json_response({
+                'status': 'error',
+                'message': 'No file field in upload'
+            }, status=400)
+        
+        filename = field.filename
+        if not filename or not filename.endswith('.ppn'):
+            return web.json_response({
+                'status': 'error',
+                'message': 'Invalid file type. Must be a .ppn file'
+            }, status=400)
+        
+        # Create wake_words directory if it doesn't exist
+        wake_words_dir = Path('wake_words')
+        wake_words_dir.mkdir(exist_ok=True)
+        
+        # Save the file
+        file_path = wake_words_dir / filename
+        size = 0
+        
+        with open(file_path, 'wb') as f:
+            while True:
+                chunk = await field.read_chunk()
+                if not chunk:
+                    break
+                size += len(chunk)
+                f.write(chunk)
+                
+                # Limit file size to 10MB
+                if size > 10 * 1024 * 1024:
+                    f.close()
+                    file_path.unlink()
+                    return web.json_response({
+                        'status': 'error',
+                        'message': 'File too large. Maximum size is 10MB'
+                    }, status=413)
+        
+        logger.info(f"Uploaded wake word model: {filename} ({size} bytes)")
+        
+        return web.json_response({
+            'status': 'success',
+            'message': f'Wake word model "{filename}" uploaded successfully',
+            'filename': filename,
+            'size': size
+        })
+        
+    except Exception as e:
+        logger.error(f"Error uploading wake word: {e}")
+        return web.json_response({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
 def api_routes(app: web.Application):
     """Set up API routes"""
     app.router.add_post('/api/test/openai', test_openai)
@@ -197,3 +260,4 @@ def api_routes(app: web.Application):
     app.router.add_post('/api/test/picovoice', test_picovoice)
     app.router.add_get('/api/audio/devices', list_audio_devices)
     app.router.add_post('/api/audio/test', test_audio_device)
+    app.router.add_post('/api/wake_word/upload', upload_wake_word)
