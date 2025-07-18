@@ -104,6 +104,7 @@ class SessionConfig:
     multi_turn_timeout: float = 30.0  # seconds to wait for follow-up questions
     multi_turn_max_turns: int = 10  # maximum conversation turns per session
     multi_turn_end_phrases: list = None  # phrases to end conversation
+    multi_turn_stuck_multiplier: float = 4.0  # multiplier for stuck detection (4x timeout = 2 minutes with 30s base)
     
     def __post_init__(self):
         # Set default end phrases if not provided
