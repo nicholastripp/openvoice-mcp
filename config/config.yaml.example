@@ -4,7 +4,7 @@
 openai:
   api_key: ${OPENAI_API_KEY}        # From environment variable
   voice: "alloy"                    # alloy, ash, ballad, coral, echo, sage, shimmer, verse
-  model: "gpt-4o-realtime-preview"  # OpenAI Realtime model
+  model: "gpt-4o-mini-realtime-preview"  # OpenAI Realtime model
   temperature: 0.8                  # Response creativity (0.0-1.0)
   language: "en"                    # Language code (en, es, fr, de, etc.)
   

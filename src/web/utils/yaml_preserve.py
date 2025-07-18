@@ -88,9 +88,11 @@ class YamlPreserver:
                 if isinstance(value, dict):
                     # Handle nested dictionaries
                     if self._is_section_header(line, key):
+                        logger.debug(f"Found section header '{key}' at line {i}")
                         updated_lines.append(line)
                         # Find the end of this section and update it
                         section_lines, section_end = self._extract_section(lines[i+1:])
+                        logger.debug(f"Section '{key}' spans {len(section_lines)} lines, ends at offset {section_end}")
                         updated_section = self._update_lines(
                             section_lines, value, full_key + "."
                         )
@@ -161,12 +163,25 @@ class YamlPreserver:
         section_lines = []
         
         for i, line in enumerate(lines):
-            # If we hit a line with same or less indentation (and it's not empty/comment)
-            # then we've reached the end of the section
-            if line.strip() and not line.strip().startswith('#'):
-                line_indent = len(line) - len(line.lstrip())
-                if line_indent < section_indent:
+            # Skip empty lines and comments at the beginning
+            if i == 0 or not line.strip() or line.strip().startswith('#'):
+                section_lines.append(line)
+                continue
+            
+            # Check indentation for content lines
+            line_indent = len(line) - len(line.lstrip())
+            
+            # For top-level sections (indent 0), check if this is a new section
+            if section_indent == 0 and line_indent == 0:
+                # Check if this line is a new section header (ends with ':')
+                stripped = line.strip()
+                if ':' in stripped and not any(c in stripped.split(':')[0] for c in ['"', "'", ' ']):
+                    # This is a new top-level section, don't include it
                     return section_lines, i
+            
+            # For any indent level, if we hit a line with less indentation, we're done
+            elif line_indent < section_indent:
+                return section_lines, i
             
             section_lines.append(line)
         
