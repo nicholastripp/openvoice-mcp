@@ -1,15 +1,15 @@
 # Home Assistant Realtime Voice Assistant
 
-![Version](https://img.shields.io/badge/version-0.5.0--beta-blue)
-![Status](https://img.shields.io/badge/status-beta-yellow)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Status](https://img.shields.io/badge/status-stable-green)
 ![Python](https://img.shields.io/badge/python-3.9+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A standalone Raspberry Pi voice assistant that provides natural, low-latency conversations for Home Assistant control using OpenAI's Realtime API.
 
-## 🚀 Project Status: Beta Release!
+## 🚀 Project Status: 1.0 Release!
 
-The assistant is now in beta with all core features implemented and tested. Ready for real-world use with ongoing improvements.
+The assistant is now stable with Model Context Protocol (MCP) integration, providing direct tool-based control of Home Assistant.
 
 ## Overview
 
@@ -19,7 +19,7 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 
 - 🎙️ **Natural Conversations**: Real-time bidirectional audio streaming with multi-turn support
 - ⚡ **Low Latency**: <800ms voice-to-voice response time  
-- 🏠 **Full HA Control**: Uses Home Assistant's Conversation API
+- 🏠 **Full HA Control**: Uses Home Assistant's Model Context Protocol (MCP)
 - 👂 **Porcupine Wake Words**: Accurate detection with built-in keywords
 - 🔊 **Automatic Gain Control**: AGC prevents clipping and maintains optimal audio levels
 - 🌍 **Multi-Language**: Configurable language support
@@ -34,15 +34,21 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 4. **Natural Response**: Speaks back with natural, conversational responses
 5. **Multi-turn Conversations**: Continue talking without repeating wake word
 
-## Hardware Requirements
+## Requirements
 
-### Minimum Setup
+### Software Requirements
+- Home Assistant 2025.2 or later (required for MCP support)
+- MCP Server integration installed and enabled in Home Assistant
+
+### Hardware Requirements
+
+#### Minimum Setup
 - Raspberry Pi 3B+ or newer
 - USB microphone
 - Speaker (3.5mm jack or USB)
 - 8GB+ SD card
 
-### Recommended Setup
+#### Recommended Setup
 - Raspberry Pi 4 (2GB+ RAM)
 - USB conference speakerphone (e.g., Jabra Speak 410)
 - -OR- ReSpeaker 2-Mic HAT
@@ -137,18 +143,25 @@ audio:
 
 See the [Audio Setup Guide](docs/AUDIO_SETUP.md) for optimal configuration.
 
-## What's New in v0.5.0-beta
+## What's New in v1.0.0
 
-- 🎯 **Improved Logging System** - Clean, minimal console output with separate file logging
-- 🎮 **Console Output Control** - New `--verbose` and `--quiet` flags for output customization
-- 📊 **Smart Formatting** - Contextual prefixes (✓, ●, ►, ✗, ⚠) for better readability
-- 🎤 **Custom Wake Words** - Create your own wake words like "Jarvis" with Picovoice Console
-- 🛡️ **Robust Error Handling** - Graceful failures with helpful troubleshooting for connection issues
-- 🔄 **Connection Retry Logic** - Automatic retry with exponential backoff for transient failures
-- 📁 **Better Setup Process** - Automated configuration file setup including persona.ini
-- 🔧 **Improved Diagnostics** - New connection testing tools and detailed error messages
+- 🚀 **Model Context Protocol Integration** - Direct tool-based control replacing Conversation API
+- 🎯 **GetLiveContext Support** - Real-time device state awareness
+- 🔧 **Automatic Tool Discovery** - Dynamically discovers all available MCP tools
+- 🎮 **Enhanced Multi-turn** - Fixed timeout issues for seamless conversations
+- 📊 **Better Error Handling** - Clear MCP-specific error messages
+- 🛡️ **SSL Certificate Support** - Works with self-signed certificates
+- 🧹 **Cleaned Up for Release** - Removed 70+ development scripts
 
 See [CHANGELOG.md](CHANGELOG.md) for complete details.
+
+### ⚠️ Breaking Changes from 0.x
+
+**This is a major release with breaking changes:**
+- Requires Home Assistant 2025.2+ (for MCP support)
+- MCP Server integration must be installed and enabled
+- No backward compatibility with Conversation API
+- New access token may be required
 
 ## Logging & Output Control
 

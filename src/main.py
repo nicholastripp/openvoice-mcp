@@ -1003,8 +1003,6 @@ class VoiceAssistant:
                     except:
                         pass
                 
-                # TODO: Handle wake word detection
-                # For now, we'll assume always listening (for development)
                 
                 # Wait briefly before next iteration
                 await asyncio.sleep(0.1)
