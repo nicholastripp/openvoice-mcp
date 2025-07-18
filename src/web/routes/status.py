@@ -17,7 +17,7 @@ async def status_dashboard(request: web.Request) -> dict:
     
     return {
         'title': 'Voice Assistant Status',
-        'ws_url': f"ws://{request.host}/ws/status",
+        'ws_url': f"{'wss' if request.scheme == 'https' else 'ws'}://{request.host}/ws/status",
         'start_time': int(start_time * 1000)  # Convert to milliseconds for JavaScript
     }
 

@@ -93,18 +93,36 @@ class ConfigManager:
             'wake_word': {'enabled': True, 'sensitivity': 1.0}
         }
         
-    async def save_yaml_config(self, data: Dict[str, Any]):
-        """Save YAML configuration"""
+    async def save_yaml_config(self, updates: Dict[str, Any]):
+        """Save YAML configuration with deep merge"""
+        # Load existing config first
+        existing_config = await self.load_yaml_config()
+        
+        # Deep merge updates into existing config
+        merged_config = self._deep_merge(existing_config, updates)
+        
         # Create backup
         if self.yaml_path.exists():
             backup_path = self.yaml_path.with_suffix('.yaml.backup')
             shutil.copy2(self.yaml_path, backup_path)
             
-        # Save with comments
+        # Save merged config
         with open(self.yaml_path, 'w') as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+            yaml.dump(merged_config, f, default_flow_style=False, sort_keys=False)
             
         logger.info("Saved YAML configuration")
+    
+    def _deep_merge(self, base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+        """Deep merge updates into base dictionary"""
+        result = base.copy()
+        
+        for key, value in updates.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+        
+        return result
         
     async def load_persona_config(self) -> Dict[str, Any]:
         """Load persona configuration"""
@@ -128,8 +146,11 @@ class ConfigManager:
                     
         return result
         
-    async def save_persona_config(self, data: Dict[str, Any]):
-        """Save persona configuration"""
+    async def save_persona_config(self, updates: Dict[str, Any]):
+        """Save persona configuration with merge"""
+        # Load existing config first
+        existing_data = await self.load_persona_config()
+        
         # Create backup
         if self.persona_path.exists():
             backup_path = self.persona_path.with_suffix('.ini.backup')
@@ -137,9 +158,19 @@ class ConfigManager:
             
         config = configparser.ConfigParser()
         
-        # Add sections
-        for section, values in data.items():
-            config[section] = values
+        # First, add all existing sections
+        for section, values in existing_data.items():
+            if section not in config:
+                config.add_section(section)
+            for key, value in values.items():
+                config[section][key] = str(value)
+        
+        # Then update with new values
+        for section, values in updates.items():
+            if section not in config:
+                config.add_section(section)
+            for key, value in values.items():
+                config[section][key] = str(value)
             
         # Write to file
         with open(self.persona_path, 'w') as f:
