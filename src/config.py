@@ -75,6 +75,7 @@ class WakeWordConfig:
     vad_enabled: bool = True
     cooldown: float = 2.0
     test_mode: bool = False  # Test wake word detection without OpenAI connection
+    confirmation_beep_enabled: bool = False  # Play beep after wake word detection
     
     # Audio gain settings
     audio_gain: float = 1.0  # Audio amplification factor (1.0-5.0, default 1.0 to prevent clipping)

@@ -1975,12 +1975,27 @@ class VoiceAssistant:
     
     async def _on_speech_started(self, event_data: dict) -> None:
         """Handle speech started event from server VAD"""
+        self.logger.info(f"Speech started event received in state: {self.session_state.value}")
+        print(f"*** SPEECH_STARTED EVENT - STATE: {self.session_state.value}, SESSION_ACTIVE: {self.session_active} ***")
+        
         # Cancel multi-turn timeout task since user is speaking
-        if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
-            self.multi_turn_timeout_task.cancel()
-            self.multi_turn_timeout_task = None
-            self.logger.info("Cancelled multi-turn timeout - user started speaking")
-            print("*** MULTI-TURN TIMEOUT CANCELLED - USER STARTED SPEAKING ***")
+        if self.multi_turn_timeout_task:
+            task_done = self.multi_turn_timeout_task.done()
+            task_cancelled = self.multi_turn_timeout_task.cancelled()
+            self.logger.info(f"Multi-turn timeout task exists - done: {task_done}, cancelled: {task_cancelled}")
+            print(f"*** MULTI-TURN TASK STATUS - DONE: {task_done}, CANCELLED: {task_cancelled} ***")
+            
+            if not task_done:
+                self.multi_turn_timeout_task.cancel()
+                self.multi_turn_timeout_task = None
+                self.logger.info("Cancelled multi-turn timeout - user started speaking")
+                print("*** MULTI-TURN TIMEOUT CANCELLED - USER STARTED SPEAKING ***")
+            else:
+                self.logger.warning("Multi-turn timeout task already completed - too late to cancel")
+                print("*** WARNING: MULTI-TURN TIMEOUT ALREADY COMPLETED ***")
+        else:
+            self.logger.debug("No multi-turn timeout task to cancel")
+            print("*** NO MULTI-TURN TIMEOUT TASK TO CANCEL ***")
     
     async def _on_speech_stopped(self, event_data) -> None:
         """Handle user speech stopped"""
@@ -2344,8 +2359,8 @@ class VoiceAssistant:
                 self.audio_playback.play_audio(beep.tobytes())
             return
         
-        # Play confirmation beep for all wake word detections
-        if self.audio_playback:
+        # Play confirmation beep for all wake word detections (if enabled)
+        if self.config.wake_word.confirmation_beep_enabled and self.audio_playback:
             # Generate a simple beep tone
             import numpy as np
             sample_rate = 24000

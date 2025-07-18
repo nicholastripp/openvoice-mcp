@@ -55,6 +55,7 @@ wake_word:
   vad_enabled: false              # Voice activity detection
   cooldown: 2.0                   # Seconds between wake word detections
   test_mode: false                # Test mode (no OpenAI connection)
+  confirmation_beep_enabled: false # Play beep after wake word detection (false = quiet operation)
   audio_gain: 1.0                 # Audio amplification factor (1.0-5.0)
   audio_gain_mode: "fixed"        # Gain mode: "fixed" or "dynamic"
   
