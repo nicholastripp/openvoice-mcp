@@ -22,7 +22,11 @@ Add to your `config/config.yaml`:
 web_ui:
   enabled: true         # Enable web UI on startup
   host: "0.0.0.0"      # Listen on all interfaces for remote access
-  port: 8080           # Web UI port
+  port: 8443           # Default HTTPS port (8080 for HTTP if TLS disabled)
+  auth:
+    enabled: true       # Authentication enabled by default
+  tls:
+    enabled: true       # HTTPS enabled by default
 ```
 
 Then start normally:
@@ -36,7 +40,7 @@ python src/main.py
 # Start the assistant with web UI enabled
 python src/main.py --web
 
-# Use a custom port (default is 8080)
+# Use a custom port (default is 8443 for HTTPS)
 python src/main.py --web --web-port 8090
 ```
 
@@ -53,7 +57,7 @@ On first run (when no `.env` file exists), the web UI automatically shows a setu
 - Connection testing for each service
 - Automatic configuration file creation
 
-Access: `http://localhost:8080/setup`
+Access: `https://localhost:8443/setup` (accept the self-signed certificate warning)
 
 ### 2. Environment Variables
 
@@ -63,7 +67,7 @@ Securely manage your API keys and tokens:
 - Update individual keys without exposing others
 - Automatic `.env` file updates
 
-Access: `http://localhost:8080/config/env`
+Access: `https://localhost:8443/config/env`
 
 ### 3. Configuration Settings
 
@@ -74,7 +78,7 @@ Edit all `config.yaml` settings through an intuitive interface:
 - **Wake Word Settings**: Sensitivity, confirmation beep
 - **Session Settings**: Timeouts, multi-turn configuration
 
-Access: `http://localhost:8080/config/yaml`
+Access: `https://localhost:8443/config/yaml`
 
 ### 4. Personality Editor
 
@@ -88,7 +92,7 @@ Customize your assistant's personality with:
 - **Advanced**: Custom instructions and response style
 - **Preview**: See sample responses before saving
 
-Access: `http://localhost:8080/persona`
+Access: `https://localhost:8443/persona`
 
 ### 5. Audio Device Testing
 
@@ -99,7 +103,7 @@ Test and configure audio devices:
 - Monitor real-time audio levels
 - Visual level meter with dB display
 
-Access: `http://localhost:8080/config/audio`
+Access: `https://localhost:8443/config/audio`
 
 ### 6. Status Dashboard
 
@@ -112,7 +116,7 @@ Monitor your assistant in real-time:
 - Statistics: uptime, wake detections, commands, response times
 - WebSocket updates for live data
 
-Access: `http://localhost:8080/status`
+Access: `https://localhost:8443/status`
 
 ### 7. Log Viewer
 
@@ -123,7 +127,7 @@ View and monitor system logs:
 - Auto-refresh option (5-second interval)
 - Clear display button
 
-Access: `http://localhost:8080/status/logs`
+Access: `https://localhost:8443/status/logs`
 
 ## Navigation
 
@@ -171,9 +175,11 @@ web_ui:
 ### Security Best Practices
 1. **Always use authentication** when host is "0.0.0.0"
 2. **Accept the self-signed certificate** on first access
-3. **Use strong passwords** during installation
+3. **Use strong passwords** during installation (8+ characters)
 4. **Consider custom certificates** for production use
 5. **Monitor access logs** for unauthorized attempts
+6. **Change default username** from "admin" if desired
+7. **Set appropriate session timeout** based on your security needs
 
 ### Custom Certificates
 To use your own SSL certificate:
@@ -204,9 +210,9 @@ ssh -L 8443:localhost:8443 pi@your-pi
    pip install aiohttp-jinja2 jinja2
    ```
 
-2. Check if port 8080 is already in use:
+2. Check if port 8443 is already in use:
    ```bash
-   lsof -i :8080  # On macOS/Linux
+   lsof -i :8443  # On macOS/Linux
    ```
 
 3. Try a different port:
@@ -218,8 +224,10 @@ ssh -L 8443:localhost:8443 pi@your-pi
 
 1. Ensure the assistant started successfully
 2. Check the console output for the web UI URL
-3. Try accessing `http://localhost:8080` (not https)
-4. Check firewall settings if accessing from another device
+3. Accept the self-signed certificate warning in your browser
+4. Try accessing `https://localhost:8443` (HTTPS is default)
+5. If authentication is enabled, use the credentials you set during installation
+6. Check firewall settings if accessing from another device
 
 ### Changes Not Taking Effect
 

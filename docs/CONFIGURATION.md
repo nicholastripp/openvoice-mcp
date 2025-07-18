@@ -153,12 +153,28 @@ web_ui:
 ```
 
 **Security Features**:
-- **Authentication**: Basic auth with hashed passwords
+- **Authentication**: Basic auth with SHA256 hashed passwords
 - **HTTPS**: Encrypted connections with TLS 1.2+
-- **Self-signed certificates**: Generated automatically
-- **Session management**: Configurable timeouts
+- **Self-signed certificates**: Generated automatically using OpenSSL
+- **Session management**: Configurable timeouts with secure cookies
 
-**Setup**: The installer will prompt you to configure web UI security during installation.
+**Setup**: The installer will prompt you to configure web UI security during installation:
+1. Choose a username (default: admin)
+2. Set a secure password (min 8 characters recommended)
+3. The installer automatically:
+   - Hashes your password with SHA256
+   - Generates a self-signed certificate
+   - Updates config.yaml with security settings
+
+**Certificate Management**:
+- Self-signed certificates are stored in `config/certs/`
+- Valid for 365 days from creation
+- To use custom certificates, place them in `config/certs/` and update the config:
+  ```yaml
+  tls:
+    cert_file: "config/certs/your-cert.pem"
+    key_file: "config/certs/your-key.pem"
+  ```
 
 ## Personality Configuration (config/persona.ini)
 
