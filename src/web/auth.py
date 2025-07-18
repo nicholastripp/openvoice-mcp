@@ -2,11 +2,11 @@
 Authentication middleware and utilities for the web UI
 """
 import base64
-import hashlib
 import logging
 import secrets
 from typing import Optional, Callable
 
+import bcrypt
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
@@ -14,17 +14,21 @@ logger = logging.getLogger(__name__)
 
 def hash_password(password: str) -> str:
     """
-    Hash a password using SHA256.
-    For production, consider using bcrypt, but this avoids extra dependencies.
+    Hash a password using bcrypt with salt.
     """
-    # Add a salt for basic security
-    salt = "ha-voice-assistant"
-    return hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
+    # Generate salt and hash password
+    salt = bcrypt.gensalt(rounds=12)  # 12 is current recommended default
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    """Verify a password against a hash"""
-    return hash_password(password) == password_hash
+    """Verify a password against a bcrypt hash"""
+    try:
+        return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+    except Exception as e:
+        logger.error(f"Password verification failed: {e}")
+        return False
 
 
 def extract_basic_auth(request: web.Request) -> Optional[tuple[str, str]]:
@@ -80,10 +84,23 @@ def create_auth_middleware(auth_config: dict) -> Callable:
         if auth_tuple:
             username, password = auth_tuple
             
+            # Debug logging (without exposing password)
+            expected_username = auth_config.get('username')
+            password_hash = auth_config.get('password_hash', '')
+            
+            logger.debug(f"Auth attempt for username: {username}")
+            logger.debug(f"Expected username: {expected_username}")
+            logger.debug(f"Password hash present: {bool(password_hash)}")
+            
+            if not password_hash:
+                logger.error("No password hash configured! Run installer to set password.")
+            
             # Verify credentials
-            if (username == auth_config.get('username') and 
-                verify_password(password, auth_config.get('password_hash', ''))):
+            if (username == expected_username and 
+                password_hash and
+                verify_password(password, password_hash)):
                 
+                logger.info(f"Successful authentication for user: {username}")
                 # Create session
                 session_token = secrets.token_urlsafe(32)
                 if 'sessions' not in request.app:
@@ -103,6 +120,8 @@ def create_auth_middleware(auth_config: dict) -> Callable:
                     samesite='Strict'
                 )
                 return response
+            else:
+                logger.warning(f"Authentication failed for username: {username}")
         
         # No valid auth - request credentials
         return web.Response(

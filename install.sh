@@ -143,12 +143,13 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         fi
     done
     
-    # Generate password hash
+    # Generate password hash using bcrypt
     web_password_hash=$(./venv/bin/python -c "
-import hashlib
+import bcrypt
 password = '$web_password'
-salt = 'ha-voice-assistant'
-print(hashlib.sha256(f'{salt}:{password}'.encode()).hexdigest())
+salt = bcrypt.gensalt(rounds=12)
+hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+print(hashed.decode('utf-8'))
     ")
     
     # Update config.yaml
