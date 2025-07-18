@@ -163,10 +163,29 @@ class WebApp:
         self.start_time = time.time()
         self.app['start_time'] = self.start_time
             
-        self.runner = web.AppRunner(self.app)
+        # Create runner with server_header disabled
+        self.runner = web.AppRunner(
+            self.app,
+            handle_signals=False,
+            access_log=None  # We handle our own logging
+        )
         await self.runner.setup()
         
-        site = web.TCPSite(self.runner, self.host, self.port, ssl_context=self.ssl_context)
+        # Create site without Server header
+        site = web.TCPSite(
+            self.runner, 
+            self.host, 
+            self.port, 
+            ssl_context=self.ssl_context
+        )
+        
+        # Override the make_handler to remove Server header
+        original_make_handler = site._make_handler
+        def make_handler_no_server(*args, **kwargs):
+            kwargs['server_header'] = None  # This removes the Server header
+            return original_make_handler(*args, **kwargs)
+        site._make_handler = make_handler_no_server
+            
         await site.start()
         
         protocol = "https" if self.ssl_context else "http"

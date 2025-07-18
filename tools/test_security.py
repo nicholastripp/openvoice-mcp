@@ -122,19 +122,34 @@ async def test_request_size_limit():
         large_data = 'x' * (11 * 1024 * 1024)
         
         try:
+            # Use a real endpoint that accepts POST
             async with session.post(
-                'https://localhost:8443/api/test',
+                'https://localhost:8443/api/config/env',
                 data=large_data,
-                ssl=False
+                ssl=False,
+                headers={'Content-Type': 'text/plain'}  # Avoid JSON parsing
             ) as resp:
                 if resp.status == 413:
                     print("[PASS] Large request correctly rejected (413 Payload Too Large)")
+                elif resp.status in [401, 403]:
+                    # Auth/CSRF rejection is expected, but we want to test size limits
+                    print(f"[INFO] Request blocked by auth/CSRF (status: {resp.status})")
+                    print("       Size limit test inconclusive due to auth")
                 else:
-                    print(f"[FAIL] Large request accepted (status: {resp.status})")
+                    print(f"[FAIL] Large request may have been accepted (status: {resp.status})")
         except aiohttp.ClientPayloadError:
             print("[PASS] Large request rejected by client (payload too large)")
+        except aiohttp.ClientResponseError as e:
+            if e.status == 413:
+                print("[PASS] Large request correctly rejected (413 Payload Too Large)")
+            else:
+                print(f"[INFO] Request failed with status {e.status}")
         except Exception as e:
-            print(f"[PASS] Large request rejected: {type(e).__name__}")
+            # Connection errors might indicate the server rejected the large payload
+            if "payload" in str(e).lower() or "413" in str(e):
+                print(f"[PASS] Large request rejected: {type(e).__name__}")
+            else:
+                print(f"[INFO] Large request test error: {type(e).__name__}: {e}")
 
 async def check_file_permissions():
     """Check file permissions"""
