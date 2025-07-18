@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="logs-container">
+    <h1>System Logs</h1>
+    
+    <div class="log-controls">
+        <button onclick="refreshLogs()" class="button">Refresh</button>
+        <button onclick="clearDisplay()" class="button">Clear Display</button>
+        <label>
+            <input type="checkbox" id="auto-refresh" onchange="toggleAutoRefresh()">
+            Auto-refresh (5s)
+        </label>
+    </div>
+    
+    <div class="log-viewer">
+        <pre id="log-content">{{ logs }}</pre>
+    </div>
+</div>
+
+<style>
+.logs-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.log-controls {
+    margin: 1rem 0;
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.log-viewer {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    padding: 1rem;
+    height: 600px;
+    overflow-y: auto;
+    border-radius: 0.5rem;
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.log-viewer pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Log level colors */
+.log-debug { color: #808080; }
+.log-info { color: #d4d4d4; }
+.log-warning { color: #ce9178; }
+.log-error { color: #f48771; }
+.log-critical { color: #ff0000; font-weight: bold; }
+</style>
+
+<script>
+let autoRefreshInterval = null;
+
+async function refreshLogs() {
+    try {
+        const response = await fetch('/status/logs');
+        const html = await response.text();
+        
+        // Extract log content from response
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const newLogs = doc.getElementById('log-content').textContent;
+        
+        // Update log display with syntax highlighting
+        const logContent = document.getElementById('log-content');
+        logContent.innerHTML = highlightLogs(newLogs);
+        
+        // Auto-scroll to bottom
+        const viewer = document.querySelector('.log-viewer');
+        viewer.scrollTop = viewer.scrollHeight;
+    } catch (error) {
+        console.error('Failed to refresh logs:', error);
+    }
+}
+
+function highlightLogs(text) {
+    // Simple log level highlighting
+    return text
+        .replace(/\b(DEBUG)\b/g, '<span class="log-debug">$1</span>')
+        .replace(/\b(INFO)\b/g, '<span class="log-info">$1</span>')
+        .replace(/\b(WARNING)\b/g, '<span class="log-warning">$1</span>')
+        .replace(/\b(ERROR)\b/g, '<span class="log-error">$1</span>')
+        .replace(/\b(CRITICAL)\b/g, '<span class="log-critical">$1</span>');
+}
+
+function clearDisplay() {
+    document.getElementById('log-content').textContent = 'Display cleared. Click Refresh to reload logs.';
+}
+
+function toggleAutoRefresh() {
+    const checkbox = document.getElementById('auto-refresh');
+    
+    if (checkbox.checked) {
+        autoRefreshInterval = setInterval(refreshLogs, 5000);
+    } else {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
+    }
+}
+
+// Initial highlighting
+document.addEventListener('DOMContentLoaded', () => {
+    const logContent = document.getElementById('log-content');
+    logContent.innerHTML = highlightLogs(logContent.textContent);
+    
+    // Auto-scroll to bottom on load
+    const viewer = document.querySelector('.log-viewer');
+    viewer.scrollTop = viewer.scrollHeight;
+});
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+});
+</script>
+{% endblock %}

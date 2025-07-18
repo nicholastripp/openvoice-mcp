@@ -81,6 +81,9 @@ source venv/bin/activate
 
 # Start the assistant
 python src/main.py
+
+# Or start with web UI for easy configuration
+python src/main.py --web
 ```
 
 **Note**: Always activate the virtual environment (`source venv/bin/activate`) before running any Python commands. You'll see `(venv)` in your terminal prompt when it's active.
