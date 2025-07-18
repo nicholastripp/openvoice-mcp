@@ -171,9 +171,23 @@ The test script will:
 - `examples/test_mcp_connection.py` - Standalone script for testing MCP connection
 - `tests/test_mcp_client.py` - Unit tests for pytest framework (not for direct execution)
 
-## 🎤 Phase 4: Voice Assistant Testing
+## 🧪 Phase 4: Device Extraction Testing
 
-### Step 9: Test Audio Devices
+### Step 9: Test Device Extraction
+
+Test the GetLiveContext response parsing:
+
+```bash
+# Note: This test requires adjustments for your environment
+# The test script needs to be modified to work without audio devices
+python examples/test_getlivecontext.py
+
+# If successful, you should see device information extracted
+```
+
+## 🎤 Phase 5: Voice Assistant Testing
+
+### Step 10: Test Audio Devices
 
 First, verify your audio devices:
 
@@ -185,7 +199,7 @@ python -m src.main --list-devices
 python -m src.main --test
 ```
 
-### Step 10: Run the Voice Assistant
+### Step 11: Run the Voice Assistant
 
 ```bash
 # Run with normal logging
@@ -195,7 +209,7 @@ python -m src.main
 python -m src.main --verbose
 ```
 
-### Step 11: Test Voice Commands
+### Step 12: Test Voice Commands
 
 1. Say the wake word: **"Picovoice"** (or your configured wake word)
 2. Wait for the confirmation sound
