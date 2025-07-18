@@ -99,7 +99,12 @@ async def test_device_extraction():
         
         # Fetch devices
         print("\n6. Fetching devices via MCP...")
-        await assistant._fetch_device_states()
+        states = await assistant._fetch_device_states_mcp()
+        
+        # Update the cache manually (normally done in _ensure_devices_exposed)
+        if states:
+            assistant._device_cache = states
+            assistant._device_cache_time = asyncio.get_event_loop().time()
         
         # Check device cache
         if assistant._device_cache:
