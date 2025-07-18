@@ -164,13 +164,15 @@ web_ui:
   auth:
     enabled: true      # Require authentication
     username: "admin"
-    password_hash: ""  # Set by installer
+    password_hash: ${WEB_UI_PASSWORD_HASH}  # From .env (set by installer)
     session_timeout: 3600
   tls:
     enabled: true      # Use HTTPS
     cert_file: ""      # Custom cert (optional)
     key_file: ""       # Custom key (optional)
 ```
+
+**Note**: The password hash is stored securely in your `.env` file as `WEB_UI_PASSWORD_HASH`.
 
 ### Security Best Practices
 1. **Always use authentication** when host is "0.0.0.0"

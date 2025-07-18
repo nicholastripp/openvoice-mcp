@@ -152,20 +152,33 @@ hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
 print(hashed.decode('utf-8'))
     ")
     
-    # Update config.yaml
+    # Update config.yaml for username and enable web UI
     echo -e "${YELLOW}Updating config/config.yaml with web UI settings...${NC}"
     
-    # Enable web UI and set credentials
+    # Enable web UI
     sed -i.bak "s/^web_ui:$/web_ui:\n  enabled: true/" config/config.yaml 2>/dev/null || \
     sed -i '' "s/^web_ui:$/web_ui:\n  enabled: true/" config/config.yaml 2>/dev/null || \
     echo "Note: Please manually enable web_ui in config.yaml"
     
-    # Update auth settings
+    # Update username in config
     sed -i.bak "s/username: \"admin\"/username: \"$web_username\"/" config/config.yaml 2>/dev/null || \
     sed -i '' "s/username: \"admin\"/username: \"$web_username\"/" config/config.yaml 2>/dev/null
     
-    sed -i.bak "s/password_hash: \"\"/password_hash: \"$web_password_hash\"/" config/config.yaml 2>/dev/null || \
-    sed -i '' "s/password_hash: \"\"/password_hash: \"$web_password_hash\"/" config/config.yaml 2>/dev/null
+    # Add password hash to .env file
+    echo -e "${YELLOW}Saving password hash to .env file...${NC}"
+    if grep -q "^WEB_UI_PASSWORD_HASH=" .env 2>/dev/null; then
+        # Update existing entry
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|^WEB_UI_PASSWORD_HASH=.*|WEB_UI_PASSWORD_HASH=$web_password_hash|" .env
+        else
+            sed -i "s|^WEB_UI_PASSWORD_HASH=.*|WEB_UI_PASSWORD_HASH=$web_password_hash|" .env
+        fi
+    else
+        # Add new entry
+        echo "" >> .env
+        echo "# Web UI Authentication (set by installer)" >> .env
+        echo "WEB_UI_PASSWORD_HASH=$web_password_hash" >> .env
+    fi
     
     echo -e "${GREEN}✓ Web UI authentication configured${NC}"
     echo -e "${GREEN}  Username: $web_username${NC}"

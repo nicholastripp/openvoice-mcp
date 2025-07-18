@@ -20,6 +20,9 @@ OPENAI_API_KEY=sk-your-openai-api-key-here
 
 # Home Assistant Long-Lived Access Token
 HA_TOKEN=your-home-assistant-token-here
+
+# Web UI Password Hash (set by installer)
+WEB_UI_PASSWORD_HASH=
 ```
 
 ## Main Configuration (config/config.yaml)
@@ -142,7 +145,7 @@ web_ui:
   auth:
     enabled: true              # Require login (highly recommended)
     username: "admin"          # Default username
-    password_hash: ""          # Set by installer (never store plaintext)
+    password_hash: ${WEB_UI_PASSWORD_HASH}  # From .env (set by installer)
     session_timeout: 3600      # Session timeout in seconds
   
   # TLS/HTTPS settings
@@ -153,7 +156,7 @@ web_ui:
 ```
 
 **Security Features**:
-- **Authentication**: Basic auth with SHA256 hashed passwords
+- **Authentication**: Basic auth with bcrypt hashed passwords
 - **HTTPS**: Encrypted connections with TLS 1.2+
 - **Self-signed certificates**: Generated automatically using OpenSSL
 - **Session management**: Configurable timeouts with secure cookies
@@ -162,9 +165,10 @@ web_ui:
 1. Choose a username (default: admin)
 2. Set a secure password (min 8 characters recommended)
 3. The installer automatically:
-   - Hashes your password with SHA256
+   - Hashes your password with bcrypt
+   - Stores the hash in .env file
    - Generates a self-signed certificate
-   - Updates config.yaml with security settings
+   - Updates config.yaml with username
 
 **Certificate Management**:
 - Self-signed certificates are stored in `config/certs/`

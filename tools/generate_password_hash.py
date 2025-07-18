@@ -43,10 +43,8 @@ def main():
     print("-" * 50)
     print(password_hash)
     print("-" * 50)
-    print("\nTo use this hash, update your config/config.yaml:")
-    print("  web_ui:")
-    print("    auth:")
-    print(f'      password_hash: "{password_hash}"')
+    print("\nTo use this hash, add or update in your .env file:")
+    print(f"WEB_UI_PASSWORD_HASH={password_hash}")
 
 
 if __name__ == "__main__":
