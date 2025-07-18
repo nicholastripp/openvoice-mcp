@@ -1587,6 +1587,14 @@ class VoiceAssistant:
     
     async def _on_audio_response(self, audio_data: bytes) -> None:
         """Handle audio response from OpenAI"""
+        # Cancel multi-turn timeout if we receive audio during multi-turn listening
+        if self.session_state == SessionState.MULTI_TURN_LISTENING and self.multi_turn_timeout_task:
+            if not self.multi_turn_timeout_task.done():
+                self.multi_turn_timeout_task.cancel()
+                self.multi_turn_timeout_task = None
+                self.logger.info("Cancelled multi-turn timeout - OpenAI is sending audio response")
+                print("*** MULTI-TURN TIMEOUT CANCELLED - OPENAI SENDING AUDIO ***")
+        
         # Mark that we've received audio
         self._audio_response_received = True
         

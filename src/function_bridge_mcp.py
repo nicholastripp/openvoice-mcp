@@ -251,8 +251,41 @@ class MCPFunctionBridge:
         Returns:
             Function result for OpenAI
         """
+        # Handle direct list results (from mcp_client.call_tool which returns result.content)
+        if isinstance(mcp_result, list):
+            # Extract text content from list of TextContent objects
+            text_content = []
+            serializable_result = []
+            
+            for item in mcp_result:
+                if hasattr(item, 'text'):
+                    # TextContent object
+                    text_content.append(item.text)
+                    serializable_result.append({
+                        'type': getattr(item, 'type', 'text'),
+                        'text': item.text
+                    })
+                elif isinstance(item, dict) and 'text' in item:
+                    # Already a dictionary
+                    text_content.append(item['text'])
+                    serializable_result.append(item)
+                else:
+                    # Unknown format - convert to string
+                    text = str(item)
+                    text_content.append(text)
+                    serializable_result.append({'type': 'text', 'text': text})
+            
+            message = ' '.join(text_content) if text_content else "Action completed"
+            
+            return {
+                "success": True,
+                "function": function_name,
+                "message": message,
+                "raw_result": serializable_result
+            }
+        
         # MCP results typically have a content array
-        if isinstance(mcp_result, dict) and 'content' in mcp_result:
+        elif isinstance(mcp_result, dict) and 'content' in mcp_result:
             content_items = mcp_result['content']
             
             # Extract text content
@@ -263,11 +296,26 @@ class MCPFunctionBridge:
             
             message = ' '.join(text_content) if text_content else "Action completed"
             
+            # Convert raw_result to serializable format to avoid TextContent serialization errors
+            serializable_result = []
+            if isinstance(content_items, list):
+                for item in content_items:
+                    if isinstance(item, dict):
+                        serializable_result.append(item)
+                    elif hasattr(item, '__dict__'):
+                        # Convert TextContent object to dict
+                        serializable_result.append({
+                            'type': getattr(item, 'type', 'text'),
+                            'text': getattr(item, 'text', str(item))
+                        })
+                    else:
+                        serializable_result.append(str(item))
+            
             return {
                 "success": True,
                 "function": function_name,
                 "message": message,
-                "raw_result": mcp_result
+                "raw_result": serializable_result
             }
         
         # Handle string results
