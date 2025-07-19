@@ -21,10 +21,29 @@ Learn how to use your Home Assistant Realtime Voice Assistant effectively.
    python src/main.py --log-level DEBUG
    ```
 
-3. **As a System Service** (if configured):
+3. **Without Home Assistant** (limited functionality):
+   ```bash
+   # Skip Home Assistant connection check
+   python src/main.py --skip-ha-check
+   ```
+
+4. **As a System Service** (if configured):
    ```bash
    sudo systemctl start ha-voice-assistant
    ```
+
+### Command Line Options
+
+- `--config PATH` - Path to configuration file (default: config/config.yaml)
+- `--persona PATH` - Path to personality file (default: config/persona.ini)
+- `--log-level LEVEL` - Override log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+- `--verbose` - Enable verbose console output (same as --log-level DEBUG)
+- `--quiet` - Minimize console output (only errors)
+- `--daemon` - Run in daemon mode (no console output)
+- `--test-mode` - Enable test mode for wake word
+- `--skip-ha-check` - Skip Home Assistant connection (OpenAI-only mode)
+- `--web` - Enable web UI even if disabled in config
+- `--web-port PORT` - Override web UI port
 
 ### Using the Assistant
 
