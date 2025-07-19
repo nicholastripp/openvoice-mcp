@@ -2807,16 +2807,7 @@ class VoiceAssistant:
             print("*** SESSION ALREADY ACTIVE - IGNORING WAKE WORD ***")
             return
         
-        # Ensure OpenAI connection
-        if not self.openai_client or self.openai_client.state.value != "connected":
-            self.logger.warning("OpenAI client not connected, attempting connection...")
-            print("*** OPENAI NOT CONNECTED - ATTEMPTING CONNECTION ***")
-            asyncio.run_coroutine_threadsafe(self._ensure_openai_connection(), self.loop)
-        else:
-            self.logger.info(f"OpenAI client connected, state: {self.openai_client.state.value}")
-            print(f"*** OPENAI CONNECTED (state: {self.openai_client.state.value}) ***")
-        
-        # Start voice session
+        # Start voice session - let _start_session handle all connection logic
         self.logger.info("Starting voice session from wake word detection")
         print("*** STARTING VOICE SESSION ***")
         asyncio.run_coroutine_threadsafe(self._start_session(), self.loop)
@@ -2824,14 +2815,6 @@ class VoiceAssistant:
         # Broadcast wake word detection to web UI
         asyncio.run_coroutine_threadsafe(self._broadcast_wake_detected(), self.loop)
     
-    async def _ensure_openai_connection(self) -> None:
-        """Ensure OpenAI client is connected"""
-        if self.openai_client:
-            try:
-                await self.openai_client.connect()
-                self.logger.info("OpenAI client connected for wake word session")
-            except Exception as e:
-                self.logger.error(f"Failed to connect OpenAI client: {e}")
 
 
 def setup_signal_handlers(assistant: VoiceAssistant) -> None:
