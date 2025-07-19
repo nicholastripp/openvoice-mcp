@@ -97,3 +97,7 @@ reference-documentation/
 *.tmp
 *.temp
 *.bak
+
+# Private brainstorming documents
+mcp-voice-client-brainstorm.md
+openvoice-mcp-initial-tasks.md

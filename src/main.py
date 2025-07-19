@@ -1236,6 +1236,34 @@ class VoiceAssistant:
         if self.session_active:
             self.logger.warning("Attempted to start session but already active")
             return
+        
+        # CRITICAL: Ensure OpenAI is connected before starting session
+        # This handles reconnection after the 30-minute timeout or other disconnections
+        if self.openai_client:
+            if self.openai_client.state != ConnectionState.CONNECTED:
+                self.logger.info(f"OpenAI not connected (state: {self.openai_client.state.value}), reconnecting...")
+                print(f"*** OPENAI NOT CONNECTED (STATE: {self.openai_client.state.value}) - RECONNECTING ***")
+                try:
+                    success = await self.openai_client.connect()
+                    if success:
+                        self.logger.info("OpenAI reconnected successfully")
+                        print("*** OPENAI RECONNECTED SUCCESSFULLY ***")
+                    else:
+                        self.logger.error("Failed to reconnect to OpenAI")
+                        print("*** FAILED TO RECONNECT TO OPENAI ***")
+                        # Don't start session if we can't connect
+                        return
+                except Exception as e:
+                    self.logger.error(f"Error reconnecting to OpenAI: {e}")
+                    print(f"*** ERROR RECONNECTING TO OPENAI: {e} ***")
+                    # Don't start session if we can't connect
+                    return
+            else:
+                self.logger.debug("OpenAI already connected")
+        else:
+            self.logger.error("No OpenAI client available")
+            print("*** NO OPENAI CLIENT AVAILABLE ***")
+            return
             
         self.session_active = True
         self.last_activity = asyncio.get_event_loop().time()
@@ -1400,6 +1428,19 @@ class VoiceAssistant:
         # Note: With server VAD enabled, manual commit_audio() calls are not needed
         # and will cause "input_audio_buffer_commit_empty" errors
         self.logger.debug("Session ended - server VAD handles audio buffer automatically")
+        
+        # CRITICAL: Disconnect OpenAI WebSocket to prevent 30-minute timeout issues
+        # OpenAI enforces a 30-minute maximum session duration, so we must disconnect
+        # when idle to reset their timer
+        if self.openai_client and self.openai_client.state == ConnectionState.CONNECTED:
+            try:
+                self.logger.info("Disconnecting OpenAI WebSocket to prevent 30-minute timeout")
+                print("*** DISCONNECTING OPENAI TO PREVENT 30-MINUTE TIMEOUT ***")
+                await self.openai_client.disconnect()
+                self.logger.info("OpenAI WebSocket disconnected successfully")
+            except Exception as e:
+                self.logger.error(f"Error disconnecting OpenAI WebSocket: {e}")
+                print(f"*** ERROR DISCONNECTING OPENAI: {e} ***")
         
         self.logger.info("Voice session ended with complete cleanup")
         print("*** VOICE SESSION ENDED - READY FOR WAKE WORD ***")
@@ -1645,17 +1686,48 @@ class VoiceAssistant:
             except Exception as e:
                 self.logger.debug(f"Could not log audio levels: {e}")
             
-            await self.openai_client.send_audio(audio_data)
-            # Debug: Log audio being sent to OpenAI
-            if hasattr(self, '_openai_audio_counter'):
-                self._openai_audio_counter += 1
-            else:
-                self._openai_audio_counter = 1
-                self.logger.info(f"Started sending audio to OpenAI (session_active: {self.session_active}, state: {self.session_state.value})")
-                print(f"*** STARTED SENDING AUDIO TO OPENAI - STATE: {self.session_state.value.upper()} ***")
+            # Send audio with error handling for connection issues
+            try:
+                await self.openai_client.send_audio(audio_data)
                 
-            if self._openai_audio_counter % 50 == 0:  # Every 50 chunks
-                self.logger.debug(f"Sent {self._openai_audio_counter} audio chunks to OpenAI (state: {self.session_state.value})")
+                # Debug: Log audio being sent to OpenAI
+                if hasattr(self, '_openai_audio_counter'):
+                    self._openai_audio_counter += 1
+                else:
+                    self._openai_audio_counter = 1
+                    self.logger.info(f"Started sending audio to OpenAI (session_active: {self.session_active}, state: {self.session_state.value})")
+                    print(f"*** STARTED SENDING AUDIO TO OPENAI - STATE: {self.session_state.value.upper()} ***")
+                    
+                if self._openai_audio_counter % 50 == 0:  # Every 50 chunks
+                    self.logger.debug(f"Sent {self._openai_audio_counter} audio chunks to OpenAI (state: {self.session_state.value})")
+                    
+            except ConnectionError as e:
+                # Handle WebSocket not connected errors
+                self.logger.error(f"WebSocket connection error while sending audio: {e}")
+                print(f"*** WEBSOCKET CONNECTION ERROR: {e} ***")
+                
+                # Try to reconnect once
+                self.logger.info("Attempting to reconnect to OpenAI...")
+                print("*** ATTEMPTING TO RECONNECT TO OPENAI ***")
+                try:
+                    success = await self.openai_client.connect()
+                    if success:
+                        self.logger.info("Reconnected to OpenAI - retrying audio send")
+                        print("*** RECONNECTED TO OPENAI - RETRYING AUDIO SEND ***")
+                        # Retry sending audio once after reconnection
+                        await self.openai_client.send_audio(audio_data)
+                    else:
+                        self.logger.error("Failed to reconnect to OpenAI - ending session")
+                        print("*** FAILED TO RECONNECT - ENDING SESSION ***")
+                        await self._end_session()
+                except Exception as reconnect_error:
+                    self.logger.error(f"Error during reconnection attempt: {reconnect_error}")
+                    print(f"*** RECONNECTION ERROR: {reconnect_error} ***")
+                    await self._end_session()
+                    
+            except Exception as e:
+                self.logger.error(f"Unexpected error sending audio to OpenAI: {e}")
+                print(f"*** UNEXPECTED ERROR SENDING AUDIO: {e} ***")
         else:
             self.logger.error("No OpenAI client available to send audio!")
             print("*** ERROR: NO OPENAI CLIENT FOR AUDIO ***")
@@ -2465,14 +2537,36 @@ class VoiceAssistant:
             # Don't end session for this error - it's expected in some race conditions
             return
         elif error_type == 'invalid_request_error':
-            self.logger.warning(f"Invalid request error: {error_message}")
-            # Don't end session - this is often recoverable (e.g., trying to create response when one exists)
-            return
+            # Check for session expiration error
+            if error_code == 'session_expired':
+                self.logger.warning("OpenAI session expired (30-minute limit) - will reconnect on next wake word")
+                print("*** OPENAI SESSION EXPIRED - WILL RECONNECT ON NEXT WAKE WORD ***")
+                # Mark the connection as disconnected since the session is expired
+                if self.openai_client:
+                    self.openai_client.state = ConnectionState.DISCONNECTED
+                # End the current session cleanly
+                if self.session_active:
+                    await self._end_session()
+                return
+            else:
+                self.logger.warning(f"Invalid request error: {error_message}")
+                # Don't end session - this is often recoverable (e.g., trying to create response when one exists)
+                return
         elif error_type == 'error':
             # Generic error type - check the error code for more details
             if error_code == 'conversation_already_has_active_response':
                 self.logger.warning("Generic error with active response code - treating as duplicate")
                 self._response_create_sent = False
+                return
+            elif error_code == 'session_expired':
+                self.logger.warning("OpenAI session expired in generic error - will reconnect on next wake word")
+                print("*** OPENAI SESSION EXPIRED (GENERIC) - WILL RECONNECT ON NEXT WAKE WORD ***")
+                # Mark the connection as disconnected since the session is expired
+                if self.openai_client:
+                    self.openai_client.state = ConnectionState.DISCONNECTED
+                # End the current session cleanly
+                if self.session_active:
+                    await self._end_session()
                 return
             else:
                 self.logger.warning(f"Generic error type: {error_message} (code: {error_code})")
