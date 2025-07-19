@@ -965,24 +965,26 @@ class VoiceAssistant:
             personality_prompt = await self._generate_device_aware_personality()
             self.openai_client = OpenAIRealtimeClient(self.config.openai, personality_prompt)
             self.logger.debug("OpenAI client created")
-        
-        if not wake_word_only_mode and self.function_bridge:
-            # Register function handlers (only if HA is connected)
-            for func_def in self.function_bridge.get_function_definitions():
-                # Create a wrapper function that calls the bridge with the correct arguments
-                def create_wrapper(func_name):
-                    async def function_wrapper(arguments):
-                        return await self.function_bridge.handle_function_call(func_name, arguments)
-                    return function_wrapper
-                
-                self.openai_client.register_function(
-                    name=func_def["name"],
-                    handler=create_wrapper(func_def["name"]),
-                    description=func_def["description"],
-                    parameters=func_def["parameters"]
-                )
             
-            # Setup OpenAI event handlers
+            # Register function handlers (only if HA is connected)
+            if self.function_bridge:
+                for func_def in self.function_bridge.get_function_definitions():
+                    # Create a wrapper function that calls the bridge with the correct arguments
+                    def create_wrapper(func_name):
+                        async def function_wrapper(arguments):
+                            return await self.function_bridge.handle_function_call(func_name, arguments)
+                        return function_wrapper
+                    
+                    self.openai_client.register_function(
+                        name=func_def["name"],
+                        handler=create_wrapper(func_def["name"]),
+                        description=func_def["description"],
+                        parameters=func_def["parameters"]
+                    )
+            else:
+                self.logger.info("No Home Assistant connection - OpenAI will operate without function calling")
+            
+            # Setup OpenAI event handlers (always needed for audio)
             self._setup_openai_handlers()
             
             self.logger.debug("About to connect to OpenAI")
