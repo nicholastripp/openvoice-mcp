@@ -4,7 +4,7 @@
 openai:
   api_key: ${OPENAI_API_KEY}        # From environment variable
   voice: "alloy"                    # alloy, ash, ballad, coral, echo, sage, shimmer, verse
-  model: "gpt-4o-realtime-preview"  # OpenAI Realtime model
+  model: "gpt-4o-mini-realtime-preview"  # OpenAI Realtime model
   temperature: 0.8                  # Response creativity (0.0-1.0)
   language: "en"                    # Language code (en, es, fr, de, etc.)
   
@@ -66,8 +66,10 @@ wake_word:
   
   # Available Porcupine built-in keywords (use these exact names in 'model' field):
   #   alexa, americano, blueberry, bumblebee, computer, grapefruit,
-  #   grasshopper, hey google, hey siri, jarvis, ok google, picovoice,
-  #   porcupine, terminator
+  #   grasshopper, picovoice, porcupine, terminator
+  #
+  # Note: Popular wake words like "jarvis", "hey google", "hey siri", "ok google"
+  # are NOT built-in and require custom wake word creation at https://console.picovoice.ai/
   #
   # For custom wake words:
   # 1. Create at https://console.picovoice.ai/
@@ -89,7 +91,7 @@ session:
   multi_turn_timeout: 300.0        # Safety fallback timeout (5 minutes) - conversations end based on silence
   multi_turn_max_turns: 20         # Maximum conversation turns per session
   multi_turn_stuck_multiplier: 4.0 # Multiplier for stuck detection
-  extended_silence_threshold: 8.0  # Seconds of silence before ending conversation naturally
+  extended_silence_threshold: 8.5  # Seconds of silence before ending conversation naturally
   multi_turn_end_phrases:          # Phrases to end multi-turn conversation
     - "goodbye"
     - "stop"

@@ -332,10 +332,58 @@ wake_word:
   cooldown: 3.0        # Prevent rapid triggers
 ```
 
+## Security Configuration
+
+### Rate Limiting
+
+The web UI includes built-in rate limiting to prevent abuse:
+
+```yaml
+# Rate limits are predefined for different endpoints:
+# - Authentication: 5 requests per minute
+# - API endpoints: 100 requests per minute  
+# - Configuration: 20 requests per minute
+# - Default: 60 requests per minute
+```
+
+### CSRF Protection
+
+CSRF protection is automatically enabled for all state-changing operations. No configuration required.
+
+### Security Headers
+
+Security headers are automatically applied. To customize:
+
+```yaml
+# Advanced users can override security headers via environment variables
+# Not recommended unless you understand the security implications
+```
+
+### Request Size Limits
+
+Maximum request sizes are enforced:
+- Request body: 10MB
+- URL length: 8KB
+
+These limits prevent resource exhaustion attacks.
+
+### File Permissions
+
+The installer automatically sets secure permissions:
+- `.env` file: 600 (owner read/write only)
+- Certificates: 600 (owner read/write only)
+
+The system checks permissions on startup and warns about insecure settings.
+
 ## Security Best Practices
 
-1. Never commit `.env` files to version control
-2. Use strong, unique API keys
-3. Restrict Home Assistant token permissions
-4. Keep configuration files readable only by the service user
-5. Regularly rotate API keys and tokens
+1. **Never commit `.env` files** to version control
+2. **Use strong, unique API keys** with minimal permissions
+3. **Restrict Home Assistant token** to only required scopes
+4. **Keep configuration files** readable only by the service user (chmod 600)
+5. **Regularly rotate** API keys and tokens
+6. **Monitor logs** for security events and failed authentications
+7. **Use HTTPS** even for local deployments
+8. **Keep dependencies updated** with security patches
+9. **Backup configuration** regularly but securely
+10. **Review security documentation** in docs/SECURITY.md

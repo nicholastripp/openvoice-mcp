@@ -8,6 +8,7 @@ from .config import config_routes
 from .persona import persona_routes
 from .status import status_routes
 from .api import api_routes
+from .auth import auth_routes
 
 
 async def index_handler(request: web.Request) -> web.Response:
@@ -26,6 +27,7 @@ def setup_routes(app: web.Application):
     app.router.add_get('/', index_handler)
     
     # Add route groups
+    auth_routes(app)  # Auth routes should be first
     setup_wizard_routes(app)
     config_routes(app)
     persona_routes(app)

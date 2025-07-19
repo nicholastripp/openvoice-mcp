@@ -3,12 +3,24 @@ API routes for testing and validation
 """
 import logging
 import asyncio
+import os
+import sys
+import time
 from typing import Dict
+from pathlib import Path
 
 from aiohttp import web
 import sounddevice as sd
 
 logger = logging.getLogger(__name__)
+
+# Track last restart time for rate limiting
+last_restart_time = 0
+
+
+async def health_check(request: web.Request) -> web.Response:
+    """Simple health check endpoint"""
+    return web.json_response({'status': 'ok'})
 
 
 async def test_openai(request: web.Request) -> web.Response:
@@ -190,10 +202,125 @@ async def test_audio_device(request: web.Request) -> web.Response:
         }, status=500)
 
 
+async def upload_wake_word(request: web.Request) -> web.Response:
+    """Upload custom wake word model"""
+    try:
+        reader = await request.multipart()
+        
+        # Read the file part
+        field = await reader.next()
+        if field.name != 'file':
+            return web.json_response({
+                'status': 'error',
+                'message': 'No file field in upload'
+            }, status=400)
+        
+        filename = field.filename
+        if not filename or not filename.endswith('.ppn'):
+            return web.json_response({
+                'status': 'error',
+                'message': 'Invalid file type. Must be a .ppn file'
+            }, status=400)
+        
+        # Create wake_words directory if it doesn't exist
+        wake_words_dir = Path('config/wake_words')
+        wake_words_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save the file
+        file_path = wake_words_dir / filename
+        size = 0
+        
+        with open(file_path, 'wb') as f:
+            while True:
+                chunk = await field.read_chunk()
+                if not chunk:
+                    break
+                size += len(chunk)
+                f.write(chunk)
+                
+                # Limit file size to 10MB
+                if size > 10 * 1024 * 1024:
+                    f.close()
+                    file_path.unlink()
+                    return web.json_response({
+                        'status': 'error',
+                        'message': 'File too large. Maximum size is 10MB'
+                    }, status=413)
+        
+        logger.info(f"Uploaded wake word model: {filename} ({size} bytes)")
+        
+        return web.json_response({
+            'status': 'success',
+            'message': f'Wake word model "{filename}" uploaded successfully',
+            'filename': filename,
+            'size': size
+        })
+        
+    except Exception as e:
+        logger.error(f"Error uploading wake word: {e}")
+        return web.json_response({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
+async def restart_application(request: web.Request) -> web.Response:
+    """Restart the application with security checks"""
+    global last_restart_time
+    
+    try:
+        # Rate limiting - allow restart only once per 30 seconds
+        current_time = time.time()
+        if current_time - last_restart_time < 30:
+            return web.json_response({
+                'status': 'error',
+                'message': 'Please wait 30 seconds between restart attempts'
+            }, status=429)
+        
+        # Log the restart attempt
+        client_ip = request.headers.get('X-Forwarded-For', request.remote)
+        logger.warning(f"Application restart requested from IP: {client_ip}")
+        
+        # Update last restart time
+        last_restart_time = current_time
+        
+        # Send success response before restarting
+        response = web.json_response({
+            'status': 'success',
+            'message': 'Application restarting...'
+        })
+        
+        # Schedule restart after response is sent
+        async def do_restart():
+            await asyncio.sleep(1)  # Give time for response to be sent
+            
+            # Gracefully shutdown the current app
+            logger.info("Initiating application restart...")
+            
+            # Restart the Python process
+            python = sys.executable
+            os.execl(python, python, *sys.argv)
+        
+        # Start restart in background
+        asyncio.create_task(do_restart())
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error during restart: {e}")
+        return web.json_response({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
 def api_routes(app: web.Application):
     """Set up API routes"""
+    app.router.add_get('/api/health', health_check)
     app.router.add_post('/api/test/openai', test_openai)
     app.router.add_post('/api/test/home_assistant', test_home_assistant)
     app.router.add_post('/api/test/picovoice', test_picovoice)
     app.router.add_get('/api/audio/devices', list_audio_devices)
     app.router.add_post('/api/audio/test', test_audio_device)
+    app.router.add_post('/api/wake_word/upload', upload_wake_word)
+    app.router.add_post('/api/system/restart', restart_application)

@@ -5,6 +5,43 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2025-01-19
+
+### Security
+- **CSRF Protection** - Double-submit cookie pattern for all state-changing operations
+- **Rate Limiting** - Sliding window rate limiting for authentication (5/min), API (100/min), and config (20/min) endpoints
+- **Security Headers** - Comprehensive OWASP-recommended headers including CSP, HSTS, X-Frame-Options
+- **File Permissions** - Automatic security warnings for insecure config directory permissions
+
+### Added
+- **Web UI Enhancements**
+  - Custom wake word upload functionality (.ppn files)
+  - Secure application restart via web UI (Apply & Restart button)
+  - Conversation mode setting (single-turn/multi-turn) in OpenAI settings
+  - Health check endpoint for monitoring restart completion
+- **Configuration Improvements**
+  - YAML comment preservation system (temporarily disabled due to edge cases)
+  - Better config file consistency when saving via web UI
+
+### Changed
+- Wake word dropdown now shows only valid Porcupine built-in keywords
+- Custom wake words display user-friendly names in UI
+- Terminal output uses ASCII characters instead of Unicode for better compatibility
+- Web UI branding consistently shows "HA Realtime Voice Assistant"
+- Extended silence threshold adjusted to 8.5 seconds in example config
+
+### Fixed
+- YAML config corruption when saving via web UI (section boundaries preserved)
+- Custom wake word crash (now preserves .ppn extension in config)
+- Wake word upload directory (now correctly uses config/wake_words/)
+- UI element ordering (wake word selection after sensitivity settings)
+- Removed invalid wake word options (jarvis, hey google, hey siri, ok google)
+- Unicode character display issues in terminal output
+- Octal notation display (0o755 → 755) for file permissions
+
+### Removed
+- Invalid wake word options that aren't built into Porcupine
+
 ## [1.1.0] - 2025-01-18
 
 ### Added

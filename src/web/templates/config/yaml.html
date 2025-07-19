@@ -29,6 +29,19 @@
             <label for="openai_language">Language:</label>
             <input type="text" id="openai_language" name="openai.language" 
                    value="{{ config.openai.language }}" placeholder="en">
+            
+            <label for="openai_model">Model:</label>
+            <select id="openai_model" name="openai.model">
+                <option value="gpt-4o-mini-realtime-preview" {% if config.openai.model == 'gpt-4o-mini-realtime-preview' %}selected{% endif %}>GPT-4o Mini Realtime (Preview)</option>
+                <option value="gpt-4o-realtime-preview" {% if config.openai.model == 'gpt-4o-realtime-preview' %}selected{% endif %}>GPT-4o Realtime (Preview)</option>
+            </select>
+            
+            <label for="conversation_mode">Conversation Mode:</label>
+            <select id="conversation_mode" name="session.conversation_mode">
+                <option value="single_turn" {% if config.session.conversation_mode == 'single_turn' %}selected{% endif %}>Single Turn</option>
+                <option value="multi_turn" {% if config.session.conversation_mode == 'multi_turn' %}selected{% endif %}>Multi Turn</option>
+            </select>
+            <small style="display: block; margin-top: -0.5rem; margin-bottom: 1rem; color: #666;">Single Turn: One question/response. Multi Turn: Continuous conversation.</small>
         </div>
         
         <!-- Audio Settings -->
@@ -78,25 +91,38 @@
                        {% if config.wake_word.confirmation_beep_enabled %}checked{% endif %}>
                 Play confirmation beep
             </label>
+            
+            <label for="wake_word_model">Wake Word:</label>
+            <select id="wake_word_model" name="wake_word.model">
+                <option value="alexa" {% if config.wake_word.model == 'alexa' %}selected{% endif %}>Alexa</option>
+                <option value="americano" {% if config.wake_word.model == 'americano' %}selected{% endif %}>Americano</option>
+                <option value="blueberry" {% if config.wake_word.model == 'blueberry' %}selected{% endif %}>Blueberry</option>
+                <option value="bumblebee" {% if config.wake_word.model == 'bumblebee' %}selected{% endif %}>Bumblebee</option>
+                <option value="computer" {% if config.wake_word.model == 'computer' %}selected{% endif %}>Computer</option>
+                <option value="grapefruit" {% if config.wake_word.model == 'grapefruit' %}selected{% endif %}>Grapefruit</option>
+                <option value="grasshopper" {% if config.wake_word.model == 'grasshopper' %}selected{% endif %}>Grasshopper</option>
+                <option value="picovoice" {% if config.wake_word.model == 'picovoice' %}selected{% endif %}>Picovoice</option>
+                <option value="porcupine" {% if config.wake_word.model == 'porcupine' %}selected{% endif %}>Porcupine</option>
+                <option value="terminator" {% if config.wake_word.model == 'terminator' %}selected{% endif %}>Terminator</option>
+                {% for custom in custom_wake_words %}
+                <option value="{{ custom }}" {% if config.wake_word.model == custom %}selected{% endif %}>{{ custom.replace('.ppn', '').replace('_', ' ').replace('-', ' ').title() }} (custom)</option>
+                {% endfor %}
+            </select>
+            
+            <div class="upload-section">
+                <h3>Upload Custom Wake Word Model</h3>
+                <p>Upload a Porcupine wake word model (.ppn file)</p>
+                <input type="file" id="wake_word_upload" accept=".ppn">
+                <button type="button" class="button" onclick="uploadWakeWord()">Upload Model</button>
+                <div id="upload_status"></div>
+            </div>
         </div>
         
-        <!-- Session Settings -->
-        <div class="form-section">
-            <h2>Session Settings</h2>
-            
-            <label for="session_multi_turn_timeout">Multi-turn Timeout (seconds):</label>
-            <input type="number" id="session_multi_turn_timeout" name="session.multi_turn_timeout" 
-                   min="5" max="120" value="{{ config.session.multi_turn_timeout | default(30) }}">
-            
-            <label for="session_multi_turn_stuck_multiplier">Stuck Detection Multiplier:</label>
-            <input type="number" id="session_multi_turn_stuck_multiplier" 
-                   name="session.multi_turn_stuck_multiplier" 
-                   min="1" max="10" step="0.5" value="{{ config.session.multi_turn_stuck_multiplier | default(4.0) }}">
-        </div>
         
         <div class="button-group">
             <button type="submit" class="button primary">Save Changes</button>
             <button type="button" class="button" onclick="location.reload()">Cancel</button>
+            <button type="button" class="button danger" onclick="restartApplication()" id="restart-button">Apply & Restart</button>
         </div>
     </form>
 </div>
@@ -138,6 +164,38 @@ input[type="checkbox"] {
     margin-top: 2rem;
     display: flex;
     gap: 1rem;
+}
+
+.upload-section {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background: rgba(0,0,0,0.03);
+    border-radius: 0.25rem;
+}
+
+.upload-section h3 {
+    margin-top: 0;
+    font-size: 1.1rem;
+}
+
+#upload_status {
+    margin-top: 0.5rem;
+    font-style: italic;
+}
+
+.button.danger {
+    background-color: #dc3545;
+    color: white;
+    border: 1px solid #dc3545;
+}
+
+.button.danger:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+}
+
+#restart-button {
+    display: none;
 }
 </style>
 
@@ -205,9 +263,14 @@ document.getElementById('yaml-form').addEventListener('submit', async (e) => {
         const result = await response.json();
         
         if (result.status === 'success') {
-            alert('Configuration saved successfully' + 
-                  (result.restart_required ? '\nRestart required for some changes to take effect.' : ''));
-            location.reload();
+            if (result.restart_required) {
+                alert('Configuration saved successfully.\nRestart required for changes to take effect.');
+                // Show restart button
+                document.getElementById('restart-button').style.display = 'inline-block';
+            } else {
+                alert('Configuration saved successfully');
+                location.reload();
+            }
         } else {
             alert('Error: ' + result.message);
         }
@@ -215,5 +278,89 @@ document.getElementById('yaml-form').addEventListener('submit', async (e) => {
         alert('Save failed: ' + error.message);
     }
 });
+
+// Wake word upload function
+async function uploadWakeWord() {
+    const fileInput = document.getElementById('wake_word_upload');
+    const statusDiv = document.getElementById('upload_status');
+    
+    if (!fileInput.files.length) {
+        statusDiv.textContent = 'Please select a file';
+        return;
+    }
+    
+    const file = fileInput.files[0];
+    if (!file.name.endsWith('.ppn')) {
+        statusDiv.textContent = 'Invalid file type. Please upload a .ppn file';
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    statusDiv.textContent = 'Uploading...';
+    
+    try {
+        const response = await fetch('/api/wake_word/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            statusDiv.textContent = 'Upload successful! Reloading page...';
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            statusDiv.textContent = 'Upload failed: ' + result.message;
+        }
+    } catch (error) {
+        statusDiv.textContent = 'Upload failed: ' + error.message;
+    }
+}
+
+// Restart application function
+async function restartApplication() {
+    if (!confirm('This will restart the voice assistant. Are you sure?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/system/restart', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            alert('Application is restarting. Please wait a moment and refresh the page.');
+            // Disable the restart button
+            document.getElementById('restart-button').disabled = true;
+            
+            // Try to reconnect after a delay
+            setTimeout(() => {
+                checkConnection();
+            }, 5000);
+        } else {
+            alert('Restart failed: ' + result.message);
+        }
+    } catch (error) {
+        alert('Restart request failed: ' + error.message);
+    }
+}
+
+// Check if the application is back online
+function checkConnection() {
+    fetch('/api/health')
+        .then(() => {
+            // Application is back online
+            location.reload();
+        })
+        .catch(() => {
+            // Still offline, try again
+            setTimeout(checkConnection, 2000);
+        });
+}
 </script>
 {% endblock %}

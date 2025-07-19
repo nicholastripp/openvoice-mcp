@@ -27,6 +27,50 @@ from function_bridge_mcp import MCPFunctionBridge
 from wake_word import PorcupineDetector
 
 
+def check_security_permissions():
+    """Check and warn about insecure file permissions"""
+    import os
+    import stat
+    
+    # Get logger after it's been initialized
+    logger = get_logger("security")
+    
+    # Check .env file permissions
+    env_file = Path(".env")
+    if env_file.exists():
+        try:
+            stat_info = env_file.stat()
+            mode = stat_info.st_mode & 0o777
+            
+            if mode != 0o600:
+                logger.warning(
+                    f"Security Warning: .env file has insecure permissions: {oct(mode)[2:]}. "
+                    f"Run 'chmod 600 .env' to fix."
+                )
+            else:
+                logger.debug(".env file has secure permissions (600)")
+                
+        except Exception as e:
+            logger.error(f"Error checking .env file permissions: {e}")
+    
+    # Check config directory permissions
+    config_dir = Path("config")
+    if config_dir.exists():
+        try:
+            stat_info = config_dir.stat()
+            mode = stat_info.st_mode & 0o777
+            
+            # Config directory should be 700 or 750
+            if mode & 0o077:  # Check if others have any permissions
+                logger.warning(
+                    f"Security Warning: config directory has broad permissions: {oct(mode)[2:]}. "
+                    f"Consider running 'chmod 750 config' to restrict access."
+                )
+                
+        except Exception as e:
+            logger.error(f"Error checking config directory permissions: {e}")
+
+
 class SessionState(Enum):
     """Session state enumeration"""
     IDLE = "idle"
@@ -1009,9 +1053,9 @@ class VoiceAssistant:
     async def _main_loop(self) -> None:
         """Main application loop"""
         if self.config.wake_word.enabled:
-            self.logger.info(f"✓ Ready - Listening for wake word '{self.config.wake_word.model}'")
+            self.logger.info(f"Ready - Listening for wake word '{self.config.wake_word.model}'")
         else:
-            self.logger.info("✓ Ready - Wake word detection disabled, listening continuously")
+            self.logger.info("Ready - Wake word detection disabled, listening continuously")
         
         try:
             while self.running:
@@ -2776,6 +2820,9 @@ async def main():
             max_bytes=config.system.log_max_size_mb * 1024 * 1024,
             backup_count=config.system.log_backup_count
         )
+        
+        # Check security permissions on sensitive files
+        check_security_permissions()
         
         # Load personality
         personality = PersonalityProfile(args.persona)

@@ -1,15 +1,15 @@
 # Home Assistant Realtime Voice Assistant
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.1-blue)
 ![Status](https://img.shields.io/badge/status-stable-green)
 ![Python](https://img.shields.io/badge/python-3.9+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A standalone Raspberry Pi voice assistant that provides natural, low-latency conversations for Home Assistant control using OpenAI's Realtime API.
 
-## 🚀 Project Status: v1.1.0 - Web UI Release!
+## 🚀 Project Status: v1.1.1 - Security Hardened!
 
-The assistant now includes a complete web interface for easy configuration and monitoring, with built-in security features including HTTPS and authentication.
+The assistant now includes comprehensive security features, enhanced web UI functionality, and improved configuration management. This release focuses on production-ready security and usability improvements.
 
 ## Overview
 
@@ -20,13 +20,14 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 - 🎙️ **Natural Conversations**: Real-time bidirectional audio streaming with multi-turn support
 - ⚡ **Low Latency**: <800ms voice-to-voice response time  
 - 🏠 **Full HA Control**: Uses Home Assistant's Model Context Protocol (MCP)
-- 👂 **Porcupine Wake Words**: Accurate detection with built-in keywords
+- 👂 **Porcupine Wake Words**: Accurate detection with built-in keywords + custom wake word support
 - 🔊 **Automatic Gain Control**: AGC prevents clipping and maintains optimal audio levels
 - 🌍 **Multi-Language**: Configurable language support
 - 🎭 **Personality**: Customizable assistant personality
 - 🌐 **Web UI**: Complete web interface with setup wizard and real-time monitoring
-- 🔒 **Security**: HTTPS encryption and authentication for remote access
+- 🔒 **Enterprise Security**: CSRF protection, rate limiting, security headers, and secure authentication
 - 🚀 **Easy Setup**: Simple configuration and installation with guided wizard
+- 🔄 **Web-based Management**: Configure and restart without CLI access
 
 ## How It Works
 
