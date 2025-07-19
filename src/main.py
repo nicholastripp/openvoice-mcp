@@ -1240,9 +1240,19 @@ class VoiceAssistant:
         # CRITICAL: Ensure OpenAI is connected before starting session
         # This handles reconnection after the 30-minute timeout or other disconnections
         if self.openai_client:
-            if self.openai_client.state != ConnectionState.CONNECTED:
-                self.logger.info(f"OpenAI not connected (state: {self.openai_client.state.value}), reconnecting...")
-                print(f"*** OPENAI NOT CONNECTED (STATE: {self.openai_client.state.value}) - RECONNECTING ***")
+            # Log current state for debugging
+            self.logger.info(f"OpenAI client state check: {self.openai_client.state} (value: {self.openai_client.state.value})")
+            print(f"*** OPENAI STATE CHECK: {self.openai_client.state} ({self.openai_client.state.value}) ***")
+            
+            # Also check WebSocket status directly
+            ws_connected = self.openai_client.websocket is not None and not self.openai_client._is_websocket_closed()
+            self.logger.info(f"WebSocket connected: {ws_connected}, websocket exists: {self.openai_client.websocket is not None}")
+            print(f"*** WEBSOCKET STATUS: connected={ws_connected}, exists={self.openai_client.websocket is not None} ***")
+            
+            # Check if we need to reconnect - check both state and actual WebSocket
+            if self.openai_client.state != ConnectionState.CONNECTED or not ws_connected:
+                self.logger.info(f"OpenAI not connected (state: {self.openai_client.state.value}, ws_connected: {ws_connected}), reconnecting...")
+                print(f"*** OPENAI NOT CONNECTED (STATE: {self.openai_client.state.value}, WS: {ws_connected}) - RECONNECTING ***")
                 try:
                     success = await self.openai_client.connect()
                     if success:
