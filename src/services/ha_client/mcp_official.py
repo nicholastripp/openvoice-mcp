@@ -74,6 +74,7 @@ class MCPClient:
         self._capabilities: Dict[str, Any] = {}
         self._connected = False
         self._initialized = False
+        self._shutting_down = False
     
     def _httpx_client_factory(self, headers=None, auth=None, timeout=None):
         """Create httpx client with SSL settings and provided parameters."""
@@ -133,23 +134,33 @@ class MCPClient:
     
     async def _cleanup_connection(self) -> None:
         """Clean up connection contexts."""
-        try:
-            if self._session_context:
+        # Exit session context first
+        if self._session_context:
+            try:
                 await self._session_context.__aexit__(None, None, None)
-        except Exception as e:
-            logger.debug(f"Error cleaning up session context: {e}")
+            except Exception as e:
+                logger.debug(f"Error cleaning up session context: {e}")
         
-        try:
-            if self._streams_context:
+        # Then exit streams context with special handling for shutdown
+        if self._streams_context:
+            try:
                 await self._streams_context.__aexit__(None, None, None)
-        except Exception as e:
-            logger.debug(f"Error cleaning up streams context: {e}")
+            except (RuntimeError, GeneratorExit) as e:
+                if self._shutting_down and "different task" in str(e):
+                    # Expected during shutdown - suppress
+                    logger.debug("Suppressed expected SSE cleanup error during shutdown")
+                else:
+                    logger.debug(f"Error cleaning up streams context: {e}")
+            except Exception as e:
+                logger.debug(f"Error cleaning up streams context: {e}")
         
+        # Reset state
         self._session = None
         self._session_context = None
         self._streams_context = None
         self._connected = False
         self._initialized = False
+        self._shutting_down = False
     
     async def _initialize_protocol(self, session: ClientSession) -> None:
         """Initialize MCP protocol handshake."""
@@ -252,6 +263,7 @@ class MCPClient:
     async def disconnect(self) -> None:
         """Disconnect from MCP server."""
         logger.info("Disconnecting from MCP server")
+        self._shutting_down = True
         self._tools.clear()
         self._capabilities.clear()
         await self._cleanup_connection()
