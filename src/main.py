@@ -987,19 +987,10 @@ class VoiceAssistant:
             # Setup OpenAI event handlers (always needed for audio)
             self._setup_openai_handlers()
             
-            self.logger.debug("About to connect to OpenAI")
-            # Connect to OpenAI
-            try:
-                success = await self.openai_client.connect()
-                if not success:
-                    raise RuntimeError("Failed to connect to OpenAI Realtime API - connect() returned False")
-                self.logger.debug("OpenAI connection successful")
-            except Exception as e:
-                self.logger.error(f"OpenAI connection failed: {e}")
-                if self.skip_ha_check:
-                    self.logger.warning("Running with --skip-ha-check but OpenAI connection failed")
-                    self.logger.warning("Check your OpenAI API key and network connection")
-                raise RuntimeError(f"Failed to connect to OpenAI: {e}")
+            # DON'T connect to OpenAI here - only connect when actually needed (after wake word)
+            # This prevents the 30-minute timeout issue when sitting idle
+            self.logger.info("OpenAI client initialized (not connected - will connect on wake word)")
+            print("*** OPENAI CLIENT READY (WILL CONNECT ON DEMAND) ***")
         
         self.logger.debug("About to initialize audio components")
         # Initialize audio components
@@ -1439,13 +1430,12 @@ class VoiceAssistant:
         # and will cause "input_audio_buffer_commit_empty" errors
         self.logger.debug("Session ended - server VAD handles audio buffer automatically")
         
-        # CRITICAL: Disconnect OpenAI WebSocket to prevent 30-minute timeout issues
-        # OpenAI enforces a 30-minute maximum session duration, so we must disconnect
-        # when idle to reset their timer
+        # Disconnect OpenAI WebSocket after each session
+        # This ensures a fresh connection for each voice interaction
         if self.openai_client and self.openai_client.state == ConnectionState.CONNECTED:
             try:
-                self.logger.info("Disconnecting OpenAI WebSocket to prevent 30-minute timeout")
-                print("*** DISCONNECTING OPENAI TO PREVENT 30-MINUTE TIMEOUT ***")
+                self.logger.info("Disconnecting OpenAI WebSocket after session")
+                print("*** DISCONNECTING OPENAI AFTER SESSION ***")
                 await self.openai_client.disconnect()
                 self.logger.info("OpenAI WebSocket disconnected successfully")
             except Exception as e:
