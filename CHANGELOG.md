@@ -5,7 +5,25 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.1] - 2025-01-19
+## [1.1.2] - 2025-07-19
+
+### Fixed
+- **MCP Test Script** - Rewrote test_ha_connection.py to use new MCP architecture instead of deprecated Conversation API
+- **Audio Test Page** - Fixed poor text contrast (light gray on white) with proper CSS styling
+- **--skip-ha-check Flag** - Multiple fixes for proper operation:
+  - Flag now works when Home Assistant is available (not just on connection failure)
+  - OpenAI connection no longer fails when no tools are available
+  - Audio output now works correctly (was silent despite wake word and recording working)
+- **MCP SSE Shutdown** - Fixed scary traceback on Ctrl+C with improved signal handling and graceful cleanup
+- **README License** - Updated license section from "TBD" to proper MIT license reference
+
+### Added
+- **Wake Word Instructions** - Added helpful text with link to Picovoice Console for creating custom wake words
+
+### Changed
+- **OpenAI Initialization** - Restructured to ensure audio event handlers are always set up when not in wake-word-only mode
+
+## [1.1.1] - 2025-07-18
 
 ### Security
 - **CSRF Protection** - Double-submit cookie pattern for all state-changing operations
@@ -42,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - Invalid wake word options that aren't built into Porcupine
 
-## [1.1.0] - 2025-01-18
+## [1.1.0] - 2025-07-17
 
 ### Added
 - **Complete Web UI** - Full-featured web interface for configuration and monitoring
@@ -88,7 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTTPS enabled by default for web UI with strong cipher suites
 - Authentication required by default when web UI listens on all interfaces
 
-## [1.0.0] - 2025-01-18
+## [1.0.0] - 2025-07-16
 
 ### BREAKING CHANGES
 - Replaced Home Assistant Conversation API with Model Context Protocol (MCP)
@@ -124,7 +142,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Over 70 development test scripts (cleaned up for release)
 - Backward compatibility with pre-MCP versions
 
-## [0.5.0-beta] - 2025-01-16
+## [0.5.0-beta] - 2025-07-15
 
 ### Added
 - **Improved Logging System** - Separate console and file log levels for better user experience
@@ -141,7 +159,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Invalid API Call** - Removed call to non-existent `/api/conversation/agents` endpoint
 
-## [0.4.0-beta] - 2025-01-16
+## [0.4.0-beta] - 2025-07-14
 
 ### Added
 - **Custom Wake Word Support** - Use custom Picovoice wake words (.ppn files)
@@ -162,7 +180,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Wake Word Documentation** - Corrected list of built-in Porcupine keywords
 - **Error Handling** - Graceful failures instead of crashes on connection errors
 
-## [0.3.0] - 2025-01-15
+## [0.3.0] - 2025-07-13
 
 ### Changed
 - **BREAKING**: Removed OpenWakeWord support - Porcupine is now the only wake word engine
@@ -174,7 +192,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wake word model download functionality
 - Engine selection from configuration
 
-## [0.2.0-beta] - 2025-01-15
+## [0.2.0-beta] - 2025-07-12
 
 ### Added
 - **Multi-turn conversation support** - Natural back-and-forth conversations without re-triggering wake word

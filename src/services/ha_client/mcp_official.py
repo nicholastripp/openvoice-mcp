@@ -74,6 +74,7 @@ class MCPClient:
         self._capabilities: Dict[str, Any] = {}
         self._connected = False
         self._initialized = False
+        self._shutting_down = False
     
     def _httpx_client_factory(self, headers=None, auth=None, timeout=None):
         """Create httpx client with SSL settings and provided parameters."""
@@ -133,23 +134,39 @@ class MCPClient:
     
     async def _cleanup_connection(self) -> None:
         """Clean up connection contexts."""
-        try:
-            if self._session_context:
+        # Exit session context first
+        if self._session_context:
+            try:
                 await self._session_context.__aexit__(None, None, None)
-        except Exception as e:
-            logger.debug(f"Error cleaning up session context: {e}")
+            except Exception as e:
+                logger.debug(f"Error cleaning up session context: {e}")
+            finally:
+                self._session_context = None
         
-        try:
-            if self._streams_context:
+        # Then exit streams context with special handling for shutdown
+        if self._streams_context:
+            try:
                 await self._streams_context.__aexit__(None, None, None)
-        except Exception as e:
-            logger.debug(f"Error cleaning up streams context: {e}")
+            except RuntimeError as e:
+                # Common error during shutdown when context is closed from different task
+                if "different task" in str(e) or "Cannot enter" in str(e):
+                    logger.debug("SSE context cleanup during shutdown - this is expected")
+                else:
+                    logger.warning(f"Unexpected runtime error during SSE cleanup: {e}")
+            except GeneratorExit:
+                # This is expected during shutdown
+                logger.debug("SSE generator exit during cleanup - this is expected")
+            except Exception as e:
+                # Log unexpected errors
+                logger.warning(f"Unexpected error cleaning up streams context: {type(e).__name__}: {e}")
+            finally:
+                self._streams_context = None
         
+        # Reset state
         self._session = None
-        self._session_context = None
-        self._streams_context = None
         self._connected = False
         self._initialized = False
+        self._shutting_down = False
     
     async def _initialize_protocol(self, session: ClientSession) -> None:
         """Initialize MCP protocol handshake."""
@@ -251,10 +268,20 @@ class MCPClient:
     
     async def disconnect(self) -> None:
         """Disconnect from MCP server."""
+        if not self._initialized:
+            logger.debug("Already disconnected")
+            return
+            
         logger.info("Disconnecting from MCP server")
+        self._shutting_down = True
+        
+        # Clear data first
         self._tools.clear()
         self._capabilities.clear()
+        
+        # Perform cleanup
         await self._cleanup_connection()
+        logger.info("MCP server disconnected")
     
     @property
     def is_connected(self) -> bool:

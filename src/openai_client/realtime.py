@@ -91,7 +91,7 @@ class OpenAIRealtimeClient:
             }
             
             # Enhanced configuration for better audio responses
-            self.session_config["tool_choice"] = "auto"  # Allow OpenAI to choose when to use tools
+            # Only set tool_choice if we have tools (will be updated when tools are registered)
             self.session_config["max_response_output_tokens"] = "inf"  # Allow full responses
             
             # Audio configuration will be logged in connect() when logger is available
@@ -129,7 +129,8 @@ class OpenAIRealtimeClient:
             self.logger.info(f"Audio session config: input_format={self.session_config['input_audio_format']}, output_format={self.session_config['output_audio_format']}")
             self.logger.info(f"Server VAD enabled: threshold={self.session_config['turn_detection']['threshold']}, silence_duration={self.session_config['turn_detection']['silence_duration_ms']}ms")
             self.logger.info("[WARNING] Server VAD mode: Do NOT manually call commit_audio() - server will auto-commit when speech stops")
-            self.logger.info("Enhanced session config: tool_choice=auto, max_response_output_tokens=inf for better audio responses")
+            tool_choice_info = f"tool_choice={self.session_config.get('tool_choice', 'not set')}" if 'tool_choice' in self.session_config else "tool_choice will be set when tools are registered"
+            self.logger.info(f"Enhanced session config: {tool_choice_info}, max_response_output_tokens=inf for better audio responses")
             
         self.logger.debug(f"connect() called, current state: {self.state}, text_only: {self.text_only}")
         if self.state in [ConnectionState.CONNECTED, ConnectionState.CONNECTING]:
@@ -427,6 +428,10 @@ class OpenAIRealtimeClient:
         }
         
         self.session_config["tools"].append(tool)
+        
+        # Set tool_choice when first tool is registered
+        if len(self.session_config["tools"]) == 1 and not self.text_only:
+            self.session_config["tool_choice"] = "auto"
         
         # Initialize logger if needed (lazy initialization)
         if self.logger is None:

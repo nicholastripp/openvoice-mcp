@@ -7,7 +7,7 @@
 
 A standalone Raspberry Pi voice assistant that provides natural, low-latency conversations for Home Assistant control using OpenAI's Realtime API.
 
-## 🚀 Project Status: v1.1.1 - Security Hardened!
+## 🚀 Project Status: v1.1.2 - Bug Fixes & Improvements!
 
 The assistant now includes comprehensive security features, enhanced web UI functionality, and improved configuration management. This release focuses on production-ready security and usability improvements.
 
@@ -272,7 +272,7 @@ Contributions are welcome! Please read our [Contributing Guidelines](./CONTRIBUT
 
 ## License
 
-TBD
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 

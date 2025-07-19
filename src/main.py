@@ -184,6 +184,11 @@ class VoiceAssistant:
         except Exception as e:
             self.logger.error(f"Error starting assistant: {e}", exc_info=True)
             raise
+        finally:
+            # Ensure cleanup happens when main loop exits
+            if self.running:
+                self.logger.info("Main loop exited, performing cleanup...")
+                await self.stop()
     
     async def stop(self) -> None:
         """Stop the voice assistant"""
@@ -877,73 +882,81 @@ class VoiceAssistant:
             self.function_bridge = None
             self.openai_client = None
         else:
-            self.logger.debug("About to initialize Home Assistant client")
-            # Initialize Home Assistant client with graceful failure handling
-            self.logger.info("Initializing MCP client for Home Assistant...")
-            try:
-                self.mcp_client = MCPClient(
-                    base_url=self.config.home_assistant.url,
-                    access_token=self.config.home_assistant.token,
-                    sse_endpoint=self.config.home_assistant.mcp.sse_endpoint,
-                    connection_timeout=self.config.home_assistant.mcp.connection_timeout,
-                    ssl_verify=self.config.home_assistant.mcp.ssl_verify
-                )
-                await self.mcp_client.connect()
-                self.logger.debug("MCP client connected to Home Assistant")
-                
-                # Initialize function bridge
-                self.function_bridge = MCPFunctionBridge(self.mcp_client)
-                await self.function_bridge.initialize()
-                
-            except ConnectionError as e:
-                # User-friendly error message already formatted by conversation client
-                self.logger.error("Home Assistant connection failed")
-                print("\n" + "="*70)
-                print("HOME ASSISTANT CONNECTION FAILED")
-                print("="*70)
-                print(str(e))
-                print("="*70 + "\n")
-                
-                if self.skip_ha_check:
-                    print("WARNING: --skip-ha-check flag is set, continuing without Home Assistant")
-                    print("Home Assistant functionality will not be available")
-                    self.mcp_client = None
-                    self.function_bridge = None
-                else:
-                    # Check if user wants to continue in wake word only mode
-                    if self.config.wake_word.enabled:
-                        print("Wake word detection is enabled. You can:")
-                        print("  1. Fix the configuration and restart")
-                        print("  2. Run with --test-mode flag for wake word only testing")
-                        print("  3. Run with --skip-ha-check to continue without HA (limited functionality)")
-                        print("  4. Set wake_word.test_mode: true in config.yaml")
-                    else:
-                        print("\nPlease fix the configuration and try again.")
-                        print("Or run with --skip-ha-check to continue without Home Assistant (limited functionality)")
+            # Check skip_ha_check flag BEFORE attempting connection
+            if self.skip_ha_check:
+                self.logger.info("--skip-ha-check flag set: Skipping Home Assistant connection")
+                print("INFO: Skipping Home Assistant connection (--skip-ha-check flag)")
+                print("Home Assistant functionality will not be available")
+                self.mcp_client = None
+                self.function_bridge = None
+            else:
+                self.logger.debug("About to initialize Home Assistant client")
+                # Initialize Home Assistant client with graceful failure handling
+                self.logger.info("Initializing MCP client for Home Assistant...")
+                try:
+                    self.mcp_client = MCPClient(
+                        base_url=self.config.home_assistant.url,
+                        access_token=self.config.home_assistant.token,
+                        sse_endpoint=self.config.home_assistant.mcp.sse_endpoint,
+                        connection_timeout=self.config.home_assistant.mcp.connection_timeout,
+                        ssl_verify=self.config.home_assistant.mcp.ssl_verify
+                    )
+                    await self.mcp_client.connect()
+                    self.logger.debug("MCP client connected to Home Assistant")
                     
-                    raise SystemExit(1)
-                
-            except Exception as e:
-                # Unexpected error - provide generic guidance
-                self.logger.error(f"Unexpected error initializing Home Assistant: {e}")
-                print("\n" + "="*70)
-                print("UNEXPECTED ERROR")
-                print("="*70)
-                print(f"Failed to initialize Home Assistant client: {e}")
-                print("\nPlease check:")
-                print("  1. Your config.yaml file is properly formatted")
-                print("  2. Home Assistant is running and accessible")
-                print("  3. Your access token is valid")
-                print("="*70 + "\n")
-                
-                if self.skip_ha_check:
-                    print("WARNING: --skip-ha-check flag is set, continuing without Home Assistant")
-                    print("Home Assistant functionality will not be available")
-                    self.mcp_client = None
-                    self.function_bridge = None
-                else:
-                    print("\nOr run with --skip-ha-check to continue without Home Assistant (limited functionality)")
-                    raise SystemExit(1)
+                    # Initialize function bridge
+                    self.function_bridge = MCPFunctionBridge(self.mcp_client)
+                    await self.function_bridge.initialize()
+                    
+                except ConnectionError as e:
+                    # User-friendly error message already formatted by conversation client
+                    self.logger.error("Home Assistant connection failed")
+                    print("\n" + "="*70)
+                    print("HOME ASSISTANT CONNECTION FAILED")
+                    print("="*70)
+                    print(str(e))
+                    print("="*70 + "\n")
+                    
+                    if self.skip_ha_check:
+                        print("WARNING: --skip-ha-check flag is set, continuing without Home Assistant")
+                        print("Home Assistant functionality will not be available")
+                        self.mcp_client = None
+                        self.function_bridge = None
+                    else:
+                        # Check if user wants to continue in wake word only mode
+                        if self.config.wake_word.enabled:
+                            print("Wake word detection is enabled. You can:")
+                            print("  1. Fix the configuration and restart")
+                            print("  2. Run with --test-mode flag for wake word only testing")
+                            print("  3. Run with --skip-ha-check to continue without HA (limited functionality)")
+                            print("  4. Set wake_word.test_mode: true in config.yaml")
+                        else:
+                            print("\nPlease fix the configuration and try again.")
+                            print("Or run with --skip-ha-check to continue without Home Assistant (limited functionality)")
+                        
+                        raise SystemExit(1)
+                    
+                except Exception as e:
+                    # Unexpected error - provide generic guidance
+                    self.logger.error(f"Unexpected error initializing Home Assistant: {e}")
+                    print("\n" + "="*70)
+                    print("UNEXPECTED ERROR")
+                    print("="*70)
+                    print(f"Failed to initialize Home Assistant client: {e}")
+                    print("\nPlease check:")
+                    print("  1. Your config.yaml file is properly formatted")
+                    print("  2. Home Assistant is running and accessible")
+                    print("  3. Your access token is valid")
+                    print("="*70 + "\n")
+                    
+                    if self.skip_ha_check:
+                        print("WARNING: --skip-ha-check flag is set, continuing without Home Assistant")
+                        print("Home Assistant functionality will not be available")
+                        self.mcp_client = None
+                        self.function_bridge = None
+                    else:
+                        print("\nOr run with --skip-ha-check to continue without Home Assistant (limited functionality)")
+                        raise SystemExit(1)
         
         if not wake_word_only_mode:
             self.logger.debug("About to initialize OpenAI client")
@@ -952,32 +965,41 @@ class VoiceAssistant:
             personality_prompt = await self._generate_device_aware_personality()
             self.openai_client = OpenAIRealtimeClient(self.config.openai, personality_prompt)
             self.logger.debug("OpenAI client created")
-        
-        if not wake_word_only_mode and self.function_bridge:
-            # Register function handlers (only if HA is connected)
-            for func_def in self.function_bridge.get_function_definitions():
-                # Create a wrapper function that calls the bridge with the correct arguments
-                def create_wrapper(func_name):
-                    async def function_wrapper(arguments):
-                        return await self.function_bridge.handle_function_call(func_name, arguments)
-                    return function_wrapper
-                
-                self.openai_client.register_function(
-                    name=func_def["name"],
-                    handler=create_wrapper(func_def["name"]),
-                    description=func_def["description"],
-                    parameters=func_def["parameters"]
-                )
             
-            # Setup OpenAI event handlers
+            # Register function handlers (only if HA is connected)
+            if self.function_bridge:
+                for func_def in self.function_bridge.get_function_definitions():
+                    # Create a wrapper function that calls the bridge with the correct arguments
+                    def create_wrapper(func_name):
+                        async def function_wrapper(arguments):
+                            return await self.function_bridge.handle_function_call(func_name, arguments)
+                        return function_wrapper
+                    
+                    self.openai_client.register_function(
+                        name=func_def["name"],
+                        handler=create_wrapper(func_def["name"]),
+                        description=func_def["description"],
+                        parameters=func_def["parameters"]
+                    )
+            else:
+                self.logger.info("No Home Assistant connection - OpenAI will operate without function calling")
+            
+            # Setup OpenAI event handlers (always needed for audio)
             self._setup_openai_handlers()
             
             self.logger.debug("About to connect to OpenAI")
             # Connect to OpenAI
-            success = await self.openai_client.connect()
-            if not success:
-                raise RuntimeError("Failed to connect to OpenAI Realtime API")
-            self.logger.debug("OpenAI connection successful")
+            try:
+                success = await self.openai_client.connect()
+                if not success:
+                    raise RuntimeError("Failed to connect to OpenAI Realtime API - connect() returned False")
+                self.logger.debug("OpenAI connection successful")
+            except Exception as e:
+                self.logger.error(f"OpenAI connection failed: {e}")
+                if self.skip_ha_check:
+                    self.logger.warning("Running with --skip-ha-check but OpenAI connection failed")
+                    self.logger.warning("Check your OpenAI API key and network connection")
+                raise RuntimeError(f"Failed to connect to OpenAI: {e}")
         
         self.logger.debug("About to initialize audio components")
         # Initialize audio components
@@ -2722,7 +2744,9 @@ def setup_signal_handlers(assistant: VoiceAssistant) -> None:
     """Setup signal handlers for graceful shutdown"""
     def signal_handler(signum, frame):
         print(f"\\nReceived signal {signum}. Shutting down...")
-        asyncio.create_task(assistant.stop())
+        # Set the shutdown event instead of creating a new task
+        # This allows the main loop to handle shutdown gracefully
+        assistant._shutdown_event.set()
     
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
