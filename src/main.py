@@ -184,6 +184,11 @@ class VoiceAssistant:
         except Exception as e:
             self.logger.error(f"Error starting assistant: {e}", exc_info=True)
             raise
+        finally:
+            # Ensure cleanup happens when main loop exits
+            if self.running:
+                self.logger.info("Main loop exited, performing cleanup...")
+                await self.stop()
     
     async def stop(self) -> None:
         """Stop the voice assistant"""
@@ -982,10 +987,17 @@ class VoiceAssistant:
             
             self.logger.debug("About to connect to OpenAI")
             # Connect to OpenAI
-            success = await self.openai_client.connect()
-            if not success:
-                raise RuntimeError("Failed to connect to OpenAI Realtime API")
-            self.logger.debug("OpenAI connection successful")
+            try:
+                success = await self.openai_client.connect()
+                if not success:
+                    raise RuntimeError("Failed to connect to OpenAI Realtime API - connect() returned False")
+                self.logger.debug("OpenAI connection successful")
+            except Exception as e:
+                self.logger.error(f"OpenAI connection failed: {e}")
+                if self.skip_ha_check:
+                    self.logger.warning("Running with --skip-ha-check but OpenAI connection failed")
+                    self.logger.warning("Check your OpenAI API key and network connection")
+                raise RuntimeError(f"Failed to connect to OpenAI: {e}")
         
         self.logger.debug("About to initialize audio components")
         # Initialize audio components
@@ -2730,7 +2742,9 @@ def setup_signal_handlers(assistant: VoiceAssistant) -> None:
     """Setup signal handlers for graceful shutdown"""
     def signal_handler(signum, frame):
         print(f"\\nReceived signal {signum}. Shutting down...")
-        asyncio.create_task(assistant.stop())
+        # Set the shutdown event instead of creating a new task
+        # This allows the main loop to handle shutdown gracefully
+        assistant._shutdown_event.set()
     
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
