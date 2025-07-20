@@ -2207,7 +2207,7 @@ class VoiceAssistant:
                 # Check for stuck audio playback
                 if (self.audio_playback and 
                     self.audio_playback.is_response_active and 
-                    current_time - self.last_activity > self.cleanup_interval):
+                    current_time - self.last_activity > self.config.session.max_duration):
                     
                     self.logger.warning("Stuck audio playback detected, forcing completion")
                     print("*** STUCK AUDIO PLAYBACK CLEANUP ***")
