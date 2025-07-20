@@ -287,11 +287,11 @@ class VoiceAssistant:
         # Define valid transitions
         valid_transitions = {
             SessionState.IDLE: [SessionState.LISTENING, SessionState.COOLDOWN],
-            SessionState.LISTENING: [SessionState.PROCESSING, SessionState.IDLE, SessionState.MULTI_TURN_LISTENING],
+            SessionState.LISTENING: [SessionState.PROCESSING, SessionState.RESPONDING, SessionState.AUDIO_PLAYING, SessionState.IDLE, SessionState.MULTI_TURN_LISTENING],
             SessionState.PROCESSING: [SessionState.RESPONDING, SessionState.IDLE, SessionState.LISTENING],
             SessionState.RESPONDING: [SessionState.AUDIO_PLAYING, SessionState.IDLE, SessionState.MULTI_TURN_LISTENING],
             SessionState.AUDIO_PLAYING: [SessionState.IDLE, SessionState.MULTI_TURN_LISTENING, SessionState.COOLDOWN],
-            SessionState.MULTI_TURN_LISTENING: [SessionState.PROCESSING, SessionState.IDLE, SessionState.LISTENING],
+            SessionState.MULTI_TURN_LISTENING: [SessionState.PROCESSING, SessionState.RESPONDING, SessionState.AUDIO_PLAYING, SessionState.IDLE, SessionState.LISTENING],
             SessionState.COOLDOWN: [SessionState.IDLE, SessionState.LISTENING]
         }
         
@@ -336,6 +336,17 @@ class VoiceAssistant:
                 fetch_time = asyncio.get_event_loop().time() - start_time
                 self.logger.info(f"Device fetch completed in {fetch_time:.2f}s")
                 
+                # Update cache only if we got valid data
+                if states is None:
+                    self.logger.warning("Failed to fetch device states, using cached data if available")
+                    # Use cached data if available
+                    if self._device_cache is not None:
+                        states = self._device_cache
+                        self.logger.info(f"Using stale cache data ({len(states)} devices)")
+                    else:
+                        self.logger.warning("No cached device data available")
+                        return base_prompt
+                        
                 # Update cache
                 if states:
                     self._device_cache = states
@@ -461,9 +472,18 @@ class VoiceAssistant:
     
     async def _fetch_device_states_mcp(self) -> Optional[List[Dict[str, Any]]]:
         """Fetch device states using MCP tools via natural language queries."""
-        if not self.mcp_client or not self.mcp_client.is_connected:
-            self.logger.warning("MCP client not connected, cannot fetch device states")
+        if not self.mcp_client:
+            self.logger.warning("MCP client not initialized")
             return None
+            
+        # Try to connect if not connected
+        if not self.mcp_client.is_connected:
+            self.logger.info("MCP client not connected, attempting to connect...")
+            try:
+                await self.mcp_client.connect()
+            except Exception as e:
+                self.logger.error(f"Failed to connect MCP client: {e}")
+                return None
         
         try:
             # Find a suitable tool for querying device states
@@ -559,7 +579,8 @@ class VoiceAssistant:
                         self.logger.info(f"No result returned for query: {query}")
                     
                 except Exception as e:
-                    self.logger.info(f"Query '{query}' failed: {e}")
+                    self.logger.warning(f"Query '{query}' failed: {e}")
+                    # If it's a connection error, the MCP client will handle reconnection internally
                     continue
             
             if all_device_info:
@@ -579,6 +600,9 @@ class VoiceAssistant:
                 
         except Exception as e:
             self.logger.error(f"Error fetching device states via MCP: {e}")
+            # Reset MCP connection state on critical errors
+            if "connection" in str(e).lower() or "protocol" in str(e).lower():
+                self.logger.info("Connection error detected, MCP client will attempt reconnection on next use")
             return None
     
     def _parse_mcp_device_response(self, response: Any, query: str) -> List[Dict[str, Any]]:
@@ -899,7 +923,11 @@ class VoiceAssistant:
                         access_token=self.config.home_assistant.token,
                         sse_endpoint=self.config.home_assistant.mcp.sse_endpoint,
                         connection_timeout=self.config.home_assistant.mcp.connection_timeout,
-                        ssl_verify=self.config.home_assistant.mcp.ssl_verify
+                        sse_read_timeout=self.config.home_assistant.mcp.sse_read_timeout,
+                        ssl_verify=self.config.home_assistant.mcp.ssl_verify,
+                        max_reconnect_attempts=self.config.home_assistant.mcp.max_reconnect_attempts,
+                        reconnect_base_delay=self.config.home_assistant.mcp.reconnect_base_delay,
+                        reconnect_max_delay=self.config.home_assistant.mcp.reconnect_max_delay
                     )
                     await self.mcp_client.connect()
                     self.logger.debug("MCP client connected to Home Assistant")
@@ -1895,7 +1923,7 @@ class VoiceAssistant:
                 return
             
             # Validate we're in a valid state for audio completion
-            if self.session_state not in [SessionState.AUDIO_PLAYING, SessionState.RESPONDING]:
+            if self.session_state not in [SessionState.AUDIO_PLAYING, SessionState.RESPONDING, SessionState.MULTI_TURN_LISTENING]:
                 self.logger.warning(f"Audio completion in unexpected state: {self.session_state.value} - ignoring")
                 return
             
@@ -2451,6 +2479,7 @@ class VoiceAssistant:
             print(f"*** IGNORING SPEECH EVENT IN {self.session_state.value.upper()} STATE ***")
             return
         
+        
         # CRITICAL: Require minimum speech duration to prevent premature VAD triggers
         if hasattr(self, 'session_start_time'):
             time_since_start = asyncio.get_event_loop().time() - self.session_start_time
@@ -2706,6 +2735,8 @@ class VoiceAssistant:
     
     async def _adjust_vad_after_delay(self) -> None:
         """Adjust VAD to normal sensitivity after initial period"""
+        self.logger.info("VAD adjustment delay started - waiting 2 seconds...")
+        print("*** WAITING 2 SECONDS BEFORE ENABLING NORMAL VAD SENSITIVITY ***")
         await asyncio.sleep(2.0)  # Wait 2 seconds
         
         # Only adjust if still in listening state
@@ -2713,6 +2744,9 @@ class VoiceAssistant:
             await self.openai_client.update_vad_settings(threshold=0.2, silence_duration_ms=800)
             self.logger.info("Adjusted VAD to normal sensitivity after initial period")
             print("*** VAD ADJUSTED TO NORMAL SENSITIVITY ***")
+        else:
+            self.logger.warning(f"VAD adjustment skipped - session_state: {self.session_state}, openai_client: {self.openai_client is not None}")
+            print("*** VAD ADJUSTMENT SKIPPED - SESSION NO LONGER IN LISTENING STATE ***")
     
     
     async def _vad_timeout_handler(self) -> None:

@@ -29,6 +29,10 @@ class MCPConfig:
     reconnect_attempts: int = 3
     ssl_verify: bool = True  # Whether to verify SSL certificates
     ssl_ca_bundle: Optional[str] = None  # Path to custom CA bundle
+    max_reconnect_attempts: int = 5  # Maximum number of reconnection attempts
+    reconnect_base_delay: float = 1.0  # Base delay between reconnection attempts
+    reconnect_max_delay: float = 60.0  # Maximum delay between reconnection attempts
+    sse_read_timeout: int = 300  # SSE read timeout in seconds
 
 
 @dataclass
@@ -100,7 +104,7 @@ class SessionConfig:
     response_cooldown_delay: float = 2.0
     
     # Multi-turn conversation settings
-    conversation_mode: str = "single_turn"  # "single_turn" or "multi_turn"
+    conversation_mode: str = "multi_turn"  # "single_turn" or "multi_turn"
     multi_turn_timeout: float = 300.0  # Safety fallback timeout (5 minutes)
     multi_turn_max_turns: int = 10  # maximum conversation turns per session
     multi_turn_end_phrases: list = None  # phrases to end conversation

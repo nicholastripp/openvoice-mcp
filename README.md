@@ -1,13 +1,13 @@
 # Home Assistant Realtime Voice Assistant
 
-![Version](https://img.shields.io/badge/version-1.1.4-blue)
+![Version](https://img.shields.io/badge/version-1.1.5-blue)
 ![Status](https://img.shields.io/badge/status-stable-green)
 ![Python](https://img.shields.io/badge/python-3.9+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A standalone Raspberry Pi voice assistant that provides natural, low-latency conversations for Home Assistant control using OpenAI's Realtime API.
 
-## 🚀 Project Status: v1.1.4 - Fixed Audio Timeout Issues!
+## 🚀 Project Status: v1.1.5 - Enhanced SSE Connection Stability!
 
 This release fixes multiple hardcoded timeouts that were cutting off long AI responses. Audio responses can now play for the full configured duration (default 5 minutes). All timeout mechanisms now respect the configurable `session.max_duration` setting.
 

@@ -1,3 +1,19 @@
+# Private documentation and planning
+docs/private/
+private/
+internal/
+
+# Local configuration and secrets
+config/config.yaml
+config/persona.ini
+config/certs/
+*.local
+*.local.*
+.env*
+*secret*
+*credential*
+*token*
+
 # Python
 __pycache__/
 *.py[cod]
@@ -26,11 +42,7 @@ MANIFEST
 *.manifest
 *.spec
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
+# Testing and coverage
 htmlcov/
 .tox/
 .nox/
@@ -46,13 +58,12 @@ coverage.xml
 cover/
 
 # Virtual environments
-.env
-.venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+.venv/
 
 # IDEs
 .vscode/
@@ -61,7 +72,7 @@ venv.bak/
 *.swo
 *~
 
-# OS
+# Operating System
 .DS_Store
 .DS_Store?
 ._*
@@ -70,34 +81,26 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Project specific
-config/config.yaml
-config/persona.ini
-config/certs/*.crt
-config/certs/*.key
-config/certs/*.pem
-config/certs/*.csr
+# Logs and debug
 logs/
 *.log
 debug_audio/
 recordings/
 
-# Legacy
-billy-b-assistant/.env
-
-# Claude Development Files
-.claude/
+# Development and reference
+.claude*
 CLAUDE.md
+reference-*/
 
-# Reference Materials (not for distribution)
-reference-code-billy-bass/
-reference-documentation/
+# Legacy
+billy-b-assistant/
 
-# Temporary files
+# Temporary and backup files
 *.tmp
 *.temp
 *.bak
+*.backup
 
-# Private brainstorming documents
-mcp-voice-client-brainstorm.md
-openvoice-mcp-initial-tasks.md
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt

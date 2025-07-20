@@ -23,6 +23,10 @@ home_assistant:
     reconnect_attempts: 3                 # Number of reconnection attempts
     ssl_verify: true                      # Verify SSL certificates (set to false for self-signed certs)
     ssl_ca_bundle: null                   # Path to custom CA bundle file (optional)
+    max_reconnect_attempts: 5             # Maximum reconnection attempts for SSE
+    reconnect_base_delay: 1.0             # Base delay between reconnection attempts (seconds)
+    reconnect_max_delay: 60.0             # Maximum delay between reconnection attempts (seconds)
+    sse_read_timeout: 300                 # SSE read timeout in seconds
   
 # Audio Configuration
 audio:

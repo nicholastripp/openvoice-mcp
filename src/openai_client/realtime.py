@@ -59,6 +59,9 @@ class OpenAIRealtimeClient:
         self.websocket: Optional[websockets.WebSocketServerProtocol] = None
         self.session_id: Optional[str] = None
         
+        # Session tracking
+        self.session_created_time: Optional[float] = None
+        
         # Event handlers
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.function_handlers: Dict[str, Callable] = {}
@@ -82,7 +85,7 @@ class OpenAIRealtimeClient:
             self.session_config["output_audio_format"] = "pcm16"
             self.session_config["turn_detection"] = {
                 "type": "server_vad",
-                "threshold": 0.2,  # Further lowered for more sensitive detection
+                "threshold": 0.2,  # Standard sensitivity - premature triggers handled by filtering
                 "prefix_padding_ms": 500,  # Increased padding to capture speech start
                 "silence_duration_ms": 800  # Longer silence before stopping to allow natural speech
             }
@@ -147,6 +150,8 @@ class OpenAIRealtimeClient:
             return True
             
         self.state = ConnectionState.CONNECTING
+        # Reset session tracking on new connection
+        self.session_created_time = None
         self.logger.info("Connecting to OpenAI Realtime API...")
         self.logger.debug("Starting connection to OpenAI Realtime API...")
         
@@ -236,6 +241,7 @@ class OpenAIRealtimeClient:
         self.state = ConnectionState.DISCONNECTED
         self.websocket = None
         self.session_id = None
+        self.session_created_time = None
         self.logger.info("Disconnected from OpenAI Realtime API")
     
     def _is_websocket_closed(self) -> bool:
@@ -500,7 +506,9 @@ class OpenAIRealtimeClient:
         # Handle specific event types
         if event_type == "session.created":
             self.session_id = event.data.get("session", {}).get("id")
+            self.session_created_time = asyncio.get_event_loop().time()
             self.logger.info(f"Session created: {self.session_id}")
+            print(f"*** OPENAI SESSION CREATED (ID: {self.session_id[:8]}...) ***")
             
         elif event_type == "session.updated":
             self.logger.debug("Session configuration updated")
@@ -814,6 +822,7 @@ class OpenAIRealtimeClient:
         # Send updated session if connected
         if self.state == ConnectionState.CONNECTED:
             asyncio.create_task(self._send_session_update())
+    
     
     def _validate_audio_format(self, audio_data: bytes) -> bool:
         """

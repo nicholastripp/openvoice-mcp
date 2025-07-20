@@ -5,6 +5,36 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.5] - 2025-07-20
+
+### Fixed
+- **SSE Connection Stability** - Fixed crashes due to MCP SSE connection drops:
+  - Added robust reconnection logic with exponential backoff (up to 5 attempts)
+  - Automatic reconnection when connection errors occur during tool calls
+  - Graceful error handling for SSE protocol and network errors
+  - Fallback to cached data when MCP connection fails
+- **Audio Flow Restoration** - Restored original working audio behavior:
+  - Removed problematic session readiness mechanism that was filtering VAD events
+  - Fixed state transitions for proper multi-turn conversation flow
+  - Ensured user experience matches main branch exactly
+- **Multi-turn Conversation Issues** - Fixed various state transition problems:
+  - Allow proper transitions from LISTENING to RESPONDING and AUDIO_PLAYING states
+  - Fixed audio completion handling in multi-turn scenarios
+  - Restored natural conversation flow
+
+### Changed
+- **Multi-turn conversations enabled by default** for better user experience
+- **Enhanced configuration options** for SSE connection management:
+  - `max_reconnect_attempts`: Maximum reconnection attempts (default: 5)
+  - `reconnect_base_delay`: Base delay between attempts (default: 1.0s)
+  - `reconnect_max_delay`: Maximum delay between attempts (default: 60.0s)
+  - `sse_read_timeout`: SSE read timeout (default: 300s)
+
+### Technical
+- Comprehensive refactoring of session state management
+- Improved error handling and logging throughout the application
+- Enhanced WebSocket connection stability
+
 ## [1.1.4] - 2025-07-20
 
 ### Fixed
