@@ -1183,7 +1183,7 @@ class VoiceAssistant:
            self.response_start_time:
             
             response_duration = current_time - self.response_start_time
-            max_response_time = 45.0  # 45 seconds max response time
+            max_response_time = self.config.session.max_duration  # Use configured max duration
             
             if response_duration > max_response_time:
                 # Track deferral count to prevent infinite loops
