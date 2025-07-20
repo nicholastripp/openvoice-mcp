@@ -5,6 +5,29 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2025-07-20
+
+### Fixed
+- **Multiple Audio Timeout Issues** - Fixed various hardcoded timeouts that were cutting off long AI responses:
+  - AudioPlayback now uses configurable `session.max_duration` instead of hardcoded 30 seconds
+  - "Stuck audio" detection in main.py now uses `session.max_duration` instead of hardcoded 45 seconds
+  - Periodic cleanup "stuck audio" check now uses `session.max_duration` instead of 30-second cleanup interval
+  - Session state duration check now uses `session.max_duration` for audio states (RESPONDING, AUDIO_PLAYING)
+  - All audio timeout mechanisms now respect the same configurable value (default 300 seconds)
+- **WebSocket Reconnection Rate Limiting** - Fixed aggressive reconnection loop after session expiry:
+  - Implemented exponential backoff for reconnection attempts (3s → 6s → 12s... up to 120s)
+  - Added proper authentication check before accepting WebSocket connections
+  - Dashboard shows clear "Session Expired" message instead of endless reconnection attempts
+- **Web UI Issues**:
+  - Fixed shutdown hang caused by unclosed WebSocket connections
+  - Fixed OpenAI status showing "Disconnected" instead of "Ready (On-Demand)"
+  - Fixed version display to dynamically show current version instead of hardcoded v1.1.0
+  - Fixed module import error when running main.py directly
+
+### Changed
+- **Configuration Clarification** - `session.max_duration` now clearly documented as "Maximum audio response duration"
+- **Default Session Timeout** - Web UI session timeout increased from 1 hour to 7 days for better usability
+
 ## [1.1.3] - 2025-07-20
 
 ### Fixed

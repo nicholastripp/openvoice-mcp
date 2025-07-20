@@ -15,7 +15,7 @@ async def welcome_page(request: web.Request) -> dict:
     """Welcome page for setup wizard"""
     return {
         'title': 'Welcome to HA Voice Assistant',
-        'version': '1.1.3'
+        'version': '1.1.4'
     }
 
 
