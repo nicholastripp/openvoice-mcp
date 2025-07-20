@@ -2317,9 +2317,17 @@ class VoiceAssistant:
             return
             
         try:
+            # Determine OpenAI status (matching logic in status.py)
+            if self.openai_client:
+                if self.openai_client.state == ConnectionState.CONNECTED:
+                    openai_status = 'connected'
+                else:
+                    openai_status = 'ready'  # Configured but not connected (normal state)
+            else:
+                openai_status = 'not_configured'
+            
             connections = {
-                'openai': bool(self.openai_client and 
-                             self.openai_client.state == ConnectionState.CONNECTED),
+                'openai': openai_status,
                 'home_assistant': bool(self.mcp_client and self.mcp_client.is_connected),
                 'wake_word': bool(self.wake_word_detector and self.wake_word_detector.is_running)
             }
