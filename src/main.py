@@ -1168,8 +1168,16 @@ class VoiceAssistant:
         current_time = asyncio.get_event_loop().time()
         time_in_state = current_time - self.last_state_change
         
+        # Determine max duration based on state
+        if self.session_state in [SessionState.RESPONDING, SessionState.AUDIO_PLAYING]:
+            # Audio states can take longer - use configured max duration
+            max_duration = self.config.session.max_duration
+        else:
+            # Other states should complete quickly
+            max_duration = self.max_state_duration
+        
         # Check if we've been in the same state too long
-        if time_in_state > self.max_state_duration:
+        if time_in_state > max_duration:
             self.logger.error(f"Session stuck in {self.session_state.value} state for {time_in_state:.1f}s - forcing recovery")
             print(f"*** SESSION STUCK IN {self.session_state.value.upper()} STATE FOR {time_in_state:.1f}S - FORCING RECOVERY ***")
             
