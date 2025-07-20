@@ -40,9 +40,17 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
             from openai_client.realtime import ConnectionState
             
             # Get real connection status
+            # For OpenAI, return status string to reflect on-demand connection
+            if assistant.openai_client:
+                if assistant.openai_client.state == ConnectionState.CONNECTED:
+                    openai_status = 'connected'
+                else:
+                    openai_status = 'ready'  # Configured but not connected (normal state)
+            else:
+                openai_status = 'not_configured'
+            
             connections = {
-                'openai': bool(assistant.openai_client and 
-                             assistant.openai_client.state == ConnectionState.CONNECTED),
+                'openai': openai_status,
                 'home_assistant': bool(assistant.mcp_client and assistant.mcp_client.is_connected),
                 'wake_word': bool(assistant.wake_word_detector and assistant.wake_word_detector.is_running)
             }
@@ -59,7 +67,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                 'type': 'status',
                 'state': 'idle',
                 'connections': {
-                    'openai': False,
+                    'openai': 'not_configured',
                     'home_assistant': False,
                     'wake_word': False
                 }

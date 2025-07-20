@@ -255,8 +255,27 @@ function updateConnection(service, status) {
     const indicator = document.getElementById(service + '-status');
     const text = document.getElementById(service + '-text');
     
-    indicator.className = 'status-indicator ' + (status ? 'online' : 'offline');
-    text.textContent = status ? 'Connected' : 'Disconnected';
+    // Special handling for OpenAI status
+    if (service === 'openai') {
+        if (status === 'ready') {
+            indicator.className = 'status-indicator online';
+            text.textContent = 'Ready (On-Demand)';
+        } else if (status === 'connected') {
+            indicator.className = 'status-indicator online';
+            text.textContent = 'Active';
+        } else if (status === 'not_configured') {
+            indicator.className = 'status-indicator offline';
+            text.textContent = 'Not Configured';
+        } else {
+            // Fallback for boolean false
+            indicator.className = 'status-indicator offline';
+            text.textContent = 'Disconnected';
+        }
+    } else {
+        // Original logic for other services
+        indicator.className = 'status-indicator ' + (status ? 'online' : 'offline');
+        text.textContent = status ? 'Connected' : 'Disconnected';
+    }
 }
 
 function updateAudioLevel(level) {
