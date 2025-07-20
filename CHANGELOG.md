@@ -5,6 +5,18 @@ All notable changes to the Home Assistant Realtime Voice Assistant project will 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2025-07-20
+
+### Fixed
+- **OpenAI 30-minute session timeout** - Complete fix for "Your session hit the maximum duration of 30 minutes" error:
+  - OpenAI connection now established on-demand (after wake word) instead of at startup
+  - WebSocket properly disconnects after each voice session
+  - Fixed reconnection logic to check actual WebSocket status, not just connection state
+  - No more idle connections consuming resources or hitting timeout limits
+
+### Changed
+- **Connection Management** - OpenAI WebSocket connections are now created per-session for better resource efficiency
+
 ## [1.1.2] - 2025-07-19
 
 ### Fixed

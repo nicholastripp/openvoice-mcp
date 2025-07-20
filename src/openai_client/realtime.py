@@ -133,7 +133,17 @@ class OpenAIRealtimeClient:
             self.logger.info(f"Enhanced session config: {tool_choice_info}, max_response_output_tokens=inf for better audio responses")
             
         self.logger.debug(f"connect() called, current state: {self.state}, text_only: {self.text_only}")
-        if self.state in [ConnectionState.CONNECTED, ConnectionState.CONNECTING]:
+        
+        # Check if we actually have a connected WebSocket, not just the state
+        # This handles cases where disconnect() was called but state wasn't updated properly
+        if self.websocket and not self._is_websocket_closed():
+            if self.state == ConnectionState.CONNECTED:
+                self.logger.debug("WebSocket is already connected and open")
+                return True
+        
+        # If we're already connecting, don't start another connection
+        if self.state == ConnectionState.CONNECTING:
+            self.logger.debug("Already connecting, skipping duplicate connection attempt")
             return True
             
         self.state = ConnectionState.CONNECTING
