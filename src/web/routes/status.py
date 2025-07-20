@@ -24,6 +24,34 @@ async def status_dashboard(request: web.Request) -> dict:
 
 async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     """WebSocket handler for real-time status updates"""
+    
+    # Check authentication before accepting WebSocket
+    if request.app.get('auth_config', {}).get('enabled', True):
+        # Check session auth
+        session_token = request.cookies.get('session_token')
+        has_valid_session = session_token and session_token in request.app.get('sessions', {})
+        
+        # Check basic auth
+        from ..auth import extract_basic_auth, verify_password
+        auth_tuple = extract_basic_auth(request)
+        has_valid_basic = False
+        if auth_tuple:
+            username, password = auth_tuple
+            auth_config = request.app.get('auth_config', {})
+            expected_username = auth_config.get('username')
+            password_hash = auth_config.get('password_hash', '')
+            has_valid_basic = (username == expected_username and 
+                             password_hash and 
+                             verify_password(password, password_hash))
+        
+        # Reject if neither auth method is valid
+        if not has_valid_session and not has_valid_basic:
+            ws = web.WebSocketResponse()
+            await ws.prepare(request)
+            await ws.close(code=1008, message=b'Authentication required')
+            return ws
+    
+    # Normal WebSocket setup
     ws = web.WebSocketResponse()
     await ws.prepare(request)
     

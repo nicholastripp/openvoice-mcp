@@ -162,7 +162,10 @@
 <script>
 // WebSocket connection for real-time updates
 let ws = null;
-let reconnectInterval = null;
+let reconnectDelay = 3000; // Start at 3 seconds
+let maxReconnectDelay = 120000; // Cap at 2 minutes
+let reconnectTimeout = null;
+let authFailed = false;
 // Use server-provided start time, or fall back to page load time
 let startTime = {{ start_time if start_time else 'Date.now()' }};
 let stats = {
@@ -177,7 +180,13 @@ function connectWebSocket() {
     
     ws.onopen = () => {
         console.log('WebSocket connected');
-        clearInterval(reconnectInterval);
+        // Reset delay on successful connection
+        reconnectDelay = 3000;
+        authFailed = false;
+        if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = null;
+        }
     };
     
     ws.onmessage = (event) => {
@@ -185,10 +194,33 @@ function connectWebSocket() {
         updateStatus(data);
     };
     
-    ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        // Reconnect after 3 seconds
-        reconnectInterval = setInterval(connectWebSocket, 3000);
+    ws.onclose = (event) => {
+        console.log('WebSocket disconnected:', event.code, event.reason);
+        
+        // Check if it's an auth failure (1008 = Policy Violation)
+        if (event.code === 1008 || (event.reason && event.reason.includes('Authentication'))) {
+            authFailed = true;
+            // Show auth failure message
+            document.getElementById('state-text').textContent = 'Session Expired';
+            document.getElementById('state-indicator').className = 'status-indicator offline';
+            
+            // Add refresh prompt
+            const activityLog = document.getElementById('activity-log');
+            activityLog.innerHTML = '<p class="activity-entry" style="color: #ff6b6b;">Session expired. Please <a href="#" onclick="window.location.reload(); return false;">refresh the page</a> to re-authenticate.</p>';
+            
+            // Don't attempt to reconnect
+            return;
+        }
+        
+        // Only reconnect if not auth failed
+        if (!authFailed) {
+            console.log(`Reconnecting in ${reconnectDelay/1000} seconds...`);
+            reconnectTimeout = setTimeout(() => {
+                connectWebSocket();
+                // Increase delay for next attempt (exponential backoff)
+                reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
+            }, reconnectDelay);
+        }
     };
     
     ws.onerror = (error) => {
