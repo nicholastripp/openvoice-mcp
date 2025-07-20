@@ -79,9 +79,9 @@ wake_word:
   
 # Session Configuration
 session:
-  timeout: 30                     # Session timeout in seconds
+  timeout: 30                    # Session timeout in seconds
   auto_end_silence: 3.0          # End session after silence (seconds)
-  max_duration: 300              # Maximum session duration (seconds)
+  max_duration: 300              # Maximum audio response duration in seconds (prevents stuck audio playback)
   interrupt_threshold: 0.5       # Voice activity to interrupt AI
   auto_end_after_response: true  # Auto-end session after response completion
   response_cooldown_delay: 2.0   # Cooldown delay before ending session (seconds)

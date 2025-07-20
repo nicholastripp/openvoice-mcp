@@ -19,8 +19,9 @@ class AudioPlayback:
     Handles resampling from OpenAI's 24kHz to device rate and queuing
     """
     
-    def __init__(self, config: AudioConfig):
+    def __init__(self, config: AudioConfig, session_config=None):
         self.config = config
+        self.session_config = session_config
         self.logger = None  # Will be initialized in start()
         
         # Audio parameters
@@ -69,7 +70,11 @@ class AudioPlayback:
         self.last_audio_time = 0
         self.completion_timeout = 3.0  # 3 seconds timeout for completion detection
         self.completion_timeout_task = None
-        self.max_response_duration = 30.0  # 30 seconds maximum response duration
+        # Use session.max_duration if available, otherwise default to 30 seconds
+        if self.session_config and hasattr(self.session_config, 'max_duration'):
+            self.max_response_duration = float(self.session_config.max_duration)
+        else:
+            self.max_response_duration = 30.0  # Default fallback
         
         # Pre-buffering for smooth playback start
         self.pre_buffering = False

@@ -996,7 +996,7 @@ class VoiceAssistant:
         # Initialize audio components
         self.logger.info("Initializing audio components...")
         self.audio_capture = AudioCapture(self.config.audio)
-        self.audio_playback = AudioPlayback(self.config.audio)
+        self.audio_playback = AudioPlayback(self.config.audio, session_config=self.config.session)
         
         self.logger.debug("Starting audio capture")
         await self.audio_capture.start()
