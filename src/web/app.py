@@ -128,6 +128,13 @@ class WebApp:
         
         # Set up shutdown handler
         async def on_shutdown(app):
+            # Close any remaining WebSockets
+            if 'websockets' in app:
+                for ws in list(app['websockets']):
+                    try:
+                        await ws.close()
+                    except Exception:
+                        pass
             await rate_limiter.stop_cleanup()
             
         self.app.on_shutdown.append(on_shutdown)
@@ -188,6 +195,17 @@ class WebApp:
             
     async def stop(self):
         """Stop the web server"""
+        # Close all active WebSocket connections first
+        if self.app and 'websockets' in self.app:
+            logger.info(f"Closing {len(self.app['websockets'])} active WebSocket connections...")
+            for ws in list(self.app['websockets']):  # Use list() to avoid modification during iteration
+                try:
+                    await ws.close()
+                except Exception as e:
+                    logger.debug(f"Error closing WebSocket: {e}")
+            self.app['websockets'].clear()
+        
+        # Then cleanup the runner
         if self.runner:
             await self.runner.cleanup()
             logger.info("Web UI stopped")
