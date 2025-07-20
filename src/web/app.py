@@ -18,7 +18,7 @@ from .certs import create_self_signed_cert, create_ssl_context
 from .utils.csrf import CSRFProtection
 from .utils.rate_limit import RateLimitMiddleware
 from .utils.security_headers import SecurityHeaders
-from src import __version__
+from . import __version__
 
 logger = logging.getLogger(__name__)
 
