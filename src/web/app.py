@@ -18,6 +18,7 @@ from .certs import create_self_signed_cert, create_ssl_context
 from .utils.csrf import CSRFProtection
 from .utils.rate_limit import RateLimitMiddleware
 from .utils.security_headers import SecurityHeaders
+from src import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -80,12 +81,15 @@ class WebApp:
         # Set up Jinja2 templates
         template_dir = Path(__file__).parent / "templates"
         
-        # Context processor to inject CSRF token
+        # Context processor to inject CSRF token and version
         async def context_processor(request):
             csrf_token = ""
             if 'csrf' in request.app:
                 csrf_token = request.app['csrf'].get_csrf_token(request)
-            return {'csrf_token': csrf_token}
+            return {
+                'csrf_token': csrf_token,
+                'version': __version__
+            }
         
         aiohttp_jinja2.setup(
             self.app,
