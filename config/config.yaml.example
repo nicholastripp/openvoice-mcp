@@ -121,7 +121,7 @@ web_ui:
     enabled: true              # Require login (highly recommended when host is 0.0.0.0)
     username: "admin"          # Default username
     password_hash: ${WEB_UI_PASSWORD_HASH}  # BCrypt hash from .env (set during install)
-    session_timeout: 3600      # Session timeout in seconds (1 hour)
+    session_timeout: 604800    # Session timeout in seconds (7 days)
   
   # TLS/HTTPS settings
   tls:
