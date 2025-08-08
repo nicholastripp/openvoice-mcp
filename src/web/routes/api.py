@@ -4,6 +4,8 @@ API routes for testing and validation
 import logging
 import asyncio
 import os
+import re
+import secrets
 import sys
 import time
 from typing import Dict
@@ -222,12 +224,51 @@ async def upload_wake_word(request: web.Request) -> web.Response:
                 'message': 'Invalid file type. Must be a .ppn file'
             }, status=400)
         
+        # Sanitize filename to prevent path traversal
+        # Extract basename to remove any directory components
+        safe_filename = os.path.basename(filename)
+        
+        # Reject suspicious patterns
+        if not safe_filename or safe_filename.startswith('.') or '..' in safe_filename:
+            logger.warning(f"Rejected suspicious filename: {filename}")
+            return web.json_response({
+                'status': 'error',
+                'message': 'Invalid filename'
+            }, status=400)
+        
+        # Validate extension again after sanitization
+        if not safe_filename.endswith('.ppn'):
+            return web.json_response({
+                'status': 'error',
+                'message': 'Invalid file extension'
+            }, status=400)
+        
+        # Remove any non-alphanumeric characters except dots, hyphens, underscores
+        safe_filename = re.sub(r'[^a-zA-Z0-9\.\-_]', '_', safe_filename)
+        
+        # Limit filename length
+        if len(safe_filename) > 100:
+            safe_filename = safe_filename[:100]
+        
+        # Generate unique filename to prevent overwrites and conflicts
+        unique_filename = f"{secrets.token_hex(8)}_{safe_filename}"
+        
         # Create wake_words directory if it doesn't exist
-        wake_words_dir = Path('config/wake_words')
+        wake_words_dir = Path('config/wake_words').resolve()
         wake_words_dir.mkdir(parents=True, exist_ok=True)
         
-        # Save the file
-        file_path = wake_words_dir / filename
+        # Build file path and verify it's within our directory
+        file_path = (wake_words_dir / unique_filename).resolve()
+        
+        # Security check: ensure resolved path is within wake_words directory
+        try:
+            file_path.relative_to(wake_words_dir)
+        except ValueError:
+            logger.error(f"Path traversal attempt detected: {filename}")
+            return web.json_response({
+                'status': 'error',
+                'message': 'Security violation detected'
+            }, status=400)
         size = 0
         
         with open(file_path, 'wb') as f:
@@ -247,12 +288,13 @@ async def upload_wake_word(request: web.Request) -> web.Response:
                         'message': 'File too large. Maximum size is 10MB'
                     }, status=413)
         
-        logger.info(f"Uploaded wake word model: {filename} ({size} bytes)")
+        logger.info(f"Uploaded wake word model: {unique_filename} (original: {filename}, size: {size} bytes)")
         
         return web.json_response({
             'status': 'success',
-            'message': f'Wake word model "{filename}" uploaded successfully',
-            'filename': filename,
+            'message': f'Wake word model uploaded successfully',
+            'filename': unique_filename,
+            'original_filename': safe_filename,
             'size': size
         })
         

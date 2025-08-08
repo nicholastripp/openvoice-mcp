@@ -4,7 +4,7 @@ Audio diagnostics and system configuration validation utilities
 import subprocess
 import re
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 import sounddevice as sd
 
 from utils.logger import get_logger
@@ -12,6 +12,18 @@ from utils.logger import get_logger
 
 class AudioDiagnostics:
     """Diagnostic utilities for audio system configuration"""
+    
+    # Predefined list of common ALSA control names (allowlist)
+    VALID_ALSA_CONTROLS: Set[str] = {
+        'Master', 'PCM', 'Line', 'Mic', 'Capture', 'Headphone',
+        'Speaker', 'Front', 'Rear', 'Center', 'Bass', 'Treble',
+        'Synth', 'Wave', 'Music', 'Digital', 'Monitor', 'IEC958',
+        'Microphone', 'Mic Boost', 'Input Source', 'CD', 'Video',
+        'Phone', 'Aux', 'Mono', 'Stereo', 'Surround', 'LFE',
+        'Side', 'Beep', 'Auto-Mute Mode', 'Loopback', 'Internal Mic',
+        'External Mic', 'Dock Mic', 'Headset Mic', 'Internal Mic Boost',
+        'External Mic Boost', 'Dock Mic Boost', 'Headset Mic Boost'
+    }
     
     def __init__(self):
         self.logger = get_logger("AudioDiagnostics")
@@ -92,10 +104,56 @@ class AudioDiagnostics:
             self.logger.error(f"Error getting ALSA mixer levels: {e}")
             return {'error': str(e)}
     
+    def _validate_mixer_control_name(self, control_name: str) -> str:
+        """
+        Validate ALSA mixer control name for security.
+        
+        Args:
+            control_name: The control name to validate
+            
+        Returns:
+            Validated control name
+            
+        Raises:
+            ValueError: If control name is invalid
+        """
+        if not control_name:
+            raise ValueError("Control name cannot be empty")
+        
+        # First check against known valid controls
+        if control_name in self.VALID_ALSA_CONTROLS:
+            return control_name
+        
+        # For custom controls, apply strict validation
+        # Allow only alphanumeric, spaces, hyphens, and underscores
+        pattern = r'^[a-zA-Z0-9\s\-_]+$'
+        if not re.match(pattern, control_name):
+            raise ValueError(f"Invalid control name format: contains forbidden characters")
+        
+        # Limit length to prevent buffer issues
+        if len(control_name) > 64:
+            raise ValueError(f"Control name too long: {len(control_name)} characters")
+        
+        # Check for suspicious patterns
+        suspicious_patterns = ['..', '/', '\\', ';', '|', '&', '$', '`', '(', ')', '<', '>', '\n', '\r']
+        for pattern in suspicious_patterns:
+            if pattern in control_name:
+                raise ValueError(f"Control name contains suspicious pattern: {pattern}")
+        
+        return control_name
+    
     def _get_mixer_control_info(self, control_name: str) -> Optional[Dict]:
         """Get detailed information for a specific mixer control"""
         try:
-            result = subprocess.run(['amixer', 'sget', control_name], 
+            # Validate control name for security
+            try:
+                safe_control = self._validate_mixer_control_name(control_name)
+            except ValueError as e:
+                self.logger.warning(f"Invalid control name rejected: {control_name} - {e}")
+                return None
+            
+            # Use list format for subprocess (safer than shell=True)
+            result = subprocess.run(['amixer', 'sget', safe_control], 
                                   capture_output=True, text=True, timeout=5)
             
             if result.returncode != 0:

@@ -3,6 +3,7 @@ TLS certificate management for the web UI
 """
 import logging
 import os
+import re
 import ssl
 import subprocess
 from datetime import datetime, timedelta
@@ -10,6 +11,36 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+def validate_hostname(hostname: str) -> str:
+    """
+    Validate and sanitize hostname for certificate generation.
+    
+    Args:
+        hostname: The hostname to validate
+        
+    Returns:
+        Validated hostname
+        
+    Raises:
+        ValueError: If hostname is invalid
+    """
+    if not hostname or len(hostname) > 253:
+        raise ValueError(f"Invalid hostname length: {len(hostname) if hostname else 0}")
+    
+    # Strict regex pattern for valid hostnames/domains
+    # Allows alphanumeric, dots, hyphens
+    # Must start and end with alphanumeric
+    pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9\-\.]{0,251}[a-zA-Z0-9])?$'
+    if not re.match(pattern, hostname):
+        raise ValueError(f"Invalid hostname format: {hostname}")
+    
+    # Additional check for consecutive dots or hyphens
+    if '..' in hostname or '--' in hostname:
+        raise ValueError(f"Invalid hostname: consecutive special characters")
+    
+    return hostname
 
 
 def create_self_signed_cert(cert_dir: Path, hostname: str = "localhost") -> Tuple[Path, Path]:
@@ -27,18 +58,26 @@ def create_self_signed_cert(cert_dir: Path, hostname: str = "localhost") -> Tupl
         logger.info("Self-signed certificate already exists")
         return cert_file, key_file
     
-    logger.info("Generating self-signed certificate...")
+    # Validate hostname before use
+    try:
+        safe_hostname = validate_hostname(hostname)
+    except ValueError as e:
+        logger.error(f"Invalid hostname provided: {e}")
+        logger.info("Using 'localhost' as fallback hostname")
+        safe_hostname = "localhost"
+    
+    logger.info(f"Generating self-signed certificate for hostname: {safe_hostname}")
     
     try:
         # Use openssl to generate certificate
-        # This avoids the cryptography dependency
+        # Using list format prevents shell injection
         cmd = [
             "openssl", "req", "-x509", "-newkey", "rsa:2048",
             "-keyout", str(key_file),
             "-out", str(cert_file),
             "-days", "365",
             "-nodes",  # No password
-            "-subj", f"/CN={hostname}/O=HA Voice Assistant/C=US"
+            "-subj", f"/CN={safe_hostname}/O=HA Voice Assistant/C=US"
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True)
