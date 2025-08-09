@@ -152,13 +152,21 @@ class MCPClient:
                 streams = await self._streams_context.__aenter__()
                 logger.debug("SSE streams created")
             except httpx.RemoteProtocolError as e:
-                logger.error(f"SSE connection failed with protocol error: {e}")
+                # This often happens when HA closes idle connections - not critical
+                if "peer closed connection" in str(e).lower():
+                    logger.info(f"SSE connection closed by server (likely idle timeout): {e}")
+                else:
+                    logger.error(f"SSE connection failed with protocol error: {e}")
                 raise MCPConnectionError(f"SSE connection failed: {str(e)}")
             except httpx.NetworkError as e:
                 logger.error(f"SSE connection failed with network error: {e}")
                 raise MCPConnectionError(f"Network error connecting to SSE: {str(e)}")
             except Exception as e:
-                logger.error(f"Unexpected error creating SSE streams: {e}")
+                # Check if this is a known idle disconnection
+                if "incomplete chunked read" in str(e).lower():
+                    logger.info("SSE connection closed during idle (expected behavior)")
+                else:
+                    logger.error(f"Unexpected error creating SSE streams: {e}")
                 raise
             
             # Create and enter session context with error handling
@@ -212,9 +220,21 @@ class MCPClient:
             except GeneratorExit:
                 # This is expected during shutdown
                 logger.debug("SSE generator exit during cleanup - this is expected")
+            except (httpx.RemoteProtocolError, httpx.NetworkError) as e:
+                # SSE connection may have already been closed by server
+                error_str = str(e).lower()
+                if "peer closed connection" in error_str or "incomplete chunked read" in error_str:
+                    logger.debug("SSE already closed by server during cleanup - this is normal")
+                else:
+                    logger.debug(f"Network error during SSE cleanup: {e}")
             except Exception as e:
-                # Log unexpected errors
-                logger.warning(f"Unexpected error cleaning up streams context: {type(e).__name__}: {e}")
+                # Check for known idle disconnection patterns in any exception
+                error_str = str(e).lower()
+                if "peer closed connection" in error_str or "incomplete chunked read" in error_str:
+                    logger.debug("SSE connection closed during idle - expected behavior")
+                else:
+                    # Log unexpected errors
+                    logger.warning(f"Unexpected error cleaning up streams context: {type(e).__name__}: {e}")
             finally:
                 self._streams_context = None
         
@@ -304,7 +324,12 @@ class MCPClient:
                 return result
                 
         except (httpx.RemoteProtocolError, httpx.NetworkError, ConnectionError) as e:
-            logger.warning(f"Connection error during tool call: {e}")
+            # Check if this is an expected idle disconnection
+            error_str = str(e).lower()
+            if "peer closed connection" in error_str or "incomplete chunked read" in error_str:
+                logger.info(f"SSE connection closed (likely idle timeout), reconnecting...")
+            else:
+                logger.warning(f"Connection error during tool call: {e}")
             
             # Try to reconnect and retry once
             if not self._shutting_down:
