@@ -7,10 +7,6 @@
 
 A standalone Raspberry Pi voice assistant that provides natural, low-latency conversations for Home Assistant control using OpenAI's Realtime API.
 
-## 🚀 Project Status: v1.1.5 - Enhanced SSE Connection Stability!
-
-This release fixes multiple hardcoded timeouts that were cutting off long AI responses. Audio responses can now play for the full configured duration (default 5 minutes). All timeout mechanisms now respect the configurable `session.max_duration` setting.
-
 ## Overview
 
 This project creates a dedicated voice interface for Home Assistant that runs on a Raspberry Pi. Unlike traditional voice assistants that use a sequential "speak-wait-respond" pattern, this assistant enables natural, real-time conversations with <800ms response latency.
@@ -149,30 +145,16 @@ audio:
 
 See the [Audio Setup Guide](docs/AUDIO_SETUP.md) for optimal configuration.
 
-## What's New in v1.1.0
+## Latest Features (v1.1.5)
 
-- 🌐 **Complete Web UI** - Full-featured web interface with setup wizard
-- 🔒 **Security Features** - HTTPS encryption and authentication built-in
-- 🎨 **Visual Configuration** - Edit all settings through the browser
-- 📊 **Real-time Dashboard** - Monitor status, logs, and statistics
-- 🎙️ **Audio Testing** - Test and configure audio devices via web
-- 🎭 **Personality Editor** - Customize assistant personality with visual sliders
-- 🔧 **Natural Multi-turn** - VAD-based silence detection for natural conversation endings
+- 🌐 **Complete Web UI** - Full-featured web interface with setup wizard and real-time monitoring
+- 🔒 **Enterprise Security** - HTTPS encryption, authentication, CSRF protection, and rate limiting
+- 🎙️ **Natural Multi-turn Conversations** - VAD-based silence detection for natural conversation endings
+- 🏠 **Model Context Protocol (MCP)** - Direct Home Assistant control with real-time device state awareness
+- 🔄 **Robust Connection Management** - Automatic reconnection and graceful error handling
+- 📊 **Comprehensive Testing Tools** - Audio device testing, wake word testing, and connection validation
 
-See [CHANGELOG.md](CHANGELOG.md) for complete details.
-
-### Previous Release (v1.0.0)
-- Model Context Protocol (MCP) integration for direct Home Assistant control
-- Real-time device state awareness with GetLiveContext
-- Automatic tool discovery and SSL certificate support
-
-### ⚠️ Breaking Changes from 0.x
-
-**This is a major release with breaking changes:**
-- Requires Home Assistant 2025.2+ (for MCP support)
-- MCP Server integration must be installed and enabled
-- No backward compatibility with Conversation API
-- New access token may be required
+See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
 ## Logging & Output Control
 
@@ -198,7 +180,7 @@ python src/main.py --log-level DEBUG
 
 **Console Output Examples:**
 ```
-✓ Home Assistant Voice Assistant v0.5.0-beta
+✓ Home Assistant Voice Assistant v1.1.5
 ✓ Connected to Home Assistant 2024.1.0
 ✓ Listening for wake word 'picovoice'
 
