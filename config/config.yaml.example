@@ -3,8 +3,16 @@
 # OpenAI Configuration
 openai:
   api_key: ${OPENAI_API_KEY}        # From environment variable
-  voice: "alloy"                    # alloy, ash, ballad, coral, echo, sage, shimmer, verse
-  model: "gpt-4o-mini-realtime-preview"  # OpenAI Realtime model
+  voice: "alloy"                    # alloy, ash, ballad, coral, echo, sage, shimmer, verse, cedar*, marin*
+                                    # (*cedar and marin are only available with gpt-realtime model)
+  model: "gpt-realtime"             # New production model (was gpt-4o-realtime-preview)
+  legacy_model: "gpt-4o-realtime-preview"  # Fallback model for compatibility
+  model_selection: "auto"           # Model selection mode: "auto", "new", or "legacy"
+                                    # - auto: Start with new model, fallback if needed
+                                    # - new: Always use gpt-realtime (no fallback)
+                                    # - legacy: Always use gpt-4o-realtime-preview
+  voice_fallback: "alloy"           # Fallback voice if selected voice unavailable
+  auto_select_voice: true           # Auto-select compatible voice based on model
   temperature: 0.8                  # Response creativity (0.0-1.0)
   language: "en"                    # Language code (en, es, fr, de, etc.)
   

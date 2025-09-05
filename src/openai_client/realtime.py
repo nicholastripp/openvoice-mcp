@@ -4,6 +4,7 @@ OpenAI Realtime API WebSocket client
 import json
 import base64
 import asyncio
+import time
 from typing import Dict, Any, Optional, Callable, List
 from dataclasses import dataclass
 from enum import Enum
@@ -24,6 +25,11 @@ except ImportError:
 from config import OpenAIConfig
 from utils.logger import get_logger
 from utils.text_utils import sanitize_unicode_text, safe_str
+
+# Import new migration modules
+from .model_compatibility import ModelCompatibility
+from .voice_manager import VoiceManager
+from .performance_metrics import PerformanceMetrics
 
 
 class ConnectionState(Enum):
@@ -54,13 +60,20 @@ class OpenAIRealtimeClient:
         self.text_only = text_only
         self.logger = None  # Will be initialized in connect()
         
+        # Initialize migration modules
+        self.model_compatibility = None  # Will be initialized when logger is available
+        self.voice_manager = None  # Will be initialized when logger is available
+        self.performance_metrics = None  # Will be initialized when logger is available
+        
         # Connection state
         self.state = ConnectionState.DISCONNECTED
         self.websocket: Optional[websockets.WebSocketServerProtocol] = None
         self.session_id: Optional[str] = None
+        self.selected_model = None  # Track which model we're actually using
         
         # Session tracking
         self.session_created_time: Optional[float] = None
+        self.session_start_time: Optional[float] = None
         
         # Event handlers
         self.event_handlers: Dict[str, List[Callable]] = {}
@@ -127,9 +140,28 @@ class OpenAIRealtimeClient:
         if self.logger is None:
             self.logger = get_logger("OpenAIRealtimeClient")
             
+        # Initialize migration modules if not already done
+        if self.model_compatibility is None:
+            self.model_compatibility = ModelCompatibility(self.config, self.logger)
+            self.voice_manager = VoiceManager(self.config, self.logger)
+            self.performance_metrics = PerformanceMetrics(self.config, self.logger)
+        
+        # Select model and voice using compatibility layer
+        self.selected_model = self.model_compatibility.select_model()
+        selected_voice = self.voice_manager.select_voice(
+            self.config.voice, 
+            self.selected_model,
+            use_case="general"
+        )
+        
+        # Update session config with selected voice
+        if not self.text_only:
+            self.session_config["voice"] = selected_voice
+            
         # Log audio configuration now that logger is available
         if not self.text_only:
-            self.logger.info(f"Audio session config: input_format={self.session_config['input_audio_format']}, output_format={self.session_config['output_audio_format']}")
+            self.logger.info(f"Audio session config: model={self.selected_model}, voice={selected_voice}")
+            self.logger.info(f"Audio formats: input={self.session_config['input_audio_format']}, output={self.session_config['output_audio_format']}")
             self.logger.info(f"Server VAD enabled: threshold={self.session_config['turn_detection']['threshold']}, silence_duration={self.session_config['turn_detection']['silence_duration_ms']}ms")
             self.logger.info("[WARNING] Server VAD mode: Do NOT manually call commit_audio() - server will auto-commit when speech stops")
             tool_choice_info = f"tool_choice={self.session_config.get('tool_choice', 'not set')}" if 'tool_choice' in self.session_config else "tool_choice will be set when tools are registered"
@@ -161,9 +193,14 @@ class OpenAIRealtimeClient:
         else:
             self.logger.warning("Websockets library version not detected")
         
+        # Start performance tracking
+        session_id = f"session_{int(time.time() * 1000)}"
+        self.performance_metrics.start_session(session_id, self.selected_model)
+        self.session_start_time = time.time()
+        
         try:
-            # WebSocket URL with model parameter (required by OpenAI)
-            url = f"wss://api.openai.com/v1/realtime?model={self.config.model}"
+            # WebSocket URL with selected model parameter (required by OpenAI)
+            url = f"wss://api.openai.com/v1/realtime?model={self.selected_model}"
             headers = {
                 "Authorization": f"Bearer {self.config.api_key}",
                 "OpenAI-Beta": "realtime=v1"
@@ -214,9 +251,13 @@ class OpenAIRealtimeClient:
             # NOTE: Removed WebSocket verification check that was causing immediate disconnection
             # The check was failing due to timing or state issues
             
+            # Record successful connection
+            connection_latency = time.time() - self.session_start_time
+            self.performance_metrics.record_connection(connection_latency)
+            
             self.state = ConnectionState.CONNECTED
             self.reconnect_attempts = 0
-            self.logger.info("Connected to OpenAI Realtime API")
+            self.logger.info(f"Connected to OpenAI Realtime API using model: {self.selected_model}")
             
             # Start event loop
             asyncio.create_task(self._event_loop())
@@ -229,14 +270,46 @@ class OpenAIRealtimeClient:
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to connect: {e}")
+            self.logger.error(f"Failed to connect with model {self.selected_model}: {e}")
+            self.performance_metrics.record_error(str(e))
+            
+            # Check if we should fallback to legacy model
+            if self.model_compatibility.should_fallback(e):
+                fallback_model = self.model_compatibility.get_fallback_model()
+                if fallback_model:
+                    self.logger.info(f"Attempting fallback to model: {fallback_model}")
+                    self.selected_model = fallback_model
+                    self.performance_metrics.record_fallback()
+                    
+                    # Update voice for fallback model
+                    selected_voice = self.voice_manager.migrate_voice_preference(
+                        self.config.model,
+                        fallback_model,
+                        self.config.voice
+                    )
+                    if not self.text_only:
+                        self.session_config["voice"] = selected_voice
+                    
+                    # Retry with fallback model
+                    return await self.connect()
+            
             self.state = ConnectionState.FAILED
+            self.performance_metrics.end_session()
             return False
     
     async def disconnect(self) -> None:
         """Disconnect from OpenAI Realtime API"""
         if self.websocket and not self._is_websocket_closed():
             await self.websocket.close()
+        
+        # End performance tracking session
+        if self.performance_metrics:
+            session_metrics = self.performance_metrics.end_session()
+            if session_metrics:
+                self.logger.info(
+                    f"Session ended - Duration: {session_metrics.calculate_duration():.2f}s, "
+                    f"Cost: ${session_metrics.estimated_cost:.4f}"
+                )
         
         self.state = ConnectionState.DISCONNECTED
         self.websocket = None

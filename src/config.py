@@ -15,9 +15,23 @@ class OpenAIConfig:
     """OpenAI API configuration"""
     api_key: str
     voice: str = "alloy"
-    model: str = "gpt-4o-realtime-preview"
+    model: str = "gpt-realtime"  # New production model (changed from gpt-4o-realtime-preview)
+    legacy_model: str = "gpt-4o-realtime-preview"  # Fallback for compatibility
+    model_selection: str = "auto"  # auto, new, legacy - controls model selection
     temperature: float = 0.8
     language: str = "en"
+    
+    # Available voices for each model
+    VOICES = {
+        "gpt-realtime": ["alloy", "ash", "ballad", "coral", "echo", 
+                        "sage", "shimmer", "verse", "cedar", "marin"],
+        "gpt-4o-realtime-preview": ["alloy", "ash", "ballad", "coral", 
+                                     "echo", "sage", "shimmer", "verse"]
+    }
+    
+    # Voice fallback configuration
+    voice_fallback: str = "alloy"  # Fallback if selected voice unavailable
+    auto_select_voice: bool = True  # Auto-select based on model capabilities
 
 
 @dataclass
@@ -260,6 +274,34 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
         # Create configuration objects
         openai_config = OpenAIConfig(**config_data.get("openai", {}))
         ha_config = HomeAssistantConfig(**config_data.get("home_assistant", {}))
+        
+        # Validate model selection
+        if openai_config.model_selection not in ["auto", "new", "legacy"]:
+            raise ValueError(
+                f"Invalid model_selection: '{openai_config.model_selection}'. "
+                "Must be 'auto', 'new', or 'legacy'"
+            )
+        
+        # Determine actual model to use based on selection
+        if openai_config.model_selection == "legacy":
+            actual_model = openai_config.legacy_model
+        elif openai_config.model_selection == "new":
+            actual_model = openai_config.model
+        else:  # auto
+            actual_model = openai_config.model  # Default to new, will fallback if needed
+        
+        # Validate voice availability for selected model
+        available_voices = openai_config.VOICES.get(actual_model, [])
+        if openai_config.voice not in available_voices:
+            print(f"Warning: Voice '{openai_config.voice}' not available for model '{actual_model}'")
+            if openai_config.auto_select_voice:
+                # Auto-select compatible voice
+                if openai_config.voice_fallback in available_voices:
+                    print(f"Using fallback voice: '{openai_config.voice_fallback}'")
+                    openai_config.voice = openai_config.voice_fallback
+                else:
+                    print(f"Using default voice: 'alloy'")
+                    openai_config.voice = "alloy"
         
         # Validate required fields with helpful error messages
         if not openai_config.api_key:
