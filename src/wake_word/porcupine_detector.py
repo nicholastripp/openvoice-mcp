@@ -480,11 +480,18 @@ class PorcupineDetector:
                 
                 # Use scipy for high-quality resampling if available
                 if SCIPY_AVAILABLE:
-                    # Use scipy's resample for better quality
-                    audio_array = signal.resample(audio_array, new_length).astype(np.int16)
+                    # Use optimized polyphase resampling (from Task 1.2 findings)
+                    # This is more efficient than FFT-based resampling
+                    from math import gcd
+                    g = gcd(input_sample_rate, self.sample_rate)
+                    up = self.sample_rate // g
+                    down = input_sample_rate // g
+                    
+                    # Use polyphase resampling for better performance
+                    audio_array = signal.resample_poly(audio_array, up, down, window='hamming').astype(np.int16)
                     if self._process_counter == 1:
                         if self.logger:
-                            self.logger.debug("Using scipy.signal.resample for high-quality resampling")
+                            self.logger.debug(f"Using optimized scipy.signal.resample_poly (up={up}, down={down}) for efficient resampling")
                 else:
                     # Fallback to linear interpolation
                     old_indices = np.arange(len(audio_array))
