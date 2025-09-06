@@ -105,17 +105,17 @@ class ModelCompatibility:
         Returns:
             Selected model name
         """
-        model_selection = self.config.openai.model_selection
+        model_selection = self.config.model_selection
         
         if model_selection == "legacy":
-            model = self.config.openai.legacy_model
+            model = self.config.legacy_model
             self.logger.info(f"Using legacy model: {model}")
         elif model_selection == "new":
-            model = self.config.openai.model
+            model = self.config.model
             self.logger.info(f"Using new model: {model}")
         else:  # auto
             # Start with new model, will fallback if connection fails
-            model = self.config.openai.model
+            model = self.config.model
             self.logger.info(f"Auto-selecting model, starting with: {model}")
         
         self.current_model = self.get_model_type(model)
@@ -171,7 +171,7 @@ class ModelCompatibility:
             return preferred_voice
         
         # Try fallback voice
-        fallback = self.config.openai.voice_fallback
+        fallback = self.config.voice_fallback
         if self.is_voice_available(fallback, model):
             self.logger.warning(
                 f"Voice '{preferred_voice}' not available, using fallback: '{fallback}'"
@@ -194,7 +194,7 @@ class ModelCompatibility:
         Returns:
             True if should fallback, False otherwise
         """
-        if self.config.openai.model_selection != "auto":
+        if self.config.model_selection != "auto":
             return False  # No fallback unless in auto mode
         
         if self.fallback_attempts >= self.max_fallback_attempts:
@@ -225,9 +225,9 @@ class ModelCompatibility:
         Returns:
             Fallback model name or None if no fallback available
         """
-        if self.current_model == self.get_model_type(self.config.openai.model):
+        if self.current_model == self.get_model_type(self.config.model):
             # Fallback from new to legacy
-            return self.config.openai.legacy_model
+            return self.config.legacy_model
         return None
     
     def get_session_config(self, model: Optional[str] = None) -> Dict[str, Any]:
@@ -247,7 +247,7 @@ class ModelCompatibility:
         # Base session configuration
         session_config = {
             "model": model or self.current_model.value,
-            "voice": self.get_compatible_voice(self.config.openai.voice, model),
+            "voice": self.get_compatible_voice(self.config.voice, model),
             "instructions": "You are a helpful voice assistant for Home Assistant. You can control smart home devices, answer questions, and help with various tasks. Always be concise and clear in your responses.",
             "turn_detection": {
                 "type": "server_vad",
@@ -257,7 +257,7 @@ class ModelCompatibility:
             },
             "input_audio_format": "pcm16",
             "output_audio_format": "pcm16",
-            "temperature": self.config.openai.temperature,
+            "temperature": self.config.temperature,
             "max_response_output_tokens": capabilities.max_response_tokens
         }
         
@@ -354,7 +354,7 @@ class ModelCompatibility:
         
         # Check voice compatibility
         if results["model_available"]:
-            voice = self.config.openai.voice
+            voice = self.config.voice
             results["voice_compatible"] = self.is_voice_available(voice)
         
         return results

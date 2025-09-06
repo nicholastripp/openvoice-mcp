@@ -2,9 +2,16 @@
 Configuration editor routes
 """
 import logging
+import sys
+import os
 
 import aiohttp_jinja2
 from aiohttp import web
+
+# Add parent directory to path to import from src
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from openai_client.model_compatibility import ModelType, ModelCompatibility
+from openai_client.voice_manager import VoiceManager
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +38,30 @@ async def yaml_editor(request: web.Request) -> dict:
     # Load current config.yaml
     config = await config_manager.load_yaml_config()
     
+    # Get available models and voices from backend
+    # Create a minimal config object for compatibility layer
+    class MinimalConfig:
+        def __init__(self):
+            self.model = config.get('openai', {}).get('model', 'gpt-realtime')
+            self.voice = config.get('openai', {}).get('voice', 'alloy')
+            self.temperature = config.get('openai', {}).get('temperature', 0.8)
+    
+    minimal_config = MinimalConfig()
+    
+    # Get all available models
+    available_models = [
+        {
+            'value': model_type.value,
+            'name': model_type.value.replace('-', ' ').title().replace('Gpt', 'GPT')
+        }
+        for model_type in ModelType
+    ]
+    
+    # Get all available voices from VoiceManager
+    voice_manager = VoiceManager(minimal_config)
+    available_voices = sorted(list(voice_manager.VOICE_PROFILES.keys()))
+    
     # Scan for custom wake word models
-    import os
     from pathlib import Path
     
     wake_words_dir = Path('config/wake_words')
@@ -46,7 +75,9 @@ async def yaml_editor(request: web.Request) -> dict:
     return {
         'title': 'Configuration Settings',
         'config': config,
-        'custom_wake_words': custom_wake_words
+        'custom_wake_words': custom_wake_words,
+        'available_models': available_models,
+        'available_voices': available_voices
     }
 
 

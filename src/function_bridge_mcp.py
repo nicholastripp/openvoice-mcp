@@ -6,19 +6,31 @@ import asyncio
 from typing import Dict, Any, Optional, List
 
 from services.ha_client.mcp_official import MCPClient
+from services.ha_client.mcp_native import NativeMCPManager
 from utils.logger import get_logger
+from config import AppConfig
 
 
 class MCPFunctionBridge:
     """
     Bridge that handles OpenAI function calls and routes them to Home Assistant via MCP
+    Supports both native MCP mode and custom bridge mode with automatic fallback
     """
     
-    def __init__(self, mcp_client: MCPClient):
+    def __init__(self, mcp_client: MCPClient, app_config: AppConfig = None):
         self.mcp_client = mcp_client
+        self.app_config = app_config
         self._logger = None  # Lazy initialization
         self._tools_cache: List[Dict[str, Any]] = []
         self._primary_tool_name: Optional[str] = None
+        
+        # Initialize native MCP manager if config provided
+        self.native_mcp = None
+        if app_config:
+            self.native_mcp = NativeMCPManager(app_config)
+        
+        # Track which mode we're using
+        self.mode = "bridge"  # "native" or "bridge"
         
     @property
     def logger(self):
@@ -29,6 +41,24 @@ class MCPFunctionBridge:
     
     async def initialize(self) -> None:
         """Initialize the bridge by discovering available MCP tools"""
+        # Check if we should use native MCP mode
+        if self.native_mcp and self.native_mcp.enabled:
+            self.logger.info("Checking native MCP availability...")
+            if await self.native_mcp.validate_connection():
+                self.mode = "native"
+                self.logger.info("Using native MCP mode for Home Assistant integration")
+                return
+            else:
+                fallback_reason = self.native_mcp.get_fallback_reason()
+                self.logger.warning(f"Native MCP not available: {fallback_reason}")
+                if self.native_mcp.config.home_assistant.mcp.enable_fallback:
+                    self.logger.info("Falling back to bridge mode")
+                    self.mode = "bridge"
+                else:
+                    raise RuntimeError(f"Native MCP validation failed and fallback disabled: {fallback_reason}")
+        
+        # Use bridge mode
+        self.mode = "bridge"
         if not self.mcp_client.is_connected:
             raise RuntimeError("MCP client must be connected before initializing function bridge")
         
@@ -53,8 +83,14 @@ class MCPFunctionBridge:
         Get OpenAI function definitions based on discovered MCP tools
         
         Returns:
-            List of function definitions for OpenAI
+            List of function definitions for OpenAI (empty if using native mode)
         """
+        # In native mode, OpenAI handles tool discovery directly
+        if self.mode == "native":
+            self.logger.debug("Native MCP mode - OpenAI will discover tools directly")
+            return []  # No manual function definitions needed
+        
+        # Bridge mode - return discovered tools
         if not self._tools_cache:
             self.logger.warning("No MCP tools discovered, returning default function")
             return self._get_default_function_definitions()
@@ -158,6 +194,11 @@ class MCPFunctionBridge:
         Returns:
             Function result to send back to OpenAI
         """
+        # Native mode shouldn't receive manual function calls
+        if self.mode == "native":
+            self.logger.warning(f"Received function call '{function_name}' in native mode - this shouldn't happen")
+            # Try to handle it anyway for robustness
+        
         self.logger.debug(f"Function call: {function_name} with args: {arguments}")
         
         try:
@@ -354,3 +395,19 @@ class MCPFunctionBridge:
             ],
             "primary_tool": self._primary_tool_name
         }
+    
+    def is_native_mode(self) -> bool:
+        """Check if currently using native MCP mode"""
+        return self.mode == "native"
+    
+    def get_mode_info(self) -> Dict[str, Any]:
+        """Get information about current MCP mode"""
+        info = {
+            "mode": self.mode,
+            "native_enabled": self.native_mcp and self.native_mcp.enabled if self.native_mcp else False,
+        }
+        
+        if self.native_mcp:
+            info["native_metrics"] = self.native_mcp.get_metrics()
+        
+        return info

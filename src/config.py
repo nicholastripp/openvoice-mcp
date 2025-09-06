@@ -47,6 +47,16 @@ class MCPConfig:
     reconnect_base_delay: float = 1.0  # Base delay between reconnection attempts
     reconnect_max_delay: float = 60.0  # Maximum delay between reconnection attempts
     sse_read_timeout: int = 300  # SSE read timeout in seconds
+    
+    # Native MCP integration settings
+    native_mode: bool = False  # Enable native MCP support through OpenAI
+    endpoint: str = "/mcp_server/sse"  # MCP server endpoint path
+    approval_mode: str = "never"  # Tool approval: "never", "always", "on_error"
+    approval_timeout: int = 5000  # Milliseconds to wait for approval
+    enable_fallback: bool = True  # Fallback to bridge mode on native failure
+    performance_tracking: bool = True  # Track performance metrics
+    cache_tool_definitions: bool = True  # Cache discovered tools
+    tool_timeout: int = 30000  # Tool execution timeout in milliseconds
 
 
 @dataclass

@@ -35,6 +35,16 @@ home_assistant:
     reconnect_base_delay: 1.0             # Base delay between reconnection attempts (seconds)
     reconnect_max_delay: 60.0             # Maximum delay between reconnection attempts (seconds)
     sse_read_timeout: 300                 # SSE read timeout in seconds
+    
+    # Native MCP Integration Settings (OpenAI's built-in MCP support)
+    native_mode: false                    # Enable native MCP support (requires OpenAI model with MCP)
+    endpoint: "/mcp_server/sse"           # MCP server endpoint path
+    approval_mode: "never"                # Tool approval: "never", "always", or "on_error"
+    approval_timeout: 5000                # Milliseconds to wait for approval (if approval_mode != "never")
+    enable_fallback: true                 # Fallback to bridge mode if native MCP fails
+    performance_tracking: true            # Track performance metrics for native MCP
+    cache_tool_definitions: true          # Cache discovered tools for better performance
+    tool_timeout: 30000                   # Tool execution timeout in milliseconds
   
 # Audio Configuration
 audio:

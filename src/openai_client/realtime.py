@@ -22,7 +22,7 @@ try:
 except ImportError:
     LEGACY_WEBSOCKETS_AVAILABLE = False
 
-from config import OpenAIConfig
+from config import OpenAIConfig, AppConfig
 from utils.logger import get_logger
 from utils.text_utils import sanitize_unicode_text, safe_str
 
@@ -30,6 +30,9 @@ from utils.text_utils import sanitize_unicode_text, safe_str
 from .model_compatibility import ModelCompatibility
 from .voice_manager import VoiceManager
 from .performance_metrics import PerformanceMetrics
+
+# Import native MCP support
+from services.ha_client.mcp_native import NativeMCPManager
 
 
 class ConnectionState(Enum):
@@ -54,8 +57,9 @@ class OpenAIRealtimeClient:
     WebSocket client for OpenAI Realtime API
     """
     
-    def __init__(self, config: OpenAIConfig, personality_prompt: str = "", text_only: bool = False):
+    def __init__(self, config: OpenAIConfig, personality_prompt: str = "", text_only: bool = False, app_config: AppConfig = None):
         self.config = config
+        self.app_config = app_config  # Full app config for MCP access
         self.personality_prompt = personality_prompt
         self.text_only = text_only
         self.logger = None  # Will be initialized in connect()
@@ -64,6 +68,11 @@ class OpenAIRealtimeClient:
         self.model_compatibility = None  # Will be initialized when logger is available
         self.voice_manager = None  # Will be initialized when logger is available
         self.performance_metrics = None  # Will be initialized when logger is available
+        
+        # Initialize native MCP manager if app_config provided
+        self.mcp_manager = None
+        if app_config:
+            self.mcp_manager = NativeMCPManager(app_config)
         
         # Connection state
         self.state = ConnectionState.DISCONNECTED
@@ -145,6 +154,19 @@ class OpenAIRealtimeClient:
             self.model_compatibility = ModelCompatibility(self.config, self.logger)
             self.voice_manager = VoiceManager(self.config, self.logger)
             self.performance_metrics = PerformanceMetrics(self.config, self.logger)
+        
+        # Validate MCP connection if native mode is enabled
+        if self.mcp_manager and self.mcp_manager.enabled:
+            self.logger.info("Validating native MCP connection...")
+            mcp_valid = await self.mcp_manager.validate_connection()
+            if not mcp_valid:
+                fallback_reason = self.mcp_manager.get_fallback_reason()
+                self.logger.warning(f"Native MCP validation failed: {fallback_reason}")
+                if self.mcp_manager.config.home_assistant.mcp.enable_fallback:
+                    self.logger.info("Falling back to bridge mode")
+                    self.mcp_manager.enabled = False
+                else:
+                    self.logger.error("MCP fallback disabled - continuing with native mode despite validation failure")
         
         # Select model and voice using compatibility layer
         self.selected_model = self.model_compatibility.select_model()
@@ -505,6 +527,13 @@ class OpenAIRealtimeClient:
             description: Function description
             parameters: JSON schema for parameters
         """
+        # Check if native MCP is enabled - if so, skip manual function registration
+        if self.mcp_manager and self.mcp_manager.should_use_native():
+            self.logger.debug(f"Skipping manual function registration for '{name}' - using native MCP")
+            # Still store the handler for potential fallback scenarios
+            self.function_handlers[name] = handler
+            return
+        
         # Store handler
         self.function_handlers[name] = handler
         
@@ -727,6 +756,14 @@ class OpenAIRealtimeClient:
             # Pass just the error data, not the wrapper
             await self._emit_event("error", error_data)
         
+        # Handle MCP-specific events if native MCP is enabled
+        elif event_type.startswith("mcp.") and self.mcp_manager:
+            response = await self.mcp_manager.handle_mcp_event(event.data)
+            if response:
+                # Send response back to OpenAI if needed (e.g., approval response)
+                await self._send_event(response)
+            self.logger.debug(f"Handled MCP event: {event_type}")
+        
         # Emit generic event
         await self._emit_event(event_type, event.data)
     
@@ -818,6 +855,18 @@ class OpenAIRealtimeClient:
     
     async def _send_session_update(self) -> None:
         """Send session configuration to OpenAI"""
+        # Check if we should use native MCP tools
+        if self.mcp_manager and self.mcp_manager.enabled:
+            # Add native MCP tools to session config if not already present
+            mcp_tools = self.mcp_manager.get_tool_config()
+            if mcp_tools:
+                # Replace traditional function tools with MCP tools
+                # Keep any non-function tools that might exist
+                non_function_tools = [t for t in self.session_config.get("tools", []) 
+                                     if t.get("type") != "function"]
+                self.session_config["tools"] = non_function_tools + mcp_tools
+                self.logger.info(f"Using native MCP tools: {len(mcp_tools)} MCP server(s) configured")
+        
         event = {
             "type": "session.update",
             "session": self.session_config

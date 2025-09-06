@@ -218,7 +218,7 @@ class VoiceManager:
         )
         
         # Try fallback voice
-        fallback = self.config.openai.voice_fallback
+        fallback = self.config.voice_fallback
         if fallback and self.is_voice_compatible(fallback, model):
             self.logger.info(f"Using fallback voice: {fallback}")
             self.current_voice = fallback
@@ -352,7 +352,7 @@ class VoiceManager:
         
         # Use configured fallback
         return self.select_voice(
-            self.config.openai.voice_fallback, 
+            self.config.voice_fallback, 
             new_model
         )
     
@@ -448,14 +448,14 @@ class VoiceManager:
         }
         
         # Get current model
-        model = self.config.openai.model
+        model = self.config.model
         
         # Check primary voice
-        primary = self.config.openai.voice
+        primary = self.config.voice
         results["primary_voice_valid"] = self.is_voice_compatible(primary, model)
         
         # Check fallback voice
-        fallback = self.config.openai.voice_fallback
+        fallback = self.config.voice_fallback
         if fallback:
             results["fallback_voice_valid"] = self.is_voice_compatible(fallback, model)
         

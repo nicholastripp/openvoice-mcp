@@ -932,9 +932,15 @@ class VoiceAssistant:
                     await self.mcp_client.connect()
                     self.logger.debug("MCP client connected to Home Assistant")
                     
-                    # Initialize function bridge
-                    self.function_bridge = MCPFunctionBridge(self.mcp_client)
+                    # Initialize function bridge with app config for native MCP support
+                    self.function_bridge = MCPFunctionBridge(self.mcp_client, self.config)
                     await self.function_bridge.initialize()
+                    
+                    # Log MCP mode information
+                    mode_info = self.function_bridge.get_mode_info()
+                    self.logger.info(f"MCP Mode: {mode_info['mode']}")
+                    if mode_info.get('native_metrics'):
+                        self.logger.debug(f"Native MCP metrics: {mode_info['native_metrics']}")
                     
                 except ConnectionError as e:
                     # User-friendly error message already formatted by conversation client
@@ -991,11 +997,18 @@ class VoiceAssistant:
             # Initialize OpenAI client with device-aware personality
             self.logger.info("Initializing OpenAI client...")
             personality_prompt = await self._generate_device_aware_personality()
-            self.openai_client = OpenAIRealtimeClient(self.config.openai, personality_prompt)
+            # Pass full app config for native MCP support
+            self.openai_client = OpenAIRealtimeClient(
+                self.config.openai, 
+                personality_prompt,
+                text_only=False,
+                app_config=self.config
+            )
             self.logger.debug("OpenAI client created")
             
-            # Register function handlers (only if HA is connected)
-            if self.function_bridge:
+            # Register function handlers (only if HA is connected and not using native MCP)
+            if self.function_bridge and not self.function_bridge.is_native_mode():
+                # Only register functions in bridge mode - native mode handles this automatically
                 for func_def in self.function_bridge.get_function_definitions():
                     # Create a wrapper function that calls the bridge with the correct arguments
                     def create_wrapper(func_name):
@@ -1009,6 +1022,8 @@ class VoiceAssistant:
                         description=func_def["description"],
                         parameters=func_def["parameters"]
                     )
+            elif self.function_bridge and self.function_bridge.is_native_mode():
+                self.logger.info("Native MCP mode enabled - OpenAI will discover tools directly")
             else:
                 self.logger.info("No Home Assistant connection - OpenAI will operate without function calling")
             
