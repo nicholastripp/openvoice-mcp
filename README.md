@@ -32,6 +32,16 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 3. **Smart Control**: OpenAI understands intent and calls HA functions
 4. **Natural Response**: Speaks back with natural, conversational responses
 5. **Multi-turn Conversations**: Continue talking without repeating wake word
+6. **Smart End Phrases**: Say "stop" or "that's all" to end conversation immediately
+
+### Multi-Turn Conversations
+
+The assistant supports natural multi-turn conversations where you can continue speaking without repeating the wake word. The conversation continues until:
+- You say an end phrase like "stop", "that's all", or "goodbye"
+- 8.5 seconds of silence is detected
+- The conversation timeout is reached (configurable, default 5 minutes)
+
+**Supported End Phrases**: "stop", "goodbye", "that's all", "I'm done", "end session" and more in multiple languages. See [END_PHRASE_DETECTION.md](docs/END_PHRASE_DETECTION.md) for complete list.
 
 ## Requirements
 
@@ -149,7 +159,7 @@ See the [Audio Setup Guide](docs/AUDIO_SETUP.md) for optimal configuration.
 
 - 🌐 **Complete Web UI** - Full-featured web interface with setup wizard and real-time monitoring
 - 🔒 **Enterprise Security** - HTTPS encryption, authentication, CSRF protection, and rate limiting
-- 🎙️ **Natural Multi-turn Conversations** - VAD-based silence detection for natural conversation endings
+- 🎙️ **Natural Multi-turn Conversations** - Smart end phrase detection and VAD-based silence detection
 - 🏠 **Model Context Protocol (MCP)** - Direct Home Assistant control with real-time device state awareness
 - 🔄 **Robust Connection Management** - Automatic reconnection and graceful error handling
 - 📊 **Comprehensive Testing Tools** - Audio device testing, wake word testing, and connection validation

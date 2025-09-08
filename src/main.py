@@ -132,6 +132,7 @@ class VoiceAssistant:
         self._audio_response_received = False
         self._response_create_sent = False  # Track if we've sent response.create
         self._current_response_id = None  # Track current response ID for proper start_response calls
+        self._end_session_after_response = False  # Flag to end session after response completes
         
         # Periodic cleanup task
         self.cleanup_task = None
@@ -443,8 +444,50 @@ class VoiceAssistant:
             # Add explicit language instruction based on config
             language_instruction = f"\n\nIMPORTANT: Always respond in {self.config.openai.language.upper()} (English) unless explicitly asked to use another language."
             
-            # Combine base prompt with device context and language instruction
-            enhanced_prompt = base_prompt + device_context + language_instruction
+            # CRITICAL: System-level instructions for conversation control
+            # These take precedence over all other instructions
+            system_critical_instructions = """
+=== CRITICAL CONVERSATION CONTROL RULES (HIGHEST PRIORITY) ===
+
+1. SINGLE-WORD "STOP" RULE:
+   - If the user says ONLY the single word "stop" (nothing else), this means END THE CONVERSATION
+   - Respond with only: "Goodbye!" or "See you later!" (keep it under 2 seconds)
+   - Do NOT interpret single-word "stop" as a device control command
+   - Do NOT ask "Anything else?" or offer further help
+
+2. STOP IN SENTENCES:
+   - "Stop the [device/music/alarm/etc]" = device control command (execute normally)
+   - "Please stop [action]" = device control command (execute normally)  
+   - "Can you stop [something]" = device control command (execute normally)
+   - Only sentences with "stop" + object are device commands
+
+3. OTHER CONVERSATION ENDINGS:
+   These phrases mean END THE CONVERSATION immediately:
+   - "That's all" / "That is all"
+   - "I'm done" / "We're done"
+   - "Goodbye" / "Bye"
+   - "Thank you, that's it"
+   - "Nothing else"
+   - "End session"
+   
+   When you hear these, respond ONLY with a brief goodbye (under 2 seconds).
+
+4. MULTI-TURN CONVERSATION RULE:
+   - After completing a task, DO NOT ASK "Anything else?" or "Can I help with anything else?"
+   - Simply wait silently for the next command
+   - Let the user decide when they're done
+
+5. AMBIGUITY RULE:
+   - If unsure whether "stop" is an end command or device command, treat it as:
+     - End command if it's the only word
+     - Device command if it's part of a sentence
+
+=== END CRITICAL RULES ===
+
+"""
+            
+            # Combine prompts with system instructions having highest priority
+            enhanced_prompt = system_critical_instructions + base_prompt + device_context + language_instruction
             
             # Log final statistics
             self.logger.info(f"Personality prompt generated:")
@@ -1380,9 +1423,15 @@ class VoiceAssistant:
             self.logger.warning(f"Attempted to end session during {self.session_state.value} - deferring")
             self.logger.debug(f"Call stack: {traceback.format_stack()[-3:-1]}")  # Last 2 frames before this one
             print(f"*** DEFERRING SESSION END - AUDIO ACTIVE ({self.session_state.value.upper()}) ***")
-            # In multi-turn mode, don't schedule session end - let audio completion handle it
+            # In multi-turn mode, check if we should end after response
             if self.config.session.conversation_mode == "multi_turn":
-                self.logger.info("Multi-turn mode active - will transition to multi-turn listening after audio")
+                if self._end_session_after_response:
+                    # End phrase was detected - just log it, actual end will happen after audio
+                    self.logger.info("End phrase detected - deferring session end")
+                    print("*** END PHRASE DETECTED - DEFERRING SESSION END ***")
+                else:
+                    # Normal multi-turn continuation
+                    self.logger.info("Multi-turn mode active - will continue listening")
                 return
             # Schedule session end after audio completes (single-turn mode only)
             if not self.response_end_task or self.response_end_task.done():
@@ -1432,6 +1481,7 @@ class VoiceAssistant:
         self.conversation_turn_count = 0
         self.last_user_input = None
         self.last_speech_activity_time = None
+        self._end_session_after_response = False  # Reset end session flag
         
         # Reset audio streaming counters for clean logging
         if hasattr(self, '_openai_audio_counter'):
@@ -1520,6 +1570,9 @@ class VoiceAssistant:
         
         # Speech stopped handler (user stopped talking)
         self.openai_client.on("speech_stopped", self._on_speech_stopped)
+        
+        # Input audio transcription handler (user's speech transcribed)
+        self.openai_client.on("input_audio_transcription", self._on_input_audio_transcription)
         
         # Error handler
         self.openai_client.on("error", self._on_openai_error)
@@ -1963,8 +2016,20 @@ class VoiceAssistant:
             print(f"*** AUDIO COMPLETION - MODE: {conversation_mode}, ACTIVE: {self.session_active} ***")
             
             if conversation_mode == "multi_turn" and self.session_active:
+                # Check if we should end session after this response (end phrase was detected)
+                self.logger.debug(f"Checking _end_session_after_response flag: {self._end_session_after_response}")
+                if self._end_session_after_response:
+                    self.logger.info("End phrase detected - ending session now")
+                    print("*** END PHRASE DETECTED - ENDING SESSION ***")
+                    # Reset flag immediately
+                    self._end_session_after_response = False
+                    # Use the new method that actually works
+                    asyncio.create_task(self._end_session_immediately())
+                    return  # Don't continue to multi-turn listening
+                
                 # Check if the last response contained conversation end phrases
-                if self.last_user_input and self._contains_end_phrases(self.last_user_input):
+                language = getattr(self.config.session, 'language', 'en')
+                if self.last_user_input and self._contains_end_phrases(self.last_user_input, language):
                     self.logger.info("Conversation end phrase detected - ending session naturally")
                     print("*** CONVERSATION END PHRASE DETECTED - ENDING SESSION NATURALLY ***")
                     await self._end_session()
@@ -2164,45 +2229,93 @@ class VoiceAssistant:
             # Trigger audio completion handler for multi-turn flow
             await self._handle_audio_completion()
     
-    def _contains_end_phrases(self, text: str) -> bool:
-        """Check if text contains conversation end phrases"""
+    def _contains_end_phrases(self, text: str, language: str = None) -> bool:
+        """Check if text contains conversation end phrases for the specified language"""
         if not text:
             return False
         
-        text_lower = text.lower().strip()
+        # Remove common punctuation from the text for better matching
+        import string
+        text_clean = text.lower().strip()
+        # Remove punctuation at the end of words but keep internal punctuation
+        text_clean = text_clean.rstrip(string.punctuation)
         
-        # Check configured end phrases
-        for phrase in self.config.session.multi_turn_end_phrases:
-            if phrase.lower() in text_lower:
+        # Also create version without any punctuation for word counting
+        text_no_punct = ''.join(char if char.isalnum() or char.isspace() else ' ' for char in text_clean)
+        words = text_no_punct.split()
+        word_count = len(words)
+        
+        # CRITICAL: Single-word commands must be EXACT matches only
+        if word_count == 1:
+            # These MUST be the only word spoken (check cleaned version)
+            single_word_ends = {
+                "stop", "stopp", "exit", "quit", "goodbye", "bye",
+                "ende", "schluss", "fin", "basta", "terminé"
+            }
+            # Check both the cleaned version and the no-punctuation version
+            if text_clean in single_word_ends or (words and words[0] in single_word_ends):
+                self.logger.info(f"Single-word end command: '{text}'")
+                print(f"*** SINGLE-WORD END COMMAND: '{text}' ***")
+                return True
+            return False  # Single word that's not an end command
+        
+        # Multi-word phrases - these are unambiguous and safe for substring matching
+        clear_end_phrases = [
+            # English
+            "that's all", "that is all", "i'm done", "i am done",
+            "we're done", "we are done", "end session", "end conversation",
+            "thank you that's all", "thank you that's it", "nothing else",
+            "that's everything", "no more questions", "goodbye for now",
+            
+            # German
+            "das war's", "das wars", "ich bin fertig", "wir sind fertig",
+            "auf wiedersehen", "tschüss dann", "nichts weiter",
+            
+            # Spanish  
+            "eso es todo", "nada más", "ya está", "hemos terminado",
+            
+            # French
+            "c'est tout", "c'est fini", "j'ai fini", "au revoir"
+        ]
+        
+        # Check for clear multi-word end phrases (use cleaned text)
+        for phrase in clear_end_phrases:
+            if phrase in text_clean:
                 self.logger.info(f"End phrase detected: '{phrase}' in '{text}'")
                 print(f"*** END PHRASE DETECTED: '{phrase}' in '{text}' ***")
                 return True
         
-        # Additional flexible matching for common end patterns
-        end_patterns = [
-            "nothing else",
-            "that's all",
-            "that'll be all",
-            "that will be all",
-            "i'm done",
-            "we're done",
-            "that's it",
-            "that's everything",
-            "no more",
-            "finished",
-            "done",
-            "end session",
-            "exit",
-            "quit"
-        ]
-        
-        for pattern in end_patterns:
-            if pattern in text_lower:
-                self.logger.info(f"End pattern detected: '{pattern}' in '{text}'")
-                print(f"*** END PATTERN DETECTED: '{pattern}' in '{text}' ***")
-                return True
+        # DO NOT match "stop", "done", "finished" etc. in longer sentences
+        # This prevents "stop the music" from ending the conversation
         
         return False
+    
+    def _get_end_phrases_for_language(self, language: str = None) -> list:
+        """Get end phrases for the specified language"""
+        # Use provided language or fall back to configured language
+        if not language:
+            language = getattr(self.config.session, 'language', 'en')
+        
+        # Extract language code if it's in format like "de-DE"
+        if '-' in language:
+            language = language.split('-')[0]
+        
+        # Get language-specific phrases from config
+        if hasattr(self.config.session, 'multi_turn_end_phrases_dict'):
+            phrases_dict = self.config.session.multi_turn_end_phrases_dict
+            if phrases_dict and language in phrases_dict:
+                return phrases_dict[language]
+            # Fall back to English if language not found
+            elif phrases_dict and 'en' in phrases_dict:
+                self.logger.debug(f"Language '{language}' not found in end phrases, using English")
+                return phrases_dict['en']
+        
+        # Final fallback to old config format for backward compatibility
+        if hasattr(self.config.session, 'multi_turn_end_phrases'):
+            return self.config.session.multi_turn_end_phrases
+        
+        # Default English phrases if nothing else is configured
+        return ["stop", "thank you", "goodbye", "that's all", "bye", "end session", "exit"]
     
     
     async def _periodic_cleanup(self) -> None:
@@ -2571,6 +2684,50 @@ class VoiceAssistant:
         self.logger.info("Server VAD will automatically create response after speech stops")
         print("*** SERVER VAD WILL AUTO-CREATE RESPONSE ***")
     
+    async def _on_input_audio_transcription(self, event_data: dict) -> None:
+        """Handle user's input audio transcription"""
+        transcript = event_data.get("transcript", "")
+        item_id = event_data.get("item_id", "unknown")
+        language = event_data.get("language", "unknown")
+        
+        # Store the transcription for end phrase checking
+        self.last_user_input = transcript
+        
+        self.logger.info(f"User transcription received: '{transcript}' (language: {language}, item_id: {item_id})")
+        print(f"*** USER SAID: '{transcript}' (LANGUAGE: {language}) ***")
+        
+        # Check for end phrases immediately in multi-turn mode
+        if self.config.session.conversation_mode == "multi_turn" and self.session_active:
+            # Use the detected language or fall back to configured language
+            detected_language = language if language != "unknown" else getattr(self.config.session, 'language', 'en')
+            
+            if self._contains_end_phrases(transcript, detected_language):
+                self.logger.info(f"End phrase detected in transcription: '{transcript}' - scheduling session end")
+                print(f"*** END PHRASE DETECTED IN TRANSCRIPTION: '{transcript}' - ENDING CONVERSATION ***")
+                
+                # Cancel any active multi-turn timeout
+                if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
+                    self.multi_turn_timeout_task.cancel()
+                    self.multi_turn_timeout_task = None
+                
+                # Schedule session end after current response completes
+                if self.session_state in [SessionState.RESPONDING, SessionState.AUDIO_PLAYING]:
+                    self.logger.info("Will end session after current response completes")
+                    self.logger.debug(f"Setting _end_session_after_response flag to True (current state: {self.session_state.value})")
+                    # Set a flag to end session after audio completion
+                    self._end_session_after_response = True
+                    print(f"*** FLAG SET: _end_session_after_response = True (STATE: {self.session_state.value.upper()}) ***")
+                else:
+                    # End session immediately if not currently responding
+                    self.logger.info("Ending session immediately - not in response state")
+                    # Use the immediate method that works in multi-turn mode
+                    asyncio.create_task(self._end_session_immediately())
+        
+        # Debug logging for troubleshooting
+        if self.config.session.conversation_mode == "multi_turn":
+            self.logger.debug(f"Multi-turn mode active - checking end phrases for language: {detected_language}")
+            self.logger.debug(f"End phrases for {detected_language}: {self._get_end_phrases_for_language(detected_language)}")
+    
     async def _on_openai_error(self, error_data: dict) -> None:
         """Handle OpenAI errors with recovery logic"""
         # Extract error details with better fallback handling
@@ -2823,6 +2980,68 @@ class VoiceAssistant:
                 self._transition_to_state(SessionState.LISTENING)
         except Exception as e:
             self.logger.error(f"Error in session end scheduler: {e}")
+    
+    async def _end_session_immediately(self) -> None:
+        """End session immediately after end phrase - works in multi-turn mode"""
+        try:
+            if not self.session_active:
+                self.logger.debug("Session already ended")
+                return
+                
+            self.logger.info("Ending multi-turn session after end phrase")
+            print("*** ENDING SESSION AFTER END PHRASE ***")
+            
+            # Cancel any active OpenAI response immediately
+            if self.openai_client and self.openai_client.state == ConnectionState.CONNECTED:
+                try:
+                    # Send response.cancel to stop any ongoing generation
+                    await self.openai_client.send_event({
+                        "type": "response.cancel"
+                    })
+                    self.logger.info("Sent response.cancel to OpenAI")
+                    
+                    # Brief delay to let cancellation process
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    self.logger.warning(f"Failed to cancel OpenAI response: {e}")
+            
+            # Cancel any active multi-turn tasks BEFORE transitioning state
+            if self.multi_turn_timeout_task and not self.multi_turn_timeout_task.done():
+                self.multi_turn_timeout_task.cancel()
+                self.multi_turn_timeout_task = None
+                self.logger.info("Cancelled multi-turn timeout task")
+                print("*** CANCELLED MULTI-TURN TIMEOUT ***")
+                
+            if self.silence_monitor_task and not self.silence_monitor_task.done():
+                self.silence_monitor_task.cancel()
+                self.silence_monitor_task = None
+                self.logger.info("Cancelled silence monitor task")
+                print("*** CANCELLED SILENCE MONITOR ***")
+            
+            # Clear audio playback queue
+            if self.audio_playback:
+                self.audio_playback.clear_queue()
+            
+            # NOW transition to idle state after all cleanup
+            self._transition_to_state(SessionState.IDLE)
+            
+            # Mark session as inactive
+            self.session_active = False
+            self.response_active = False
+            
+            # Reset multi-turn conversation state
+            self.conversation_turn_count = 0
+            self.last_user_input = None
+            self.last_speech_activity_time = None
+            self._end_session_after_response = False
+                
+            print("*** SESSION ENDED - LISTENING FOR WAKE WORD ***")
+            
+        except Exception as e:
+            self.logger.error(f"Error in immediate session end: {e}")
+            # Force cleanup on error
+            self.session_active = False
+            self._transition_to_state(SessionState.IDLE)
     
     def _on_wake_word_detected(self, model_name: str, confidence: float) -> None:
         """Handle wake word detection"""

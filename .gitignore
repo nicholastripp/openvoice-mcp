@@ -101,6 +101,24 @@ billy-b-assistant/
 *.bak
 *.backup
 
+# APM Project Management Files
+APM-Files/
+APM_*.md
+!APM_Implementation_Plan.md
+!APM_Memory_Bank.md
+END_PHRASE*.md
+
+# Test environments
+venv_*/
+*_test/
+
+# Generated metrics and reports  
+metrics/
+reports/
+
+# Misc/accidental files
+=*
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt

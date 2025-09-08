@@ -92,6 +92,12 @@ class OpenAIRealtimeClient:
         self.waiting_for_function_response = False  # Track if we're waiting for response after function output
         
         # Build base session configuration
+        # Get language from app config if available
+        language = "en"  # Default to English
+        if app_config and hasattr(app_config, 'session') and hasattr(app_config.session, 'language'):
+            language = app_config.session.language
+            self.configured_language = language  # Store for later use
+        
         self.session_config = {
             "modalities": ["text"] if text_only else ["audio", "text"],
             "tools": [],
@@ -112,7 +118,8 @@ class OpenAIRealtimeClient:
                 "silence_duration_ms": 800  # Longer silence before stopping to allow natural speech
             }
             self.session_config["input_audio_transcription"] = {
-                "model": "whisper-1"
+                "model": "whisper-1",
+                "language": language  # Specify language for better transcription accuracy
             }
             
             # Enhanced configuration for better audio responses
@@ -733,6 +740,20 @@ class OpenAIRealtimeClient:
             self.logger.info(f"[SPEECH STOPPED] Server VAD detected speech ended at {audio_end_ms}ms - audio buffer automatically committed")
             print(f"*** SERVER VAD: SPEECH STOPPED (at {audio_end_ms}ms) - BUFFER COMMITTED ***")
             await self._emit_event("speech_stopped", event.data)
+            
+        elif event_type == "conversation.item.input_audio_transcription.completed":
+            # User's audio input has been transcribed
+            transcript = event.data.get("transcript", "")
+            item_id = event.data.get("item_id", "unknown")
+            self.logger.info(f"[TRANSCRIPTION] User said: '{transcript}' (item_id: {item_id})")
+            print(f"*** USER TRANSCRIPTION: '{transcript}' ***")
+            
+            # Emit transcription event for main.py to handle
+            await self._emit_event("input_audio_transcription", {
+                "transcript": transcript,
+                "item_id": item_id,
+                "language": event.data.get("language", "unknown")  # Include language if provided
+            })
             
         elif event_type == "error":
             # Error from OpenAI

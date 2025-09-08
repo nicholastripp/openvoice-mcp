@@ -127,18 +127,39 @@ class SessionConfig:
     auto_end_after_response: bool = True
     response_cooldown_delay: float = 2.0
     
+    # Language settings
+    language: str = "en"  # Language code (en, de, es, fr, it, nl)
+    
     # Multi-turn conversation settings
     conversation_mode: str = "multi_turn"  # "single_turn" or "multi_turn"
     multi_turn_timeout: float = 300.0  # Safety fallback timeout (5 minutes)
     multi_turn_max_turns: int = 10  # maximum conversation turns per session
-    multi_turn_end_phrases: list = None  # phrases to end conversation
+    multi_turn_end_phrases: list = None  # phrases to end conversation (deprecated - use multi_turn_end_phrases_dict)
+    multi_turn_end_phrases_dict: dict = None  # language-specific end phrases
     multi_turn_stuck_multiplier: float = 4.0  # multiplier for stuck detection
     extended_silence_threshold: float = 8.0  # seconds of silence before ending conversation
     
     def __post_init__(self):
-        # Set default end phrases if not provided
-        if self.multi_turn_end_phrases is None:
-            self.multi_turn_end_phrases = ["goodbye", "stop", "that's all", "thank you", "bye"]
+        # Set default multi-language end phrases if not provided
+        if self.multi_turn_end_phrases_dict is None:
+            self.multi_turn_end_phrases_dict = {
+                "en": ["stop", "thank you", "goodbye", "that's all", "bye", "end session", "exit", 
+                       "that's it", "done", "finished", "no more", "nothing else"],
+                "de": ["stopp", "stop", "ende", "danke", "tschüss", "beenden", "fertig", "schluss",
+                       "das war's", "das wars", "auf wiedersehen", "nichts mehr"],
+                "es": ["parar", "detener", "gracias", "adiós", "terminar", "fin", "hasta luego",
+                       "basta", "finalizar", "nada más", "eso es todo"],
+                "fr": ["arrêter", "stop", "merci", "au revoir", "terminer", "fin", "c'est tout",
+                       "fini", "terminé", "plus rien", "c'est fini"],
+                "it": ["ferma", "stop", "grazie", "arrivederci", "fine", "basta", "termina",
+                       "finito", "chiudi", "niente altro", "è tutto"],
+                "nl": ["stop", "stoppen", "bedankt", "tot ziens", "klaar", "einde", "genoeg",
+                       "af", "afgelopen", "niets meer", "dat is alles"]
+            }
+        
+        # For backward compatibility, if old multi_turn_end_phrases is set, use it for English
+        if self.multi_turn_end_phrases and not self.multi_turn_end_phrases_dict.get("en"):
+            self.multi_turn_end_phrases_dict["en"] = self.multi_turn_end_phrases
 
 
 @dataclass
