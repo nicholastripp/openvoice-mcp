@@ -4,6 +4,7 @@ OpenAI Realtime API WebSocket client
 import json
 import base64
 import asyncio
+import time
 from typing import Dict, Any, Optional, Callable, List
 from dataclasses import dataclass
 from enum import Enum
@@ -21,9 +22,17 @@ try:
 except ImportError:
     LEGACY_WEBSOCKETS_AVAILABLE = False
 
-from config import OpenAIConfig
+from config import OpenAIConfig, AppConfig
 from utils.logger import get_logger
 from utils.text_utils import sanitize_unicode_text, safe_str
+
+# Import new migration modules
+from .model_compatibility import ModelCompatibility
+from .voice_manager import VoiceManager
+from .performance_metrics import PerformanceMetrics
+
+# Import native MCP support
+from services.ha_client.mcp_native import NativeMCPManager
 
 
 class ConnectionState(Enum):
@@ -48,19 +57,32 @@ class OpenAIRealtimeClient:
     WebSocket client for OpenAI Realtime API
     """
     
-    def __init__(self, config: OpenAIConfig, personality_prompt: str = "", text_only: bool = False):
+    def __init__(self, config: OpenAIConfig, personality_prompt: str = "", text_only: bool = False, app_config: AppConfig = None):
         self.config = config
+        self.app_config = app_config  # Full app config for MCP access
         self.personality_prompt = personality_prompt
         self.text_only = text_only
         self.logger = None  # Will be initialized in connect()
+        
+        # Initialize migration modules
+        self.model_compatibility = None  # Will be initialized when logger is available
+        self.voice_manager = None  # Will be initialized when logger is available
+        self.performance_metrics = None  # Will be initialized when logger is available
+        
+        # Initialize native MCP manager if app_config provided
+        self.mcp_manager = None
+        if app_config:
+            self.mcp_manager = NativeMCPManager(app_config)
         
         # Connection state
         self.state = ConnectionState.DISCONNECTED
         self.websocket: Optional[websockets.WebSocketServerProtocol] = None
         self.session_id: Optional[str] = None
+        self.selected_model = None  # Track which model we're actually using
         
         # Session tracking
         self.session_created_time: Optional[float] = None
+        self.session_start_time: Optional[float] = None
         
         # Event handlers
         self.event_handlers: Dict[str, List[Callable]] = {}
@@ -70,6 +92,12 @@ class OpenAIRealtimeClient:
         self.waiting_for_function_response = False  # Track if we're waiting for response after function output
         
         # Build base session configuration
+        # Get language from app config if available
+        language = "en"  # Default to English
+        if app_config and hasattr(app_config, 'session') and hasattr(app_config.session, 'language'):
+            language = app_config.session.language
+            self.configured_language = language  # Store for later use
+        
         self.session_config = {
             "modalities": ["text"] if text_only else ["audio", "text"],
             "tools": [],
@@ -90,7 +118,8 @@ class OpenAIRealtimeClient:
                 "silence_duration_ms": 800  # Longer silence before stopping to allow natural speech
             }
             self.session_config["input_audio_transcription"] = {
-                "model": "whisper-1"
+                "model": "whisper-1",
+                "language": language  # Specify language for better transcription accuracy
             }
             
             # Enhanced configuration for better audio responses
@@ -127,9 +156,41 @@ class OpenAIRealtimeClient:
         if self.logger is None:
             self.logger = get_logger("OpenAIRealtimeClient")
             
+        # Initialize migration modules if not already done
+        if self.model_compatibility is None:
+            self.model_compatibility = ModelCompatibility(self.config, self.logger)
+            self.voice_manager = VoiceManager(self.config, self.logger)
+            self.performance_metrics = PerformanceMetrics(self.config, self.logger)
+        
+        # Validate MCP connection if native mode is enabled
+        if self.mcp_manager and self.mcp_manager.enabled:
+            self.logger.info("Validating native MCP connection...")
+            mcp_valid = await self.mcp_manager.validate_connection()
+            if not mcp_valid:
+                fallback_reason = self.mcp_manager.get_fallback_reason()
+                self.logger.warning(f"Native MCP validation failed: {fallback_reason}")
+                if self.mcp_manager.config.home_assistant.mcp.enable_fallback:
+                    self.logger.info("Falling back to bridge mode")
+                    self.mcp_manager.enabled = False
+                else:
+                    self.logger.error("MCP fallback disabled - continuing with native mode despite validation failure")
+        
+        # Select model and voice using compatibility layer
+        self.selected_model = self.model_compatibility.select_model()
+        selected_voice = self.voice_manager.select_voice(
+            self.config.voice, 
+            self.selected_model,
+            use_case="general"
+        )
+        
+        # Update session config with selected voice
+        if not self.text_only:
+            self.session_config["voice"] = selected_voice
+            
         # Log audio configuration now that logger is available
         if not self.text_only:
-            self.logger.info(f"Audio session config: input_format={self.session_config['input_audio_format']}, output_format={self.session_config['output_audio_format']}")
+            self.logger.info(f"Audio session config: model={self.selected_model}, voice={selected_voice}")
+            self.logger.info(f"Audio formats: input={self.session_config['input_audio_format']}, output={self.session_config['output_audio_format']}")
             self.logger.info(f"Server VAD enabled: threshold={self.session_config['turn_detection']['threshold']}, silence_duration={self.session_config['turn_detection']['silence_duration_ms']}ms")
             self.logger.info("[WARNING] Server VAD mode: Do NOT manually call commit_audio() - server will auto-commit when speech stops")
             tool_choice_info = f"tool_choice={self.session_config.get('tool_choice', 'not set')}" if 'tool_choice' in self.session_config else "tool_choice will be set when tools are registered"
@@ -161,9 +222,14 @@ class OpenAIRealtimeClient:
         else:
             self.logger.warning("Websockets library version not detected")
         
+        # Start performance tracking
+        session_id = f"session_{int(time.time() * 1000)}"
+        self.performance_metrics.start_session(session_id, self.selected_model)
+        self.session_start_time = time.time()
+        
         try:
-            # WebSocket URL with model parameter (required by OpenAI)
-            url = f"wss://api.openai.com/v1/realtime?model={self.config.model}"
+            # WebSocket URL with selected model parameter (required by OpenAI)
+            url = f"wss://api.openai.com/v1/realtime?model={self.selected_model}"
             headers = {
                 "Authorization": f"Bearer {self.config.api_key}",
                 "OpenAI-Beta": "realtime=v1"
@@ -214,9 +280,13 @@ class OpenAIRealtimeClient:
             # NOTE: Removed WebSocket verification check that was causing immediate disconnection
             # The check was failing due to timing or state issues
             
+            # Record successful connection
+            connection_latency = time.time() - self.session_start_time
+            self.performance_metrics.record_connection(connection_latency)
+            
             self.state = ConnectionState.CONNECTED
             self.reconnect_attempts = 0
-            self.logger.info("Connected to OpenAI Realtime API")
+            self.logger.info(f"Connected to OpenAI Realtime API using model: {self.selected_model}")
             
             # Start event loop
             asyncio.create_task(self._event_loop())
@@ -229,14 +299,46 @@ class OpenAIRealtimeClient:
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to connect: {e}")
+            self.logger.error(f"Failed to connect with model {self.selected_model}: {e}")
+            self.performance_metrics.record_error(str(e))
+            
+            # Check if we should fallback to legacy model
+            if self.model_compatibility.should_fallback(e):
+                fallback_model = self.model_compatibility.get_fallback_model()
+                if fallback_model:
+                    self.logger.info(f"Attempting fallback to model: {fallback_model}")
+                    self.selected_model = fallback_model
+                    self.performance_metrics.record_fallback()
+                    
+                    # Update voice for fallback model
+                    selected_voice = self.voice_manager.migrate_voice_preference(
+                        self.config.model,
+                        fallback_model,
+                        self.config.voice
+                    )
+                    if not self.text_only:
+                        self.session_config["voice"] = selected_voice
+                    
+                    # Retry with fallback model
+                    return await self.connect()
+            
             self.state = ConnectionState.FAILED
+            self.performance_metrics.end_session()
             return False
     
     async def disconnect(self) -> None:
         """Disconnect from OpenAI Realtime API"""
         if self.websocket and not self._is_websocket_closed():
             await self.websocket.close()
+        
+        # End performance tracking session
+        if self.performance_metrics:
+            session_metrics = self.performance_metrics.end_session()
+            if session_metrics:
+                self.logger.info(
+                    f"Session ended - Duration: {session_metrics.calculate_duration():.2f}s, "
+                    f"Cost: ${session_metrics.estimated_cost:.4f}"
+                )
         
         self.state = ConnectionState.DISCONNECTED
         self.websocket = None
@@ -432,6 +534,13 @@ class OpenAIRealtimeClient:
             description: Function description
             parameters: JSON schema for parameters
         """
+        # Check if native MCP is enabled - if so, skip manual function registration
+        if self.mcp_manager and self.mcp_manager.should_use_native():
+            self.logger.debug(f"Skipping manual function registration for '{name}' - using native MCP")
+            # Still store the handler for potential fallback scenarios
+            self.function_handlers[name] = handler
+            return
+        
         # Store handler
         self.function_handlers[name] = handler
         
@@ -632,6 +741,20 @@ class OpenAIRealtimeClient:
             print(f"*** SERVER VAD: SPEECH STOPPED (at {audio_end_ms}ms) - BUFFER COMMITTED ***")
             await self._emit_event("speech_stopped", event.data)
             
+        elif event_type == "conversation.item.input_audio_transcription.completed":
+            # User's audio input has been transcribed
+            transcript = event.data.get("transcript", "")
+            item_id = event.data.get("item_id", "unknown")
+            self.logger.info(f"[TRANSCRIPTION] User said: '{transcript}' (item_id: {item_id})")
+            print(f"*** USER TRANSCRIPTION: '{transcript}' ***")
+            
+            # Emit transcription event for main.py to handle
+            await self._emit_event("input_audio_transcription", {
+                "transcript": transcript,
+                "item_id": item_id,
+                "language": event.data.get("language", "unknown")  # Include language if provided
+            })
+            
         elif event_type == "error":
             # Error from OpenAI
             error_data = event.data.get("error", {})
@@ -653,6 +776,14 @@ class OpenAIRealtimeClient:
             self.logger.error(f"OpenAI error - Type: {error_info['type']}, Message: {error_info['message']}, Code: {error_info['code']}")
             # Pass just the error data, not the wrapper
             await self._emit_event("error", error_data)
+        
+        # Handle MCP-specific events if native MCP is enabled
+        elif event_type.startswith("mcp.") and self.mcp_manager:
+            response = await self.mcp_manager.handle_mcp_event(event.data)
+            if response:
+                # Send response back to OpenAI if needed (e.g., approval response)
+                await self._send_event(response)
+            self.logger.debug(f"Handled MCP event: {event_type}")
         
         # Emit generic event
         await self._emit_event(event_type, event.data)
@@ -745,6 +876,18 @@ class OpenAIRealtimeClient:
     
     async def _send_session_update(self) -> None:
         """Send session configuration to OpenAI"""
+        # Check if we should use native MCP tools
+        if self.mcp_manager and self.mcp_manager.enabled:
+            # Add native MCP tools to session config if not already present
+            mcp_tools = self.mcp_manager.get_tool_config()
+            if mcp_tools:
+                # Replace traditional function tools with MCP tools
+                # Keep any non-function tools that might exist
+                non_function_tools = [t for t in self.session_config.get("tools", []) 
+                                     if t.get("type") != "function"]
+                self.session_config["tools"] = non_function_tools + mcp_tools
+                self.logger.info(f"Using native MCP tools: {len(mcp_tools)} MCP server(s) configured")
+        
         event = {
             "type": "session.update",
             "session": self.session_config

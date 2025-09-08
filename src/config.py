@@ -15,9 +15,23 @@ class OpenAIConfig:
     """OpenAI API configuration"""
     api_key: str
     voice: str = "alloy"
-    model: str = "gpt-4o-realtime-preview"
+    model: str = "gpt-realtime"  # New production model (changed from gpt-4o-realtime-preview)
+    legacy_model: str = "gpt-4o-realtime-preview"  # Fallback for compatibility
+    model_selection: str = "auto"  # auto, new, legacy - controls model selection
     temperature: float = 0.8
     language: str = "en"
+    
+    # Available voices for each model
+    VOICES = {
+        "gpt-realtime": ["alloy", "ash", "ballad", "coral", "echo", 
+                        "sage", "shimmer", "verse", "cedar", "marin"],
+        "gpt-4o-realtime-preview": ["alloy", "ash", "ballad", "coral", 
+                                     "echo", "sage", "shimmer", "verse"]
+    }
+    
+    # Voice fallback configuration
+    voice_fallback: str = "alloy"  # Fallback if selected voice unavailable
+    auto_select_voice: bool = True  # Auto-select based on model capabilities
 
 
 @dataclass
@@ -33,6 +47,16 @@ class MCPConfig:
     reconnect_base_delay: float = 1.0  # Base delay between reconnection attempts
     reconnect_max_delay: float = 60.0  # Maximum delay between reconnection attempts
     sse_read_timeout: int = 300  # SSE read timeout in seconds
+    
+    # Native MCP integration settings
+    native_mode: bool = False  # Enable native MCP support through OpenAI
+    endpoint: str = "/mcp_server/sse"  # MCP server endpoint path
+    approval_mode: str = "never"  # Tool approval: "never", "always", "on_error"
+    approval_timeout: int = 5000  # Milliseconds to wait for approval
+    enable_fallback: bool = True  # Fallback to bridge mode on native failure
+    performance_tracking: bool = True  # Track performance metrics
+    cache_tool_definitions: bool = True  # Cache discovered tools
+    tool_timeout: int = 30000  # Tool execution timeout in milliseconds
 
 
 @dataclass
@@ -103,18 +127,39 @@ class SessionConfig:
     auto_end_after_response: bool = True
     response_cooldown_delay: float = 2.0
     
+    # Language settings
+    language: str = "en"  # Language code (en, de, es, fr, it, nl)
+    
     # Multi-turn conversation settings
     conversation_mode: str = "multi_turn"  # "single_turn" or "multi_turn"
     multi_turn_timeout: float = 300.0  # Safety fallback timeout (5 minutes)
     multi_turn_max_turns: int = 10  # maximum conversation turns per session
-    multi_turn_end_phrases: list = None  # phrases to end conversation
+    multi_turn_end_phrases: list = None  # phrases to end conversation (deprecated - use multi_turn_end_phrases_dict)
+    multi_turn_end_phrases_dict: dict = None  # language-specific end phrases
     multi_turn_stuck_multiplier: float = 4.0  # multiplier for stuck detection
     extended_silence_threshold: float = 8.0  # seconds of silence before ending conversation
     
     def __post_init__(self):
-        # Set default end phrases if not provided
-        if self.multi_turn_end_phrases is None:
-            self.multi_turn_end_phrases = ["goodbye", "stop", "that's all", "thank you", "bye"]
+        # Set default multi-language end phrases if not provided
+        if self.multi_turn_end_phrases_dict is None:
+            self.multi_turn_end_phrases_dict = {
+                "en": ["stop", "thank you", "goodbye", "that's all", "bye", "end session", "exit", 
+                       "that's it", "done", "finished", "no more", "nothing else"],
+                "de": ["stopp", "stop", "ende", "danke", "tschüss", "beenden", "fertig", "schluss",
+                       "das war's", "das wars", "auf wiedersehen", "nichts mehr"],
+                "es": ["parar", "detener", "gracias", "adiós", "terminar", "fin", "hasta luego",
+                       "basta", "finalizar", "nada más", "eso es todo"],
+                "fr": ["arrêter", "stop", "merci", "au revoir", "terminer", "fin", "c'est tout",
+                       "fini", "terminé", "plus rien", "c'est fini"],
+                "it": ["ferma", "stop", "grazie", "arrivederci", "fine", "basta", "termina",
+                       "finito", "chiudi", "niente altro", "è tutto"],
+                "nl": ["stop", "stoppen", "bedankt", "tot ziens", "klaar", "einde", "genoeg",
+                       "af", "afgelopen", "niets meer", "dat is alles"]
+            }
+        
+        # For backward compatibility, if old multi_turn_end_phrases is set, use it for English
+        if self.multi_turn_end_phrases and not self.multi_turn_end_phrases_dict.get("en"):
+            self.multi_turn_end_phrases_dict["en"] = self.multi_turn_end_phrases
 
 
 @dataclass
@@ -260,6 +305,34 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
         # Create configuration objects
         openai_config = OpenAIConfig(**config_data.get("openai", {}))
         ha_config = HomeAssistantConfig(**config_data.get("home_assistant", {}))
+        
+        # Validate model selection
+        if openai_config.model_selection not in ["auto", "new", "legacy"]:
+            raise ValueError(
+                f"Invalid model_selection: '{openai_config.model_selection}'. "
+                "Must be 'auto', 'new', or 'legacy'"
+            )
+        
+        # Determine actual model to use based on selection
+        if openai_config.model_selection == "legacy":
+            actual_model = openai_config.legacy_model
+        elif openai_config.model_selection == "new":
+            actual_model = openai_config.model
+        else:  # auto
+            actual_model = openai_config.model  # Default to new, will fallback if needed
+        
+        # Validate voice availability for selected model
+        available_voices = openai_config.VOICES.get(actual_model, [])
+        if openai_config.voice not in available_voices:
+            print(f"Warning: Voice '{openai_config.voice}' not available for model '{actual_model}'")
+            if openai_config.auto_select_voice:
+                # Auto-select compatible voice
+                if openai_config.voice_fallback in available_voices:
+                    print(f"Using fallback voice: '{openai_config.voice_fallback}'")
+                    openai_config.voice = openai_config.voice_fallback
+                else:
+                    print(f"Using default voice: 'alloy'")
+                    openai_config.voice = "alloy"
         
         # Validate required fields with helpful error messages
         if not openai_config.api_key:

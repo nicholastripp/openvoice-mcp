@@ -11,14 +11,9 @@
             
             <label for="openai_voice">Voice:</label>
             <select id="openai_voice" name="openai.voice">
-                <option value="alloy" {% if config.openai.voice == 'alloy' %}selected{% endif %}>Alloy</option>
-                <option value="ash" {% if config.openai.voice == 'ash' %}selected{% endif %}>Ash</option>
-                <option value="ballad" {% if config.openai.voice == 'ballad' %}selected{% endif %}>Ballad</option>
-                <option value="coral" {% if config.openai.voice == 'coral' %}selected{% endif %}>Coral</option>
-                <option value="echo" {% if config.openai.voice == 'echo' %}selected{% endif %}>Echo</option>
-                <option value="sage" {% if config.openai.voice == 'sage' %}selected{% endif %}>Sage</option>
-                <option value="shimmer" {% if config.openai.voice == 'shimmer' %}selected{% endif %}>Shimmer</option>
-                <option value="verse" {% if config.openai.voice == 'verse' %}selected{% endif %}>Verse</option>
+                {% for voice in available_voices %}
+                <option value="{{ voice }}" {% if config.openai.voice == voice %}selected{% endif %}>{{ voice.capitalize() }}</option>
+                {% endfor %}
             </select>
             
             <label for="openai_temperature">Temperature (0.0-1.0):</label>
@@ -32,8 +27,9 @@
             
             <label for="openai_model">Model:</label>
             <select id="openai_model" name="openai.model">
-                <option value="gpt-4o-mini-realtime-preview" {% if config.openai.model == 'gpt-4o-mini-realtime-preview' %}selected{% endif %}>GPT-4o Mini Realtime (Preview)</option>
-                <option value="gpt-4o-realtime-preview" {% if config.openai.model == 'gpt-4o-realtime-preview' %}selected{% endif %}>GPT-4o Realtime (Preview)</option>
+                {% for model in available_models %}
+                <option value="{{ model.value }}" {% if config.openai.model == model.value %}selected{% endif %}>{{ model.name }}</option>
+                {% endfor %}
             </select>
             
             <label for="conversation_mode">Conversation Mode:</label>

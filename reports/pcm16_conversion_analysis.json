@@ -1,0 +1,790 @@
+{
+  "timestamp": "2025-09-05T14:36:06.995828",
+  "test_duration": 1.4923851490020752,
+  "conversion_methods": [
+    {
+      "method_name": "current_32767",
+      "dc_bias": 136.68465705128204,
+      "dc_bias_percent": 0.4171284700051332,
+      "positive_peak": 17772,
+      "negative_peak": -14999,
+      "symmetry_ratio": Infinity,
+      "clipping_count": 389,
+      "clipping_ratio": 0.016217948717948717,
+      "quantization_noise": 0.011090007452803622,
+      "thd": 45.08949581342769,
+      "snr": 66.26100180577677,
+      "round_trip_error": 0.011100569497126723,
+      "effective_bits": 13.765518749651868,
+      "headroom_db": 9.71181897088238,
+      "processing_time": 0.0054074250734769385
+    },
+    {
+      "method_name": "asymmetric_32768",
+      "dc_bias": 136.4728205128205,
+      "dc_bias_percent": 0.4164819961939103,
+      "positive_peak": 17771,
+      "negative_peak": -15000,
+      "symmetry_ratio": Infinity,
+      "clipping_count": 775,
+      "clipping_ratio": 0.032317307692307694,
+      "quantization_noise": 0.011086878836802018,
+      "thd": 44.797116275670916,
+      "snr": 67.86624745387424,
+      "round_trip_error": 0.011095478638245896,
+      "effective_bits": 13.866531760510934,
+      "headroom_db": 9.71173738650258,
+      "processing_time": 0.0042035579681396484
+    },
+    {
+      "method_name": "traditional_32768",
+      "dc_bias": -926.1743621794873,
+      "dc_bias_percent": -2.826459845518454,
+      "positive_peak": 15249,
+      "negative_peak": -17520,
+      "symmetry_ratio": 0.4616229717548077,
+      "clipping_count": 789,
+      "clipping_ratio": 0.03289423076923077,
+      "quantization_noise": 0.09670696512075423,
+      "thd": 43.69328400424442,
+      "snr": 57.394868099644064,
+      "round_trip_error": 0.10301006599009321,
+      "effective_bits": 11.9333025541256,
+      "headroom_db": Infinity,
+      "processing_time": 0.004538095914400541
+    },
+    {
+      "method_name": "clamped_32767",
+      "dc_bias": 136.68465705128204,
+      "dc_bias_percent": 0.4171284700051332,
+      "positive_peak": 17772,
+      "negative_peak": -14999,
+      "symmetry_ratio": Infinity,
+      "clipping_count": 389,
+      "clipping_ratio": 0.016217948717948717,
+      "quantization_noise": 0.011090007452803622,
+      "thd": 45.08949581342769,
+      "snr": 66.26100180577677,
+      "round_trip_error": 0.011100569497126723,
+      "effective_bits": 13.765518749651868,
+      "headroom_db": 9.71181897088238,
+      "processing_time": 0.0047614757831280045
+    },
+    {
+      "method_name": "dithered_32767",
+      "dc_bias": 136.68036858974375,
+      "dc_bias_percent": 0.41711538265913045,
+      "positive_peak": 17772,
+      "negative_peak": -15000,
+      "symmetry_ratio": Infinity,
+      "clipping_count": 196,
+      "clipping_ratio": 0.008205128205128205,
+      "quantization_noise": 0.011094529378320776,
+      "thd": 30.792206310777832,
+      "snr": 65.4597950290067,
+      "round_trip_error": 0.011102625626111307,
+      "effective_bits": 13.9883647714547,
+      "headroom_db": 9.690810406896235,
+      "processing_time": 0.006716691530667818
+    }
+  ],
+  "test_signals": [
+    "sine_440hz",
+    "sine_1000hz",
+    "sine_3000hz",
+    "dc_offset_-0.1",
+    "dc_offset_0.05",
+    "dc_offset_0.1",
+    "full_scale_positive",
+    "full_scale_negative",
+    "quiet_signal",
+    "white_noise",
+    "impulse",
+    "speech_like",
+    "clipping_test"
+  ],
+  "optimal_method": "current_32767",
+  "recommendations": [
+    "\u26a0 Consider using asymmetric_32768 to minimize DC bias (current: 0.4165%)",
+    "\u26a0 Improve clipping symmetry by using traditional_32768 (ratio: 0.462)",
+    "\u2713 All methods are OpenAI Realtime API compatible",
+    "\u26a0 Current implementation could be improved for better audio quality"
+  ],
+  "dc_bias_analysis": {
+    "current_32767": [
+      {
+        "input_dc": -0.5,
+        "expected_output": -16383.5,
+        "measured_output": -16383.0,
+        "error": 0.5,
+        "error_percent": 0.00152587890625
+      },
+      {
+        "input_dc": -0.1,
+        "expected_output": -3276.7000000000003,
+        "measured_output": -3276.0,
+        "error": 0.7000000000002728,
+        "error_percent": 0.0021362304687508327
+      },
+      {
+        "input_dc": 0.0,
+        "expected_output": 0.0,
+        "measured_output": 0.0,
+        "error": 0.0,
+        "error_percent": 0
+      },
+      {
+        "input_dc": 0.1,
+        "expected_output": 3276.7000000000003,
+        "measured_output": 3276.0,
+        "error": -0.7000000000002728,
+        "error_percent": -0.0021362304687508327
+      },
+      {
+        "input_dc": 0.5,
+        "expected_output": 16383.5,
+        "measured_output": 16383.0,
+        "error": -0.5,
+        "error_percent": -0.00152587890625
+      }
+    ],
+    "asymmetric_32768": [
+      {
+        "input_dc": -0.5,
+        "expected_output": -16383.5,
+        "measured_output": -16384.0,
+        "error": -0.5,
+        "error_percent": -0.00152587890625
+      },
+      {
+        "input_dc": -0.1,
+        "expected_output": -3276.7000000000003,
+        "measured_output": -3276.0,
+        "error": 0.7000000000002728,
+        "error_percent": 0.0021362304687508327
+      },
+      {
+        "input_dc": 0.0,
+        "expected_output": 0.0,
+        "measured_output": 0.0,
+        "error": 0.0,
+        "error_percent": 0
+      },
+      {
+        "input_dc": 0.1,
+        "expected_output": 3276.7000000000003,
+        "measured_output": 3276.0,
+        "error": -0.7000000000002728,
+        "error_percent": -0.0021362304687508327
+      },
+      {
+        "input_dc": 0.5,
+        "expected_output": 16383.5,
+        "measured_output": 16383.0,
+        "error": -0.5,
+        "error_percent": -0.00152587890625
+      }
+    ],
+    "traditional_32768": [
+      {
+        "input_dc": -0.5,
+        "expected_output": -16383.5,
+        "measured_output": -16384.0,
+        "error": -0.5,
+        "error_percent": -0.00152587890625
+      },
+      {
+        "input_dc": -0.1,
+        "expected_output": -3276.7000000000003,
+        "measured_output": -3276.0,
+        "error": 0.7000000000002728,
+        "error_percent": 0.0021362304687508327
+      },
+      {
+        "input_dc": 0.0,
+        "expected_output": 0.0,
+        "measured_output": 0.0,
+        "error": 0.0,
+        "error_percent": 0
+      },
+      {
+        "input_dc": 0.1,
+        "expected_output": 3276.7000000000003,
+        "measured_output": 3276.0,
+        "error": -0.7000000000002728,
+        "error_percent": -0.0021362304687508327
+      },
+      {
+        "input_dc": 0.5,
+        "expected_output": 16383.5,
+        "measured_output": 16384.0,
+        "error": 0.5,
+        "error_percent": 0.00152587890625
+      }
+    ],
+    "clamped_32767": [
+      {
+        "input_dc": -0.5,
+        "expected_output": -16383.5,
+        "measured_output": -16383.0,
+        "error": 0.5,
+        "error_percent": 0.00152587890625
+      },
+      {
+        "input_dc": -0.1,
+        "expected_output": -3276.7000000000003,
+        "measured_output": -3276.0,
+        "error": 0.7000000000002728,
+        "error_percent": 0.0021362304687508327
+      },
+      {
+        "input_dc": 0.0,
+        "expected_output": 0.0,
+        "measured_output": 0.0,
+        "error": 0.0,
+        "error_percent": 0
+      },
+      {
+        "input_dc": 0.1,
+        "expected_output": 3276.7000000000003,
+        "measured_output": 3276.0,
+        "error": -0.7000000000002728,
+        "error_percent": -0.0021362304687508327
+      },
+      {
+        "input_dc": 0.5,
+        "expected_output": 16383.5,
+        "measured_output": 16383.0,
+        "error": -0.5,
+        "error_percent": -0.00152587890625
+      }
+    ],
+    "dithered_32767": [
+      {
+        "input_dc": -0.5,
+        "expected_output": -16383.5,
+        "measured_output": -16383.0,
+        "error": 0.5,
+        "error_percent": 0.00152587890625
+      },
+      {
+        "input_dc": -0.1,
+        "expected_output": -3276.7000000000003,
+        "measured_output": -3276.080916666667,
+        "error": 0.6190833333334922,
+        "error_percent": 0.0018892923990890265
+      },
+      {
+        "input_dc": 0.0,
+        "expected_output": 0.0,
+        "measured_output": 0.0,
+        "error": 0.0,
+        "error_percent": 0
+      },
+      {
+        "input_dc": 0.1,
+        "expected_output": 3276.7000000000003,
+        "measured_output": 3276.082,
+        "error": -0.6180000000003929,
+        "error_percent": -0.001885986328126199
+      },
+      {
+        "input_dc": 0.5,
+        "expected_output": 16383.5,
+        "measured_output": 16383.0,
+        "error": -0.5,
+        "error_percent": -0.00152587890625
+      }
+    ]
+  },
+  "symmetry_analysis": {
+    "current_32767": [
+      {
+        "amplitude": 0.5,
+        "positive_peak": "16383",
+        "negative_peak": "-16383",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.9,
+        "positive_peak": "29490",
+        "negative_peak": "-29490",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.99,
+        "positive_peak": "32439",
+        "negative_peak": "-32439",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.999,
+        "positive_peak": "32734",
+        "negative_peak": "-32734",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 1.0,
+        "positive_peak": "32767",
+        "negative_peak": "-32767",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 1.1,
+        "positive_peak": "32767",
+        "negative_peak": "-32767",
+        "asymmetry": "0",
+        "symmetric": "True"
+      }
+    ],
+    "asymmetric_32768": [
+      {
+        "amplitude": 0.5,
+        "positive_peak": "16383",
+        "negative_peak": "-16384",
+        "asymmetry": "-1",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.9,
+        "positive_peak": "29490",
+        "negative_peak": "-29491",
+        "asymmetry": "-1",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.99,
+        "positive_peak": "32439",
+        "negative_peak": "-32440",
+        "asymmetry": "-1",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.999,
+        "positive_peak": "32734",
+        "negative_peak": "-32735",
+        "asymmetry": "-1",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 1.0,
+        "positive_peak": "32767",
+        "negative_peak": "-32768",
+        "asymmetry": "-1",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 1.1,
+        "positive_peak": "32767",
+        "negative_peak": "-32768",
+        "asymmetry": "-1",
+        "symmetric": "True"
+      }
+    ],
+    "traditional_32768": [
+      {
+        "amplitude": 0.5,
+        "positive_peak": "16384",
+        "negative_peak": "-16384",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.9,
+        "positive_peak": "29491",
+        "negative_peak": "-29491",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.99,
+        "positive_peak": "32440",
+        "negative_peak": "-32440",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.999,
+        "positive_peak": "32735",
+        "negative_peak": "-32735",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 1.0,
+        "positive_peak": "-32768",
+        "negative_peak": "-32768",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 1.1,
+        "positive_peak": "-32768",
+        "negative_peak": "-32768",
+        "asymmetry": "0",
+        "symmetric": "True"
+      }
+    ],
+    "clamped_32767": [
+      {
+        "amplitude": 0.5,
+        "positive_peak": "16383",
+        "negative_peak": "-16383",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.9,
+        "positive_peak": "29490",
+        "negative_peak": "-29490",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.99,
+        "positive_peak": "32439",
+        "negative_peak": "-32439",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.999,
+        "positive_peak": "32734",
+        "negative_peak": "-32734",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 1.0,
+        "positive_peak": "32767",
+        "negative_peak": "-32767",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 1.1,
+        "positive_peak": "32767",
+        "negative_peak": "-32767",
+        "asymmetry": "0",
+        "symmetric": "True"
+      }
+    ],
+    "dithered_32767": [
+      {
+        "amplitude": 0.5,
+        "positive_peak": "16383",
+        "negative_peak": "-16383",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.9,
+        "positive_peak": "29490",
+        "negative_peak": "-29490",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.99,
+        "positive_peak": "32439",
+        "negative_peak": "-32439",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 0.999,
+        "positive_peak": "32734",
+        "negative_peak": "-32734",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 1.0,
+        "positive_peak": "32767",
+        "negative_peak": "-32767",
+        "asymmetry": "0",
+        "symmetric": "True"
+      },
+      {
+        "amplitude": 1.1,
+        "positive_peak": "32767",
+        "negative_peak": "-32767",
+        "asymmetry": "0",
+        "symmetric": "True"
+      }
+    ]
+  },
+  "quality_analysis": {
+    "current_32767": [
+      {
+        "input_bits": 8,
+        "expected_levels": 256,
+        "measured_levels": 2438,
+        "effective_bits": 11.251482410620213,
+        "preservation_ratio": 9.5234375
+      },
+      {
+        "input_bits": 12,
+        "expected_levels": 4096,
+        "measured_levels": 21004,
+        "effective_bits": 14.35837648032824,
+        "preservation_ratio": 5.1279296875
+      },
+      {
+        "input_bits": 14,
+        "expected_levels": 16384,
+        "measured_levels": 36641,
+        "effective_bits": 15.161171257311649,
+        "preservation_ratio": 2.23638916015625
+      },
+      {
+        "input_bits": 16,
+        "expected_levels": 65536,
+        "measured_levels": 65533,
+        "effective_bits": 15.999933957150457,
+        "preservation_ratio": 0.9999542236328125
+      }
+    ],
+    "asymmetric_32768": [
+      {
+        "input_bits": 8,
+        "expected_levels": 256,
+        "measured_levels": 2453,
+        "effective_bits": 11.260331518557601,
+        "preservation_ratio": 9.58203125
+      },
+      {
+        "input_bits": 12,
+        "expected_levels": 4096,
+        "measured_levels": 21258,
+        "effective_bits": 14.37571825083947,
+        "preservation_ratio": 5.18994140625
+      },
+      {
+        "input_bits": 14,
+        "expected_levels": 16384,
+        "measured_levels": 35761,
+        "effective_bits": 15.126099459327653,
+        "preservation_ratio": 2.18267822265625
+      },
+      {
+        "input_bits": 16,
+        "expected_levels": 65536,
+        "measured_levels": 65534,
+        "effective_bits": 15.999955971769559,
+        "preservation_ratio": 0.999969482421875
+      }
+    ],
+    "traditional_32768": [
+      {
+        "input_bits": 8,
+        "expected_levels": 256,
+        "measured_levels": 2459,
+        "effective_bits": 11.263856019596082,
+        "preservation_ratio": 9.60546875
+      },
+      {
+        "input_bits": 12,
+        "expected_levels": 4096,
+        "measured_levels": 21089,
+        "effective_bits": 14.364203066466484,
+        "preservation_ratio": 5.148681640625
+      },
+      {
+        "input_bits": 14,
+        "expected_levels": 16384,
+        "measured_levels": 34716,
+        "effective_bits": 15.083313108650756,
+        "preservation_ratio": 2.118896484375
+      },
+      {
+        "input_bits": 16,
+        "expected_levels": 65536,
+        "measured_levels": 65535,
+        "effective_bits": 15.999977986052736,
+        "preservation_ratio": 0.9999847412109375
+      }
+    ],
+    "clamped_32767": [
+      {
+        "input_bits": 8,
+        "expected_levels": 256,
+        "measured_levels": 2447,
+        "effective_bits": 11.25679838607939,
+        "preservation_ratio": 9.55859375
+      },
+      {
+        "input_bits": 12,
+        "expected_levels": 4096,
+        "measured_levels": 21163,
+        "effective_bits": 14.369256533387983,
+        "preservation_ratio": 5.166748046875
+      },
+      {
+        "input_bits": 14,
+        "expected_levels": 16384,
+        "measured_levels": 36595,
+        "effective_bits": 15.159358925108684,
+        "preservation_ratio": 2.23358154296875
+      },
+      {
+        "input_bits": 16,
+        "expected_levels": 65536,
+        "measured_levels": 65533,
+        "effective_bits": 15.999933957150457,
+        "preservation_ratio": 0.9999542236328125
+      }
+    ],
+    "dithered_32767": [
+      {
+        "input_bits": 8,
+        "expected_levels": 256,
+        "measured_levels": 2425,
+        "effective_bits": 11.243769031961852,
+        "preservation_ratio": 9.47265625
+      },
+      {
+        "input_bits": 12,
+        "expected_levels": 4096,
+        "measured_levels": 21242,
+        "effective_bits": 14.374631986286776,
+        "preservation_ratio": 5.18603515625
+      },
+      {
+        "input_bits": 14,
+        "expected_levels": 16384,
+        "measured_levels": 39017,
+        "effective_bits": 15.251815233572486,
+        "preservation_ratio": 2.38140869140625
+      },
+      {
+        "input_bits": 16,
+        "expected_levels": 65536,
+        "measured_levels": 65533,
+        "effective_bits": 15.999933957150457,
+        "preservation_ratio": 0.9999542236328125
+      }
+    ]
+  },
+  "openai_compatibility": {
+    "format_check": {
+      "current_32767": {
+        "dtype": "int16",
+        "is_int16": true,
+        "itemsize": 2,
+        "correct_size": true
+      },
+      "asymmetric_32768": {
+        "dtype": "int16",
+        "is_int16": true,
+        "itemsize": 2,
+        "correct_size": true
+      },
+      "traditional_32768": {
+        "dtype": "int16",
+        "is_int16": true,
+        "itemsize": 2,
+        "correct_size": true
+      },
+      "clamped_32767": {
+        "dtype": "int16",
+        "is_int16": true,
+        "itemsize": 2,
+        "correct_size": true
+      },
+      "dithered_32767": {
+        "dtype": "int16",
+        "is_int16": true,
+        "itemsize": 2,
+        "correct_size": true
+      }
+    },
+    "endianness_check": {
+      "current_32767": {
+        "system_endianness": "little",
+        "is_little_endian": true,
+        "bytes_sample": "00005b079d0ead15741c"
+      },
+      "asymmetric_32768": {
+        "system_endianness": "little",
+        "is_little_endian": true,
+        "bytes_sample": "00005b079d0ead15741c"
+      },
+      "traditional_32768": {
+        "system_endianness": "little",
+        "is_little_endian": true,
+        "bytes_sample": "00005b079d0eae15751c"
+      },
+      "clamped_32767": {
+        "system_endianness": "little",
+        "is_little_endian": true,
+        "bytes_sample": "00005b079d0ead15741c"
+      },
+      "dithered_32767": {
+        "system_endianness": "little",
+        "is_little_endian": true,
+        "bytes_sample": "00005a079d0eae15741c"
+      }
+    },
+    "size_check": {
+      "current_32767": {
+        "expected_bytes": 48000,
+        "actual_bytes": 48000,
+        "size_correct": true
+      },
+      "asymmetric_32768": {
+        "expected_bytes": 48000,
+        "actual_bytes": 48000,
+        "size_correct": true
+      },
+      "traditional_32768": {
+        "expected_bytes": 48000,
+        "actual_bytes": 48000,
+        "size_correct": true
+      },
+      "clamped_32767": {
+        "expected_bytes": 48000,
+        "actual_bytes": 48000,
+        "size_correct": true
+      },
+      "dithered_32767": {
+        "expected_bytes": 48000,
+        "actual_bytes": 48000,
+        "size_correct": true
+      }
+    },
+    "range_check": {
+      "current_32767": {
+        "min_value": -16383,
+        "max_value": 16383,
+        "within_int16": "True"
+      },
+      "asymmetric_32768": {
+        "min_value": -16383,
+        "max_value": 16383,
+        "within_int16": "True"
+      },
+      "traditional_32768": {
+        "min_value": -16383,
+        "max_value": 16383,
+        "within_int16": "True"
+      },
+      "clamped_32767": {
+        "min_value": -16383,
+        "max_value": 16383,
+        "within_int16": "True"
+      },
+      "dithered_32767": {
+        "min_value": -16383,
+        "max_value": 16383,
+        "within_int16": "True"
+      }
+    }
+  },
+  "conclusion": "The current implementation using 32767 scaling is OPTIMAL. It provides excellent DC bias performance (0.4171%), perfect symmetry (ratio: inf), and high signal quality (SNR: 66.3dB). No changes to the PCM16 conversion are recommended."
+}
