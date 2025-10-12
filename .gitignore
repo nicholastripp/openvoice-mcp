@@ -1,28 +1,198 @@
-# Private documentation and planning
-docs/private/
-private/
-internal/
+# ==========================================
+# DEFAULT DENY - Only explicitly allowed files are tracked
+# ==========================================
 
-# Local configuration and secrets
+# Deny everything by default
+*
+!*/
+
+# ==========================================
+# ALLOWED: Core Project Files
+# ==========================================
+
+# Root documentation
+!README.md
+!CHANGELOG.md
+!CONTRIBUTING.md
+!LICENSE
+!MIGRATION.md
+
+# Build and install
+!requirements.txt
+!requirements-dev.txt
+!setup.py
+!pyproject.toml
+!install.sh
+!Makefile
+!run_tests.sh
+
+# Configuration examples (not actual config)
+!.env.example
+!config/
 config/config.yaml
 config/persona.ini
 config/certs/
-*.local
-*.local.*
-.env*
-*secret*
-*credential*
-*token*
+config/*.backup
+config/*.docker-backup
+config/test_*.yaml
 
-# Python
+# ==========================================
+# ALLOWED: Source Code
+# ==========================================
+
+!src/
+!src/**/*.py
+src/**/__pycache__/
+src/**/*.pyc
+
+# ==========================================
+# ALLOWED: Documentation (v2.0 focused)
+# ==========================================
+
+!docs/
+!docs/NATIVE_MCP_GUIDE.md
+
+# Deny old documentation
+docs/PRE_FORK/
+docs/20250829_OpenAI_Update/
+docs/.DS_Store
+
+# ==========================================
+# ALLOWED: Examples
+# ==========================================
+
+!examples/
+!examples/config/
+!examples/config/**/*.yaml
+!examples/config/**/*.md
+!examples/config/README.md
+
+# Deny ad-hoc test files in examples
+examples/test_*.py
+examples/test_*.yaml
+examples/multi_server_test_config.yaml
+examples/stdio_test_server.py
+
+# ==========================================
+# ALLOWED: Tests (organized only)
+# ==========================================
+
+!tests/
+!tests/**/*.py
+!tests/**/*.yaml
+!tests/**/*.md
+!tests/**/README.md
+!tests/**/*.json
+!tests/**/*.go
+!tests/**/*.js
+!tests/**/Dockerfile
+!tests/**/go.mod
+!tests/**/package.json
+!pytest.ini
+!pytest-pi.ini
+
+# Deny test caches
+tests/**/__pycache__/
+tests/**/*.pyc
+
+# ==========================================
+# ALLOWED: Packaging & Deployment
+# ==========================================
+
+!packaging/
+!packaging/**/*.py
+
+!systemd/
+!systemd/*.service
+
+# ==========================================
+# ALLOWED: CI/CD
+# ==========================================
+
+!.github/
+!.github/workflows/*.yml
+
+# Deny templates
+.github/workflows/*.template
+
+# ==========================================
+# ALLOWED: Docker
+# ==========================================
+
+!docker/
+!docker/**/*
+docker/**/node_modules/
+
+# ==========================================
+# ALLOWED: Scripts (selective)
+# ==========================================
+
+!scripts/
+!scripts/release_validation.sh
+!scripts/MIGRATION_NOTICE.md
+
+# Deny debug/test/migration scripts
+scripts/diagnose_*.py
+scripts/test_*.py
+scripts/migrate_*.py
+
+# ==========================================
+# DENIED: Development Artifacts
+# ==========================================
+
+# Development memory/logs
+Memory/
+backup/
+TaskAssignmentPrompts/
+
+# Claude artifacts
+.claude/
+.claude-*/
+CLAUDE.md
+
+# Ad-hoc test files in root
+test_*.py
+test_*.yaml
+test_*.sh
+test_*.txt
+test_*.md
+debug_*.py
+verify_*.sh
+
+# Temp and misc files
+*.tmp
+*.temp
+mcp_discovery_results.json
+package.json
+package-lock.json
+workflow_logs.txt
+DOCKER_BUFFERING_FIX_SUMMARY.md
+**/Issues*.txt
+
+# ==========================================
+# DENIED: Runtime & Generated Files
+# ==========================================
+
+# Runtime
+logs/
+*.log
+.env
+.env.local
+
+# Python artifacts
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+dist/
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -33,14 +203,9 @@ sdist/
 var/
 wheels/
 share/python-wheels/
-*.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
-
-# PyInstaller
-*.manifest
-*.spec
 
 # Testing and coverage
 htmlcov/
@@ -54,7 +219,6 @@ coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
-.pytest_cache/
 cover/
 
 # Virtual environments
@@ -64,8 +228,10 @@ ENV/
 env.bak/
 venv.bak/
 .venv/
+venv_*/
+*_test/
 
-# IDEs
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -81,44 +247,20 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Logs and debug
-logs/
-*.log
-debug_audio/
-recordings/
+# Generated files
+metrics/
+reports/
 
-# Development and reference
-.claude*
-CLAUDE.md
-reference-*/
-
-# Legacy
-billy-b-assistant/
-
-# Temporary and backup files
-*.tmp
-*.temp
+# Misc
 *.bak
 *.backup
-
-# APM Project Management Files
+reference-*/
+billy-b-assistant/
+pip-log.txt
+pip-delete-this-directory.txt
 APM-Files/
 APM_*.md
 !APM_Implementation_Plan.md
 !APM_Memory_Bank.md
 END_PHRASE*.md
-
-# Test environments
-venv_*/
-*_test/
-
-# Generated metrics and reports  
-metrics/
-reports/
-
-# Misc/accidental files
 =*
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
