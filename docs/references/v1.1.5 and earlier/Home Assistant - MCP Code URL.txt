@@ -1,3 +1,0 @@
-Home Assistant Model Context Protocol Server code URL
-
-https://github.com/home-assistant/core/tree/dev/homeassistant/components/mcp_server

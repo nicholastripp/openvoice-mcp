@@ -49,13 +49,19 @@ src/**/*.pyc
 # ALLOWED: Documentation (v2.0 focused)
 # ==========================================
 
-!docs/
+# Allow only essential documentation referenced in README
+!docs/AUDIO_SETUP.md
+!docs/CONFIGURATION.md
+!docs/INSTALLATION.md
 !docs/NATIVE_MCP_GUIDE.md
+!docs/OPENAI_MIGRATION.md
+!docs/TROUBLESHOOTING.md
+!docs/USAGE.md
+!docs/WAKE_WORD_SETUP.md
+!docs/WEB_UI_GUIDE.md
 
-# Deny old documentation
-docs/PRE_FORK/
-docs/20250829_OpenAI_Update/
-docs/.DS_Store
+# Deny everything else in docs
+docs/
 
 # ==========================================
 # ALLOWED: Examples
