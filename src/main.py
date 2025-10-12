@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Home Assistant Realtime Voice Assistant
+OpenVoice MCP - Hybrid Multi-Server Voice Assistant
 
-A standalone Raspberry Pi voice assistant that provides natural, low-latency 
-conversations for Home Assistant control using OpenAI's Realtime API.
+A next-generation voice assistant with hybrid native/client-side MCP support,
+enabling both remote cloud services and local tool execution through OpenAI's
+Realtime API.
 """
 import asyncio
 import argparse
@@ -161,7 +162,7 @@ class VoiceAssistant:
         # Clear device cache on startup to ensure fresh data
         self._clear_device_cache()
         self.logger.info("Device cache cleared on startup for fresh data")
-        self.logger.info("Starting Home Assistant Realtime Voice Assistant")
+        self.logger.info("Starting OpenVoice MCP v2.0.0")
         
         try:
             self.logger.debug("About to call _initialize_components()")

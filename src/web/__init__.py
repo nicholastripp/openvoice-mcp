@@ -1,5 +1,5 @@
 """
-Web UI module for Home Assistant Realtime Voice Assistant
+Web UI module for OpenVoice MCP
 """
 
-__version__ = "1.1.5"
+__version__ = "2.0.0"

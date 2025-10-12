@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Optimized Audio Pipeline for HA Realtime Voice Assistant
+Optimized Audio Pipeline for OpenVoice MCP
 Provides separate optimized paths for OpenAI (24kHz) and Porcupine (16kHz)
 Implements improvements from APM Phase 1 Tasks 1.1-1.4
 

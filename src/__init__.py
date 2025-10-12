@@ -1,3 +1,3 @@
-"""Home Assistant Realtime Voice Assistant"""
+"""OpenVoice MCP - Hybrid Multi-Server Voice Assistant"""
 
-__version__ = "1.1.5"
+__version__ = "2.0.0"

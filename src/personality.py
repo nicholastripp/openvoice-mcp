@@ -1,5 +1,5 @@
 """
-Personality system for HA Realtime Voice Assistant
+Personality system for OpenVoice MCP
 Based on Billy B-Assistant personality framework
 """
 import configparser

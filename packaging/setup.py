@@ -1,5 +1,5 @@
 """
-Setup script for Home Assistant Realtime Voice Assistant
+Setup script for OpenVoice MCP - Hybrid Multi-Server Voice Assistant
 """
 from setuptools import setup, find_packages
 from pathlib import Path
@@ -17,14 +17,14 @@ if requirements_path.exists():
     requirements = [req.strip() for req in requirements if req.strip() and not req.startswith('#')]
 
 setup(
-    name="ha-realtime-voice-assistant",
-    version="0.5.0-beta",
-    description="A standalone Raspberry Pi voice assistant for Home Assistant using OpenAI Realtime API",
+    name="openvoice-mcp",
+    version="2.0.0",
+    description="Hybrid multi-server voice assistant with native/client-side MCP support for OpenAI Realtime API",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Nicholas Tripp",
     author_email="",
-    url="https://github.com/nicholastripp/ha-realtime-assist",
+    url="https://github.com/nicholastripp/openvoice-mcp-v2",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     python_requires=">=3.9",
@@ -32,7 +32,7 @@ setup(
     extras_require={
         "dev": [
             "pytest>=7.0.0",
-            "pytest-asyncio>=0.21.0", 
+            "pytest-asyncio>=0.21.0",
             "black>=23.0.0",
             "flake8>=6.0.0",
             "mypy>=1.5.0"
@@ -40,7 +40,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "ha-voice-assistant=main:main",
+            "openvoice-mcp=main:main",
         ],
     },
     classifiers=[
@@ -55,10 +55,11 @@ setup(
         "Topic :: Home Automation",
         "Topic :: Multimedia :: Sound/Audio :: Speech",
     ],
-    keywords="home-assistant voice-assistant openai raspberry-pi smart-home",
+    keywords="mcp model-context-protocol voice-assistant openai raspberry-pi smart-home hybrid-architecture",
     project_urls={
-        "Bug Reports": "https://github.com/nicholastripp/ha-realtime-assist/issues",
-        "Source": "https://github.com/nicholastripp/ha-realtime-assist",
-        "Documentation": "https://github.com/nicholastripp/ha-realtime-assist/wiki",
+        "Bug Reports": "https://github.com/nicholastripp/openvoice-mcp-v2/issues",
+        "Source": "https://github.com/nicholastripp/openvoice-mcp-v2",
+        "Documentation": "https://github.com/nicholastripp/openvoice-mcp-v2/blob/main/README.md",
+        "Base Project": "https://github.com/nicholastripp/ha-realtime-assist",
     },
 )

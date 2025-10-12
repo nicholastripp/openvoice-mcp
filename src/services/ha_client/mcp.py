@@ -490,8 +490,8 @@ class MCPClient:
                 "tools": {}
             },
             "clientInfo": {
-                "name": "ha-realtime-assist",
-                "version": "1.0.0"
+                "name": "openvoice-mcp",
+                "version": "2.0.0"
             }
         })
         

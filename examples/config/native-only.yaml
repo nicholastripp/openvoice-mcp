@@ -1,0 +1,115 @@
+# OpenVoice MCP v2.0.0 - Native-Only Configuration Example
+#
+# This configuration uses ONLY native mode MCP servers (remote, OpenAI-managed).
+# Use this when you want OpenAI to directly manage connections to remote MCP servers.
+#
+# Benefits:
+# - Lowest latency (OpenAI connects directly)
+# - Scalable (OpenAI manages connection pool)
+# - Built-in approval workflows
+#
+# Prerequisites:
+# - MCP server must be accessible via HTTP/HTTPS
+# - Server must support SSE or Streamable HTTP transport
+# - Authorization token if required
+
+# OpenAI Configuration
+openai:
+  api_key: ${OPENAI_API_KEY}  # Set in .env file
+  model: "gpt-realtime"        # Production model (20% cheaper)
+  voice: "nova"                # Options: coral, sage, nova, alloy, shimmer, echo, ash, verse, ballad, coral
+  temperature: 0.8
+  max_response_tokens: 4096
+
+# Home Assistant Configuration (for non-MCP API access)
+home_assistant:
+  url: ${HA_URL}               # Set in .env file
+  token: ${HA_TOKEN}           # Set in .env file
+  verify_ssl: true
+
+# MCP Servers Configuration (Native Mode Only)
+mcp_servers:
+  # Home Assistant MCP Server (Native Mode)
+  home_assistant:
+    mode: native
+    enabled: true
+
+    # Server URL (SSE endpoint)
+    server_url: https://homeassistant.local/mcp_server/sse
+
+    # Authorization header
+    authorization: Bearer ${HA_TOKEN}
+
+    # Human-readable description
+    description: Smart home control and automation
+
+    # Approval policy
+    require_approval: never  # Options: "always", "never", or tool-specific dict
+
+    # Optional: Filter which tools to expose
+    # allowed_tools:
+    #   - get_state
+    #   - call_service
+    #   - list_entities
+
+    # Priority for tool routing (lower = higher priority)
+    priority: 100
+
+  # Example: Add another native MCP server
+  # cloud_api:
+  #   mode: native
+  #   enabled: false
+  #   server_url: https://api.example.com/mcp/sse
+  #   authorization: Bearer YOUR_API_TOKEN
+  #   description: Cloud API integration
+  #   require_approval: always
+  #   priority: 200
+
+# Wake Word Configuration
+wake_word:
+  enabled: true
+  model: "picovoice"
+  keyword: "picovoice"  # Built-in options: picovoice, alexa, computer, jarvis
+  sensitivity: 1.0      # 0.0-1.0, higher = more sensitive
+  access_key: ${PICOVOICE_ACCESS_KEY}  # Set in .env file
+
+# Audio Configuration
+audio:
+  # Input settings
+  input_device: null        # null = default device
+  input_volume: 1.0         # 0.1-5.0, adjust for your mic
+  agc_enabled: true         # Automatic Gain Control
+
+  # Output settings
+  output_device: null       # null = default device
+  output_volume: 0.8        # 0.0-1.0
+
+  # Sample rates
+  input_sample_rate: 48000
+  output_sample_rate: 48000
+
+  # Voice Activity Detection (VAD)
+  vad_enabled: true
+  vad_silence_duration_ms: 1000
+  vad_prefix_padding_ms: 300
+  vad_threshold: 0.5
+
+# Conversation Settings
+conversation:
+  multi_turn_enabled: true
+  multi_turn_timeout: 300     # 5 minutes max conversation
+  extended_silence_timeout: 8.5  # End conversation after 8.5s silence
+
+# System Settings
+system:
+  log_level: "INFO"           # DEBUG, INFO, WARNING, ERROR
+  console_log_level: "INFO"
+  log_to_file: true
+  log_max_size_mb: 10
+  log_backup_count: 3
+
+# Persona Configuration (optional)
+# personality:
+#   system_instructions: |
+#     You are a helpful voice assistant for home automation.
+#     Be concise and natural in your responses.

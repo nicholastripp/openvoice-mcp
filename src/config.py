@@ -1,5 +1,5 @@
 """
-Configuration management for HA Realtime Voice Assistant
+Configuration management for OpenVoice MCP
 """
 import os
 import yaml

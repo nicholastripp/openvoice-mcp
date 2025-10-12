@@ -1,0 +1,216 @@
+# OpenVoice MCP v2.0.0 - Hybrid Configuration Example
+#
+# This configuration uses BOTH native and client mode MCP servers.
+# This is the recommended approach for maximum flexibility.
+#
+# Architecture:
+# - Native mode for remote servers (Home Assistant, cloud APIs)
+# - Client mode for local servers (filesystem, git, custom tools)
+#
+# Benefits:
+# - Best of both worlds
+# - Lowest latency for remote tools (native)
+# - Full local resource access (client)
+# - Flexible tool routing with priorities
+
+# OpenAI Configuration
+openai:
+  api_key: ${OPENAI_API_KEY}
+  model: "gpt-realtime"
+  voice: "nova"
+  temperature: 0.8
+  max_response_tokens: 4096
+
+# Home Assistant Configuration
+home_assistant:
+  url: ${HA_URL}
+  token: ${HA_TOKEN}
+  verify_ssl: true
+
+# MCP Servers Configuration (Hybrid: Native + Client)
+mcp_servers:
+  # === NATIVE MODE SERVERS (Remote) ===
+
+  # Home Assistant (Native Mode) - Priority 100
+  home_assistant:
+    mode: native
+    enabled: true
+    server_url: https://homeassistant.local/mcp_server/sse
+    authorization: Bearer ${HA_TOKEN}
+    description: Smart home control and automation
+    require_approval: never  # Auto-approve for convenience
+    priority: 100  # Highest priority for HA tools
+
+  # Example: Cloud API (Native Mode) - Priority 150
+  # cloud_api:
+  #   mode: native
+  #   enabled: false
+  #   server_url: https://api.example.com/mcp/sse
+  #   authorization: Bearer ${CLOUD_API_TOKEN}
+  #   description: Cloud service integration
+  #   require_approval:
+  #     # Tool-specific approval rules
+  #     read_data: never      # Auto-approve reads
+  #     write_data: always    # Require approval for writes
+  #     delete_data: always   # Require approval for deletes
+  #   allowed_tools:
+  #     - read_data
+  #     - write_data
+  #     - delete_data
+  #   priority: 150
+
+  # === CLIENT MODE SERVERS (Local) ===
+
+  # Filesystem Access (Client Mode) - Priority 200
+  filesystem:
+    mode: client
+    enabled: true
+    transport: stdio
+    command: uvx
+    args:
+      - mcp-server-filesystem
+      - /Users/username/Documents
+      - /Users/username/Downloads
+      - /Users/username/Projects
+    env:
+      MCP_DEBUG: "0"
+    timeout: 30
+    priority: 200  # Lower priority than native servers
+
+  # Git Operations (Client Mode) - Priority 300
+  git:
+    mode: client
+    enabled: true
+    transport: stdio
+    command: uvx
+    args:
+      - mcp-server-git
+      - --repository
+      - /Users/username/Projects
+    timeout: 30
+    priority: 300
+
+  # Memory/Notes (Client Mode) - Priority 400
+  # memory:
+  #   mode: client
+  #   enabled: false
+  #   transport: stdio
+  #   command: uvx
+  #   args:
+  #     - mcp-server-memory
+  #   env:
+  #     MEMORY_DIR: /Users/username/.openvoice-memory
+  #   timeout: 30
+  #   priority: 400
+
+# Wake Word Configuration
+wake_word:
+  enabled: true
+  model: "picovoice"
+  keyword: "picovoice"
+  sensitivity: 1.0
+  access_key: ${PICOVOICE_ACCESS_KEY}
+
+# Audio Configuration
+audio:
+  # Input
+  input_device: null        # null = default
+  input_volume: 1.0         # Adjust for your mic
+  agc_enabled: true
+
+  # Output
+  output_device: null
+  output_volume: 0.8
+
+  # Sample rates
+  input_sample_rate: 48000
+  output_sample_rate: 48000
+
+  # Voice Activity Detection
+  vad_enabled: true
+  vad_silence_duration_ms: 1000
+  vad_prefix_padding_ms: 300
+  vad_threshold: 0.5
+
+# Conversation Settings
+conversation:
+  multi_turn_enabled: true
+  multi_turn_timeout: 300       # 5 minutes
+  extended_silence_timeout: 8.5 # End after 8.5s silence
+
+# System Settings
+system:
+  log_level: "INFO"
+  console_log_level: "INFO"
+  log_to_file: true
+  log_max_size_mb: 10
+  log_backup_count: 3
+
+# Persona Configuration
+personality:
+  system_instructions: |
+    You are a helpful voice assistant with access to:
+    - Smart home control via Home Assistant
+    - Local file system operations
+    - Git repository management
+
+    Be concise and natural in your responses.
+    When performing actions, confirm what you did.
+    If you need clarification, ask brief questions.
+
+# ============================================================================
+# CONFIGURATION GUIDE
+# ============================================================================
+#
+# Priority System:
+# ----------------
+# Lower priority number = higher precedence
+# - 100: Critical services (Home Assistant)
+# - 200: Frequently used tools (filesystem)
+# - 300+: Less frequently used tools
+#
+# When to use Native vs Client:
+# ------------------------------
+# Use NATIVE mode when:
+# - Server is accessible via HTTP/HTTPS
+# - You want lowest latency
+# - Server is remote/cloud-based
+# - You want OpenAI to manage the connection
+#
+# Use CLIENT mode when:
+# - Server uses stdio transport
+# - Server must access local resources
+# - You need custom environment variables
+# - You want full control over server lifecycle
+#
+# Approval Policies:
+# ------------------
+# - "never": Auto-approve all tool calls
+# - "always": Require approval for all calls (prompts user)
+# - {tool_name: "never"/"always"}: Tool-specific rules
+#
+# Security Best Practices:
+# ------------------------
+# 1. Use environment variables for sensitive data
+# 2. Set strict approval policies for write operations
+# 3. Limit filesystem access to specific directories
+# 4. Review allowed_tools for each native server
+# 5. Use verify_ssl: true for production
+# 6. Regularly update MCP server packages
+#
+# Performance Tips:
+# -----------------
+# 1. Native mode: <100ms tool latency
+# 2. Client mode: <200ms tool latency
+# 3. Set appropriate timeouts for slow servers
+# 4. Disable unused servers (enabled: false)
+# 5. Use priority to favor faster servers
+#
+# Troubleshooting:
+# ----------------
+# 1. Enable debug logging: set MCP_DEBUG=1 in env
+# 2. Check server logs in system log file
+# 3. Verify command paths are correct
+# 4. Test servers individually (enable one at a time)
+# 5. Check firewall/network for native servers
+# 6. See docs/NATIVE_MCP_GUIDE.md for detailed help

@@ -1,5 +1,5 @@
 """
-Logging utilities for HA Realtime Voice Assistant
+Logging utilities for OpenVoice MCP
 """
 import logging
 import logging.handlers

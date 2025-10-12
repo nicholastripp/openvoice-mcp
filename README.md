@@ -1,11 +1,13 @@
-# Home Assistant Realtime Voice Assistant
+# OpenVoice MCP - Hybrid Multi-Server Voice Assistant
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue)
-![Status](https://img.shields.io/badge/status-stable-green)
+![Version](https://img.shields.io/badge/version-2.0.0--beta-orange)
+![Status](https://img.shields.io/badge/status-testing-yellow)
 ![Python](https://img.shields.io/badge/python-3.9+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-A standalone Raspberry Pi voice assistant that provides natural, low-latency conversations for Home Assistant control using OpenAI's Realtime API.
+A next-generation voice assistant with **hybrid native/client-side MCP support**, enabling both remote cloud services and local tool execution through OpenAI's Realtime API.
+
+**🚀 What's New in v2.0.0**: Hybrid MCP architecture combining OpenAI's native MCP support (August 2025) with client-side management for local servers. Based on ha-realtime-assist v1.2.0.
 
 ## Overview
 
@@ -13,17 +15,39 @@ This project creates a dedicated voice interface for Home Assistant that runs on
 
 ## Key Features
 
-- 🎙️ **Natural Conversations**: Real-time bidirectional audio streaming with multi-turn support
-- ⚡ **Low Latency**: <600ms voice-to-voice response time  
-- 🏠 **Full HA Control**: Native MCP integration with Home Assistant
-- 👂 **Porcupine Wake Words**: Accurate detection with built-in keywords + custom wake word support
-- 🔊 **Automatic Gain Control**: AGC prevents clipping and maintains optimal audio levels
-- 🌍 **Multi-Language**: End phrases in 6 languages (EN, DE, ES, FR, IT, NL)
-- 🎭 **10+ Voices**: Choose from 10 OpenAI voices including new options
-- 🌐 **Web UI**: Complete web interface with setup wizard and real-time monitoring
-- 🔒 **Enterprise Security**: CSRF protection, rate limiting, security headers, and secure authentication
-- 🚀 **Audio Diagnostics**: Professional-grade tools for optimization
-- 💰 **Cost Effective**: 20% lower API costs with production models
+### 🌟 v2.0.0 Hybrid MCP Architecture
+- **🔗 Native MCP Mode**: OpenAI directly manages remote MCP servers (lowest latency)
+- **💻 Client MCP Mode**: Local stdio servers for filesystem, git, and local tools
+- **⚡ Multi-Server Support**: Connect to multiple MCP servers simultaneously
+- **🛡️ Approval Workflows**: Policy-based tool execution approval for security
+- **🔄 Automatic Routing**: Intelligent tool routing based on priority and availability
+
+### 🎙️ Voice & Conversation
+- **Natural Conversations**: Real-time bidirectional audio streaming with multi-turn support
+- **Low Latency**: <600ms voice-to-voice response time
+- **10+ Voices**: Choose from 10 OpenAI voices including Cedar, Marin, Verse
+- **Multi-Language**: End phrases in 6 languages (EN, DE, ES, FR, IT, NL)
+
+### 🏠 Home Assistant Integration
+- **Native MCP**: Direct OpenAI connection to Home Assistant MCP server
+- **Full Control**: Complete device and service control through MCP protocol
+- **Real-time State**: Live entity state updates and monitoring
+
+### 🔧 Local Tools & Servers
+- **Filesystem Access**: Browse and manage files through MCP filesystem server
+- **Git Integration**: Repository operations via MCP git server
+- **Custom Servers**: Add any stdio-based MCP server
+- **Subprocess Management**: Automatic lifecycle handling for local servers
+
+### 🎛️ Audio & Wake Words
+- **Porcupine Wake Words**: >95% accurate detection with built-in + custom keywords
+- **Automatic Gain Control**: AGC prevents clipping and maintains optimal levels
+- **Audio Diagnostics**: Professional-grade optimization tools
+
+### 🌐 Interface & Security
+- **Web UI**: Complete web interface with setup wizard and monitoring
+- **Enterprise Security**: CSRF protection, rate limiting, secure authentication
+- **Cost Effective**: 20% lower API costs with production models
 
 ## How It Works
 
@@ -67,8 +91,8 @@ The assistant supports natural multi-turn conversations where you can continue s
 
 ```bash
 # Clone the repository
-git clone https://github.com/nicholastripp/ha-realtime-assist
-cd ha-realtime-assist
+git clone https://github.com/nicholastripp/openvoice-mcp-v2
+cd openvoice-mcp-v2
 
 # Install dependencies and set up configuration
 ./install.sh
@@ -127,15 +151,57 @@ openai:
 home_assistant:
   url: ${HA_URL}               # Uses value from .env
   token: ${HA_TOKEN}           # Uses value from .env
-  
-mcp:
-  mode: "native"               # Native mode (recommended) or "bridge"
 
 wake_word:
   enabled: true
   model: "picovoice"
   sensitivity: 1.0
 ```
+
+### MCP Server Configuration (v2.0.0)
+
+OpenVoice MCP v2 supports **hybrid MCP architecture** with multiple servers. Configure servers in the `mcp_servers` section:
+
+```yaml
+mcp_servers:
+  # Native mode - OpenAI manages remote servers (recommended for remote)
+  home_assistant:
+    mode: native
+    enabled: true
+    server_url: https://homeassistant.local/mcp_server/sse
+    authorization: Bearer ${HA_TOKEN}
+    description: Smart home control
+    require_approval: never  # "always", "never", or tool-specific dict
+    priority: 100
+
+  # Client mode - Local stdio servers (required for local tools)
+  filesystem:
+    mode: client
+    enabled: true
+    transport: stdio
+    command: uvx
+    args:
+      - mcp-server-filesystem
+      - /Users/username/Documents
+    priority: 200
+
+  # Add more servers as needed
+  git:
+    mode: client
+    enabled: false
+    transport: stdio
+    command: uvx
+    args:
+      - mcp-server-git
+      - --repository
+      - /path/to/repo
+```
+
+**Configuration Modes**:
+- **Native Mode**: OpenAI connects directly to remote MCP servers (lowest latency)
+- **Client Mode**: Local stdio servers managed as subprocesses (for filesystem, git, etc.)
+
+See the [Hybrid MCP Architecture Guide](docs/NATIVE_MCP_GUIDE.md) for detailed configuration examples and best practices.
 
 ### Wake Word Setup
 
@@ -159,13 +225,20 @@ audio:
 
 See the [Audio Setup Guide](docs/AUDIO_SETUP.md) for optimal configuration.
 
-## Latest Features (v1.2.0)
+## Latest Features
 
+### v2.0.0 (October 2025)
+- 🔗 **Hybrid MCP Architecture** - Native OpenAI MCP + client-side stdio server support
+- ⚡ **Multi-Server Support** - Connect to multiple MCP servers simultaneously
+- 💻 **Local Tool Integration** - Filesystem, git, and custom stdio-based servers
+- 🛡️ **Approval Workflows** - Policy-based tool execution security
+- 🔄 **Intelligent Tool Routing** - Priority-based tool selection and routing
+
+### v1.2.0 Base Features (Inherited from ha-realtime-assist)
 - 🎯 **Audio Pipeline Diagnostics** - Professional tools for analyzing and optimizing audio quality
 - 💰 **20% Cost Reduction** - Migration to OpenAI production API with better pricing
 - 🎤 **Enhanced Voice Options** - 10 voices including Cedar, Marin, Verse, and Juniper
 - 🌍 **Multi-Language End Phrases** - Smart detection in 6 languages prevents false positives
-- 🔧 **Native MCP Integration** - Direct server connection replaces bridge mode
 - 📊 **Wake Word Accuracy >95%** - Optimized audio pipeline improves detection
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
@@ -194,7 +267,7 @@ python src/main.py --log-level DEBUG
 
 **Console Output Examples:**
 ```
-✓ Home Assistant Voice Assistant v1.2.0
+✓ OpenVoice MCP v2.0.0
 ✓ Connected to Home Assistant 2024.1.0
 ✓ Listening for wake word 'picovoice'
 
@@ -261,11 +334,11 @@ python src/main.py
 - [Installation Guide](docs/INSTALLATION.md) - Step-by-step setup instructions
 - [Usage Guide](docs/USAGE.md) - How to use your assistant
 - [Configuration Guide](docs/CONFIGURATION.md) - All configuration options
+- [Hybrid MCP Architecture Guide](docs/NATIVE_MCP_GUIDE.md) - **NEW v2.0.0**: Native + client-side MCP setup
 - [Web UI Guide](docs/WEB_UI_GUIDE.md) - Web interface for easy configuration
 - [Audio Setup](docs/AUDIO_SETUP.md) - Microphone and speaker configuration
 - [Wake Word Setup](docs/WAKE_WORD_SETUP.md) - Wake word configuration
 - [OpenAI Migration](docs/OPENAI_MIGRATION.md) - Guide for v1.2.0 API changes
-- [MCP Native Setup](docs/MCP_NATIVE_SETUP.md) - Native MCP integration guide
 - [Audio Diagnostics](tools/README_AUDIO_DIAGNOSTIC.md) - Audio optimization tools
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
 
@@ -279,15 +352,18 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Performance
 
-With v1.2.0 optimizations:
-- **Response Latency**: <600ms (was ~800ms)
-- **Wake Word Accuracy**: >95% (was ~85%)
-- **API Costs**: 20% reduction
+Based on ha-realtime-assist v1.2.0 with v2.0.0 enhancements:
+- **Response Latency**: <600ms voice-to-voice (native MCP even lower)
+- **Wake Word Accuracy**: >95%
+- **API Costs**: 20% reduction from production model
 - **Transcription Accuracy**: >98%
 - **Multi-language Support**: 6 languages
+- **MCP Tool Latency**: Native mode <100ms, client mode <200ms
 
 ## Acknowledgments
 
+- **Built on** [ha-realtime-assist v1.2.0](https://github.com/nicholastripp/ha-realtime-assist) - The foundation voice assistant platform
 - Inspired by the [Billy B-Assistant](https://github.com/nickschaub/billy-b-assistant) project
 - Built with [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime)
+- Powered by [Model Context Protocol](https://modelcontextprotocol.io)
 - Integrates with [Home Assistant](https://www.home-assistant.io)

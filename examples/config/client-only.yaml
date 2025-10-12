@@ -1,0 +1,149 @@
+# OpenVoice MCP v2.0.0 - Client-Only Configuration Example
+#
+# This configuration uses ONLY client mode MCP servers (local, stdio-based).
+# Use this when you want to integrate local tools like filesystem access, git, etc.
+#
+# Benefits:
+# - Access to local resources
+# - Full control over server execution
+# - Custom environment variables
+# - Supports stdio-based MCP servers
+#
+# Prerequisites:
+# - MCP server command must be available (e.g., via uvx, npx, or direct path)
+# - Required permissions for local resources
+
+# OpenAI Configuration
+openai:
+  api_key: ${OPENAI_API_KEY}  # Set in .env file
+  model: "gpt-realtime"        # Production model
+  voice: "nova"
+  temperature: 0.8
+  max_response_tokens: 4096
+
+# MCP Servers Configuration (Client Mode Only)
+mcp_servers:
+  # Filesystem Server (Client Mode)
+  filesystem:
+    mode: client
+    enabled: true
+
+    # Transport type (only stdio supported currently)
+    transport: stdio
+
+    # Command to execute (must be in PATH or use absolute path)
+    command: uvx
+
+    # Command arguments
+    args:
+      - mcp-server-filesystem
+      - /Users/username/Documents  # Allowed directory path
+
+    # Optional: Environment variables
+    env:
+      MCP_DEBUG: "0"  # Set to "1" for debug logging
+
+    # Connection timeout (seconds)
+    timeout: 30
+
+    # Priority for tool routing
+    priority: 100
+
+  # Git Server (Client Mode)
+  git:
+    mode: client
+    enabled: true
+    transport: stdio
+    command: uvx
+    args:
+      - mcp-server-git
+      - --repository
+      - /Users/username/projects  # Git repository path
+    timeout: 30
+    priority: 200
+
+  # Example: Memory/Notes Server
+  # memory:
+  #   mode: client
+  #   enabled: false
+  #   transport: stdio
+  #   command: uvx
+  #   args:
+  #     - mcp-server-memory
+  #   env:
+  #     MEMORY_DIR: /Users/username/.memory
+  #   timeout: 30
+  #   priority: 300
+
+  # Example: Custom stdio server
+  # custom_server:
+  #   mode: client
+  #   enabled: false
+  #   transport: stdio
+  #   command: python
+  #   args:
+  #     - /path/to/your/mcp_server.py
+  #   env:
+  #     CUSTOM_VAR: value
+  #   timeout: 30
+  #   priority: 400
+
+# Wake Word Configuration
+wake_word:
+  enabled: true
+  model: "picovoice"
+  keyword: "picovoice"
+  sensitivity: 1.0
+  access_key: ${PICOVOICE_ACCESS_KEY}
+
+# Audio Configuration
+audio:
+  input_device: null
+  input_volume: 1.0
+  agc_enabled: true
+  output_device: null
+  output_volume: 0.8
+  input_sample_rate: 48000
+  output_sample_rate: 48000
+  vad_enabled: true
+  vad_silence_duration_ms: 1000
+  vad_prefix_padding_ms: 300
+  vad_threshold: 0.5
+
+# Conversation Settings
+conversation:
+  multi_turn_enabled: true
+  multi_turn_timeout: 300
+  extended_silence_timeout: 8.5
+
+# System Settings
+system:
+  log_level: "INFO"
+  console_log_level: "INFO"
+  log_to_file: true
+  log_max_size_mb: 10
+  log_backup_count: 3
+
+# Notes on Client Mode:
+#
+# 1. Server Commands:
+#    - Use uvx for Python-based MCP servers (recommended)
+#    - Use npx for Node.js-based MCP servers
+#    - Use absolute paths for custom executables
+#
+# 2. Permissions:
+#    - Ensure the command has execute permissions
+#    - Verify access to specified directories/resources
+#    - Check that environment variables are properly set
+#
+# 3. Debugging:
+#    - Set MCP_DEBUG=1 in env to see server logs
+#    - Check system logs for subprocess errors
+#    - Use --verbose flag when running main.py
+#
+# 4. Available MCP Servers:
+#    - mcp-server-filesystem: File operations
+#    - mcp-server-git: Git repository operations
+#    - mcp-server-memory: Note-taking and memory
+#    - mcp-server-sqlite: SQLite database access
+#    - Custom servers: Build your own!

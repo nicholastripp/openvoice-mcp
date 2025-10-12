@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Installation script for Home Assistant Realtime Voice Assistant
+# Installation script for OpenVoice MCP
 # For Raspberry Pi and other Linux systems
 
 set -e
 
 echo "========================================"
-echo "HA Realtime Voice Assistant Installer"
+echo "OpenVoice MCP Installer"
 echo "========================================"
 
 # Colors for output
@@ -252,5 +252,5 @@ echo -e "${GREEN}Setup complete!${NC}"
 echo "================================================"
 echo ""
 echo "For detailed documentation, see README.md"
-echo "GitHub: https://github.com/nicholastripp/ha-realtime-assist"
+echo "GitHub: https://github.com/nicholastripp/openvoice-mcp-v2"
 echo ""
