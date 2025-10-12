@@ -33,6 +33,8 @@ from .performance_metrics import PerformanceMetrics
 
 # Import native MCP support
 from services.ha_client.mcp_native import NativeMCPManager
+# Import client-side MCP manager for local/stdio servers
+from services.ha_client.mcp_client_manager import ClientMCPManager
 
 
 class ConnectionState(Enum):
@@ -73,6 +75,18 @@ class OpenAIRealtimeClient:
         self.mcp_manager = None
         if app_config:
             self.mcp_manager = NativeMCPManager(app_config)
+
+        # Initialize client-side MCP manager for local/stdio servers
+        self.client_mcp_manager = None
+        if app_config and hasattr(app_config, 'mcp_servers') and app_config.mcp_servers:
+            # Filter for client-mode servers
+            client_servers = {
+                name: config
+                for name, config in app_config.mcp_servers.items()
+                if config.mode == "client" and config.enabled
+            }
+            if client_servers:
+                self.client_mcp_manager = ClientMCPManager(app_config.mcp_servers)
         
         # Connection state
         self.state = ConnectionState.DISCONNECTED
@@ -290,7 +304,42 @@ class OpenAIRealtimeClient:
             
             # Start event loop
             asyncio.create_task(self._event_loop())
-            
+
+            # Connect to client-side MCP servers and register their tools
+            if self.client_mcp_manager:
+                self.logger.info("Connecting to client-side MCP servers...")
+                try:
+                    await self.client_mcp_manager.connect_all()
+
+                    if self.client_mcp_manager.is_connected():
+                        # Register MCP tools as OpenAI functions
+                        openai_functions = self.client_mcp_manager.get_tools_for_openai()
+
+                        for func_def in openai_functions:
+                            # Create a closure that captures the tool name
+                            tool_name = func_def["name"]
+
+                            async def mcp_tool_handler(args: Dict[str, Any], captured_tool_name: str = tool_name) -> Any:
+                                """Handler closure that routes to the appropriate MCP tool"""
+                                self.logger.info(f"[CLIENT MCP] Calling tool '{captured_tool_name}' via client-side MCP")
+                                return await self.client_mcp_manager.call_tool(captured_tool_name, args)
+
+                            # Register function with the closure handler
+                            self.register_function(
+                                name=tool_name,
+                                handler=mcp_tool_handler,
+                                description=func_def["description"],
+                                parameters=func_def["parameters"]
+                            )
+
+                        self.logger.info(f"Registered {len(openai_functions)} client-side MCP tool(s) as OpenAI functions")
+                    else:
+                        self.logger.warning("No client-side MCP servers connected")
+
+                except Exception as e:
+                    self.logger.error(f"Failed to connect to client-side MCP servers: {e}")
+                    self.logger.warning("Continuing without client-side MCP support")
+
             # Send session configuration
             self.logger.debug("About to send session update...")
             await self._send_session_update()
@@ -327,10 +376,19 @@ class OpenAIRealtimeClient:
             return False
     
     async def disconnect(self) -> None:
-        """Disconnect from OpenAI Realtime API"""
+        """Disconnect from OpenAI Realtime API and client-side MCP servers"""
         if self.websocket and not self._is_websocket_closed():
             await self.websocket.close()
-        
+
+        # Disconnect from client-side MCP servers
+        if self.client_mcp_manager and self.client_mcp_manager.is_connected():
+            self.logger.info("Disconnecting from client-side MCP servers...")
+            try:
+                await self.client_mcp_manager.disconnect_all()
+                self.logger.info("Client-side MCP servers disconnected")
+            except Exception as e:
+                self.logger.error(f"Error disconnecting from client-side MCP servers: {e}")
+
         # End performance tracking session
         if self.performance_metrics:
             session_metrics = self.performance_metrics.end_session()
@@ -339,7 +397,7 @@ class OpenAIRealtimeClient:
                     f"Session ended - Duration: {session_metrics.calculate_duration():.2f}s, "
                     f"Cost: ${session_metrics.estimated_cost:.4f}"
                 )
-        
+
         self.state = ConnectionState.DISCONNECTED
         self.websocket = None
         self.session_id = None
@@ -940,19 +998,19 @@ class OpenAIRealtimeClient:
         if function_name not in self.function_handlers:
             self.logger.error(f"Unknown function called: {function_name}")
             return
-            
+
         try:
             # Call the function handler
             handler = self.function_handlers[function_name]
             result = await handler(arguments)
-            
+
             # Send result back to OpenAI
             await self._send_function_result(call_id, result)
-            
+
         except Exception as e:
             self.logger.error(f"Error calling function {function_name}: {e}")
             await self._send_function_error(call_id, str(e))
-    
+
     async def _send_function_result(self, call_id: str, result: Any) -> None:
         """Send function call result back to OpenAI"""
         event = {
