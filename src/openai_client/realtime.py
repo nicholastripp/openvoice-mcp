@@ -875,24 +875,73 @@ class OpenAIRealtimeClient:
         await self.websocket.send(message)
     
     async def _send_session_update(self) -> None:
-        """Send session configuration to OpenAI"""
-        # Check if we should use native MCP tools
-        if self.mcp_manager and self.mcp_manager.enabled:
+        """Send session configuration to OpenAI with multi-server MCP support"""
+        native_mcp_tools = []
+
+        # NEW: Multi-server MCP configuration support
+        if self.app_config and hasattr(self.app_config, 'mcp_servers') and self.app_config.mcp_servers:
+            self.logger.info(f"Processing {len(self.app_config.mcp_servers)} configured MCP server(s)")
+
+            for server_name, server_config in self.app_config.mcp_servers.items():
+                if not server_config.enabled:
+                    self.logger.debug(f"Skipping disabled MCP server: {server_name}")
+                    continue
+
+                if server_config.mode == "native":
+                    # Build native MCP tool configuration for OpenAI
+                    self.logger.info(f"Configuring native MCP server: {server_name}")
+
+                    mcp_tool = {
+                        "type": "mcp",
+                        "server_label": server_config.name,
+                        "server_url": server_config.server_url
+                    }
+
+                    # Add optional fields if provided
+                    if server_config.description:
+                        mcp_tool["server_description"] = server_config.description
+
+                    if server_config.authorization:
+                        mcp_tool["authorization"] = server_config.authorization
+
+                    # require_approval can be "always", "never", or a dict with tool-specific rules
+                    if server_config.require_approval:
+                        mcp_tool["require_approval"] = server_config.require_approval
+
+                    if server_config.allowed_tools:
+                        mcp_tool["allowed_tools"] = server_config.allowed_tools
+
+                    native_mcp_tools.append(mcp_tool)
+                    self.logger.info(f"Added native MCP server '{server_name}' to session config")
+
+                elif server_config.mode == "client":
+                    # Client-side MCP servers will be handled by separate client-side code
+                    # This is for local/stdio servers that can't be accessed by OpenAI directly
+                    self.logger.info(f"MCP server '{server_name}' configured for client-side handling (transport: {server_config.transport})")
+                    # TODO: Initialize client-side MCP connection in separate handler
+
+        # LEGACY: Backward compatibility with existing single-server mcp_manager
+        elif self.mcp_manager and self.mcp_manager.enabled:
             # Add native MCP tools to session config if not already present
             mcp_tools = self.mcp_manager.get_tool_config()
             if mcp_tools:
-                # Replace traditional function tools with MCP tools
-                # Keep any non-function tools that might exist
-                non_function_tools = [t for t in self.session_config.get("tools", []) 
-                                     if t.get("type") != "function"]
-                self.session_config["tools"] = non_function_tools + mcp_tools
-                self.logger.info(f"Using native MCP tools: {len(mcp_tools)} MCP server(s) configured")
-        
+                native_mcp_tools.extend(mcp_tools)
+                self.logger.info(f"Using legacy MCP manager: {len(mcp_tools)} MCP server(s) configured")
+
+        # Add native MCP tools to session configuration
+        if native_mcp_tools:
+            # Replace traditional function tools with MCP tools
+            # Keep any non-function tools that might exist
+            non_function_tools = [t for t in self.session_config.get("tools", [])
+                                 if t.get("type") != "function"]
+            self.session_config["tools"] = non_function_tools + native_mcp_tools
+            self.logger.info(f"Session config updated with {len(native_mcp_tools)} native MCP server(s)")
+
         event = {
             "type": "session.update",
             "session": self.session_config
         }
-        
+
         # Sanitize session config for safe logging
         safe_config = sanitize_unicode_text(json.dumps(self.session_config, indent=2))
         self.logger.info(f"SESSION CONFIG DEBUG: Sending session config: {safe_config}")
