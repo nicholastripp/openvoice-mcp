@@ -24,7 +24,7 @@ setup(
     long_description_content_type="text/markdown",
     author="Nicholas Tripp",
     author_email="",
-    url="https://github.com/nicholastripp/openvoice-mcp-v2",
+    url="https://github.com/nicholastripp/openvoice-mcp",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     python_requires=">=3.9",
@@ -57,9 +57,9 @@ setup(
     ],
     keywords="mcp model-context-protocol voice-assistant openai raspberry-pi smart-home hybrid-architecture",
     project_urls={
-        "Bug Reports": "https://github.com/nicholastripp/openvoice-mcp-v2/issues",
-        "Source": "https://github.com/nicholastripp/openvoice-mcp-v2",
-        "Documentation": "https://github.com/nicholastripp/openvoice-mcp-v2/blob/main/README.md",
+        "Bug Reports": "https://github.com/nicholastripp/openvoice-mcp/issues",
+        "Source": "https://github.com/nicholastripp/openvoice-mcp",
+        "Documentation": "https://github.com/nicholastripp/openvoice-mcp/blob/main/README.md",
         "Base Project": "https://github.com/nicholastripp/ha-realtime-assist",
     },
 )

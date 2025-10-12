@@ -91,8 +91,8 @@ The assistant supports natural multi-turn conversations where you can continue s
 
 ```bash
 # Clone the repository
-git clone https://github.com/nicholastripp/openvoice-mcp-v2
-cd openvoice-mcp-v2
+git clone https://github.com/nicholastripp/openvoice-mcp
+cd openvoice-mcp
 
 # Install dependencies and set up configuration
 ./install.sh
