@@ -1,7 +1,7 @@
 # OpenVoice MCP - Hybrid Multi-Server Voice Assistant
 
-![Version](https://img.shields.io/badge/version-2.0.0--beta-orange)
-![Status](https://img.shields.io/badge/status-testing-yellow)
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Status](https://img.shields.io/badge/status-stable-green)
 ![Python](https://img.shields.io/badge/python-3.9+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
