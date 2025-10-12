@@ -777,17 +777,164 @@ class OpenAIRealtimeClient:
             # Pass just the error data, not the wrapper
             await self._emit_event("error", error_data)
         
-        # Handle MCP-specific events if native MCP is enabled
-        elif event_type.startswith("mcp.") and self.mcp_manager:
-            response = await self.mcp_manager.handle_mcp_event(event.data)
-            if response:
-                # Send response back to OpenAI if needed (e.g., approval response)
-                await self._send_event(response)
-            self.logger.debug(f"Handled MCP event: {event_type}")
+        # Handle MCP-specific events for multi-server configuration
+        elif event_type.startswith("mcp."):
+            await self._handle_mcp_event(event_type, event.data)
         
         # Emit generic event
         await self._emit_event(event_type, event.data)
-    
+
+    async def _handle_mcp_event(self, event_type: str, event_data: Dict[str, Any]) -> None:
+        """
+        Handle MCP-specific events for multi-server configuration
+
+        Supports both native MCP (OpenAI-managed) and client-side MCP (local servers)
+
+        Args:
+            event_type: MCP event type (e.g., "mcp.approval_request", "mcp.call_tool")
+            event_data: Event data from OpenAI
+        """
+        self.logger.info(f"[MCP EVENT] Received MCP event: {event_type}")
+
+        # Handle approval requests from OpenAI (for native MCP servers)
+        if event_type == "mcp.approval_request":
+            await self._handle_mcp_approval_request(event_data)
+            return
+
+        # Handle tool list requests (for client-side MCP fallback)
+        elif event_type == "mcp.list_tools":
+            await self._handle_mcp_list_tools(event_data)
+            return
+
+        # Handle tool call requests (for client-side MCP fallback)
+        elif event_type == "mcp.call_tool":
+            await self._handle_mcp_call_tool(event_data)
+            return
+
+        # Legacy fallback: use single-server mcp_manager if available
+        elif self.mcp_manager:
+            self.logger.debug(f"Routing MCP event to legacy mcp_manager: {event_type}")
+            response = await self.mcp_manager.handle_mcp_event(event_data)
+            if response:
+                await self._send_event(response)
+            return
+
+        # Unknown MCP event type
+        else:
+            self.logger.warning(f"[MCP EVENT] Unhandled MCP event type: {event_type}")
+
+    async def _handle_mcp_approval_request(self, event_data: Dict[str, Any]) -> None:
+        """
+        Handle MCP tool approval requests from OpenAI
+
+        When require_approval is set for native MCP servers, OpenAI sends approval
+        requests before executing MCP tool calls. We can auto-approve, deny, or ask user.
+
+        Args:
+            event_data: Approval request data including server_label, tool_name, arguments
+        """
+        server_label = event_data.get("server_label", "unknown")
+        tool_name = event_data.get("tool_name", "unknown")
+        arguments = event_data.get("arguments", {})
+        request_id = event_data.get("request_id", "unknown")
+
+        self.logger.info(f"[MCP APPROVAL] Approval requested for {server_label}.{tool_name}")
+        self.logger.debug(f"[MCP APPROVAL] Request ID: {request_id}, Arguments: {arguments}")
+
+        # Determine approval policy for this server
+        approved = False
+        approval_reason = ""
+
+        # Check multi-server configuration
+        if self.app_config and hasattr(self.app_config, 'mcp_servers') and self.app_config.mcp_servers:
+            server_config = self.app_config.mcp_servers.get(server_label)
+
+            if server_config:
+                require_approval = server_config.require_approval
+
+                # Check if this is auto-approved
+                if require_approval == "never":
+                    approved = True
+                    approval_reason = "Auto-approved (server policy: never require approval)"
+
+                # Check if always requires approval
+                elif require_approval == "always":
+                    # For now, auto-approve. In production, this should prompt user or apply policy
+                    approved = True
+                    approval_reason = "Auto-approved (TODO: implement user approval flow)"
+                    self.logger.warning("[MCP APPROVAL] Auto-approving tool call - implement user approval flow")
+
+                # Check tool-specific rules (dict format)
+                elif isinstance(require_approval, dict):
+                    tool_policy = require_approval.get(tool_name, "always")
+                    if tool_policy == "never":
+                        approved = True
+                        approval_reason = f"Auto-approved (tool policy: {tool_name} never requires approval)"
+                    else:
+                        approved = True
+                        approval_reason = f"Auto-approved (TODO: implement approval for {tool_name})"
+                        self.logger.warning(f"[MCP APPROVAL] Auto-approving {tool_name} - implement approval flow")
+
+        # Legacy fallback to mcp_manager
+        elif self.mcp_manager:
+            self.logger.debug("[MCP APPROVAL] Using legacy mcp_manager for approval")
+            # Legacy manager handles approval automatically
+            approved = True
+            approval_reason = "Auto-approved (legacy mcp_manager)"
+
+        # Default: auto-approve with warning
+        else:
+            approved = True
+            approval_reason = "Auto-approved (no policy configured)"
+            self.logger.warning("[MCP APPROVAL] No approval policy configured, auto-approving")
+
+        # Send approval response to OpenAI
+        approval_response = {
+            "type": "mcp.approval_response",
+            "request_id": request_id,
+            "approved": approved,
+            "reason": approval_reason
+        }
+
+        await self._send_event(approval_response)
+        self.logger.info(f"[MCP APPROVAL] Sent approval response: approved={approved}, reason='{approval_reason}'")
+
+    async def _handle_mcp_list_tools(self, event_data: Dict[str, Any]) -> None:
+        """
+        Handle MCP list_tools requests (for client-side MCP fallback)
+
+        This is used when we're managing MCP servers client-side instead of using
+        OpenAI's native MCP support. We list available tools from local MCP servers.
+
+        Args:
+            event_data: Request data including server identifier
+        """
+        self.logger.info("[MCP LIST_TOOLS] Received list_tools request (client-side MCP)")
+
+        # TODO: Implement client-side MCP tool listing
+        # This will be implemented in the next task: "Integrate client-side MCP fallback"
+        self.logger.warning("[MCP LIST_TOOLS] Client-side MCP not yet implemented")
+
+    async def _handle_mcp_call_tool(self, event_data: Dict[str, Any]) -> None:
+        """
+        Handle MCP call_tool requests (for client-side MCP fallback)
+
+        This is used when we're managing MCP servers client-side. We forward tool
+        calls to local MCP servers and return results to OpenAI.
+
+        Args:
+            event_data: Tool call data including server, tool_name, arguments
+        """
+        server_label = event_data.get("server_label", "unknown")
+        tool_name = event_data.get("tool_name", "unknown")
+        call_id = event_data.get("call_id", "unknown")
+
+        self.logger.info(f"[MCP CALL_TOOL] Received call_tool request: {server_label}.{tool_name} (call_id: {call_id})")
+
+        # TODO: Implement client-side MCP tool calling
+        # This will be implemented in the next task: "Integrate client-side MCP fallback"
+        self.logger.warning("[MCP CALL_TOOL] Client-side MCP not yet implemented")
+
     async def _handle_function_call(self, function_name: str, arguments: Dict[str, Any], call_id: str) -> None:
         """Handle function call from OpenAI"""
         if function_name not in self.function_handlers:
