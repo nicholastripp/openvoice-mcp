@@ -60,6 +60,44 @@ class MCPConfig:
 
 
 @dataclass
+class MCPServerConfig:
+    """Configuration for individual MCP servers (native or client-side)"""
+    name: str
+    mode: str = "native"  # "native" (OpenAI handles) or "client" (local client-side)
+
+    # Native mode fields (for remote servers)
+    server_url: Optional[str] = None
+    authorization: Optional[str] = None
+    description: Optional[str] = None
+    require_approval: str = "always"  # "always", "never", or dict with tool-specific rules
+    allowed_tools: Optional[list] = None  # Filter which tools to expose from this server
+
+    # Client mode fields (for local/stdio servers - uses existing ha-realtime-assist code)
+    transport: Optional[str] = None  # "stdio", "sse", etc.
+    command: Optional[str] = None  # Command to run for stdio transport
+    args: Optional[list] = None  # Arguments for the command
+    env: Optional[Dict[str, str]] = None  # Environment variables
+    timeout: int = 30  # Connection timeout
+
+    # Shared fields
+    enabled: bool = True  # Whether this server is active
+    priority: int = 100  # Server priority for tool routing (lower = higher priority)
+
+    def __post_init__(self):
+        """Validate configuration based on mode"""
+        if self.mode == "native":
+            if not self.server_url:
+                raise ValueError(f"MCP server '{self.name}' in native mode requires server_url")
+        elif self.mode == "client":
+            if not self.transport:
+                raise ValueError(f"MCP server '{self.name}' in client mode requires transport")
+            if self.transport == "stdio" and not self.command:
+                raise ValueError(f"MCP server '{self.name}' with stdio transport requires command")
+        else:
+            raise ValueError(f"MCP server '{self.name}' has invalid mode: '{self.mode}'. Must be 'native' or 'client'")
+
+
+@dataclass
 class HomeAssistantConfig:
     """Home Assistant API configuration"""
     url: str
@@ -223,6 +261,7 @@ class AppConfig:
     system: SystemConfig = field(default_factory=SystemConfig)
     web_ui: WebUIConfig = field(default_factory=WebUIConfig)
     advanced: AdvancedConfig = field(default_factory=AdvancedConfig)
+    mcp_servers: Optional[Dict[str, MCPServerConfig]] = None  # Optional multi-server MCP configuration
 
 
 def _validate_url(url: str, service_name: str) -> None:
@@ -393,7 +432,17 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
         web_ui_config = WebUIConfig(**web_ui_data)
         
         advanced_config = AdvancedConfig(**config_data.get("advanced", {}))
-        
+
+        # Parse MCP servers configuration (optional)
+        mcp_servers = None
+        if "mcp_servers" in config_data:
+            mcp_servers = {}
+            for server_name, server_data in config_data["mcp_servers"].items():
+                try:
+                    mcp_servers[server_name] = MCPServerConfig(name=server_name, **server_data)
+                except Exception as e:
+                    raise ValueError(f"Invalid configuration for MCP server '{server_name}': {e}")
+
         return AppConfig(
             openai=openai_config,
             home_assistant=ha_config,
@@ -402,7 +451,8 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
             session=session_config,
             system=system_config,
             web_ui=web_ui_config,
-            advanced=advanced_config
+            advanced=advanced_config,
+            mcp_servers=mcp_servers
         )
         
     except TypeError as e:
