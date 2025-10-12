@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Installation script for OpenVoice MCP
-# For Raspberry Pi and other Linux systems
+# For Raspberry Pi, Linux, and MacOS systems
 
 set -e
 
@@ -16,8 +16,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Check if running on supported system
-if [[ "$OSTYPE" != "linux-gnu"* ]]; then
-    echo -e "${RED}Error: This installer is designed for Linux systems${NC}"
+if [[ "$OSTYPE" != "linux-gnu"* && "$OSTYPE" != "darwin"* ]]; then
+    echo -e "${RED}Error: This installer is designed for Linux and MacOS systems${NC}"
     echo "For other systems, please install manually using pip"
     exit 1
 fi
@@ -38,7 +38,16 @@ echo -e "${GREEN}✓ Python $python_version detected${NC}"
 echo -e "${YELLOW}Installing system dependencies...${NC}"
 
 # Detect package manager
-if command -v apt &> /dev/null; then
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # MacOS - use Homebrew
+    if ! command -v brew &> /dev/null; then
+        echo -e "${RED}Error: Homebrew is not installed${NC}"
+        echo "Please install Homebrew first: https://brew.sh"
+        exit 1
+    fi
+    brew install portaudio git
+    echo -e "${GREEN}✓ System dependencies installed${NC}"
+elif command -v apt &> /dev/null; then
     sudo apt update
     sudo apt install -y python3-pip python3-venv portaudio19-dev git
 elif command -v yum &> /dev/null; then
@@ -49,7 +58,7 @@ else
     echo -e "${YELLOW}Warning: Could not detect package manager${NC}"
     echo "Please ensure the following are installed:"
     echo "  - python3-pip"
-    echo "  - python3-venv" 
+    echo "  - python3-venv"
     echo "  - portaudio development headers"
     echo "  - git"
 fi
@@ -99,7 +108,11 @@ if [ ! -f ".env" ]; then
 else
     echo -e "${YELLOW}  .env already exists${NC}"
     # Check and fix permissions if needed
-    current_perms=$(stat -c "%a" .env 2>/dev/null || stat -f "%OLp" .env 2>/dev/null)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        current_perms=$(stat -f "%OLp" .env)
+    else
+        current_perms=$(stat -c "%a" .env)
+    fi
     if [ "$current_perms" != "600" ]; then
         chmod 600 .env
         echo -e "${GREEN}✓ Fixed permissions on .env file (was $current_perms, now 600)${NC}"
@@ -133,21 +146,21 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     # Prompt for username
     read -p "Enter web UI username (default: admin): " web_username
     web_username=${web_username:-admin}
-    
+
     # Prompt for password
     while true; do
         read -s -p "Enter web UI password: " web_password
         echo
         read -s -p "Confirm password: " web_password_confirm
         echo
-        
+
         if [ "$web_password" = "$web_password_confirm" ] && [ -n "$web_password" ]; then
             break
         else
             echo -e "${RED}Passwords don't match or are empty. Please try again.${NC}"
         fi
     done
-    
+
     # Generate password hash using bcrypt
     web_password_hash=$(./venv/bin/python -c "
 import bcrypt
@@ -156,23 +169,31 @@ salt = bcrypt.gensalt(rounds=12)
 hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
 print(hashed.decode('utf-8'))
     ")
-    
+
     # Update config.yaml for username and enable web UI
     echo -e "${YELLOW}Updating config/config.yaml with web UI settings...${NC}"
-    
-    # Enable web UI
-    sed -i.bak "s/^web_ui:$/web_ui:\n  enabled: true/" config/config.yaml 2>/dev/null || \
-    sed -i '' "s/^web_ui:$/web_ui:\n  enabled: true/" config/config.yaml 2>/dev/null || \
-    echo "Note: Please manually enable web_ui in config.yaml"
-    
-    # Update username in config
-    sed -i.bak "s/username: \"admin\"/username: \"$web_username\"/" config/config.yaml 2>/dev/null || \
-    sed -i '' "s/username: \"admin\"/username: \"$web_username\"/" config/config.yaml 2>/dev/null
-    
-    # Update password_hash to use environment variable
-    sed -i.bak 's/password_hash: ""/password_hash: ${WEB_UI_PASSWORD_HASH}/' config/config.yaml 2>/dev/null || \
-    sed -i '' 's/password_hash: ""/password_hash: ${WEB_UI_PASSWORD_HASH}/' config/config.yaml 2>/dev/null
-    
+
+    # Enable web UI (use different sed syntax for MacOS vs Linux)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/^web_ui:$/web_ui:\n  enabled: true/" config/config.yaml 2>/dev/null || \
+        echo "Note: Please manually enable web_ui in config.yaml"
+
+        # Update username in config
+        sed -i '' "s/username: \"admin\"/username: \"$web_username\"/" config/config.yaml
+
+        # Update password_hash to use environment variable
+        sed -i '' 's/password_hash: ""/password_hash: ${WEB_UI_PASSWORD_HASH}/' config/config.yaml
+    else
+        sed -i.bak "s/^web_ui:$/web_ui:\n  enabled: true/" config/config.yaml 2>/dev/null || \
+        echo "Note: Please manually enable web_ui in config.yaml"
+
+        # Update username in config
+        sed -i.bak "s/username: \"admin\"/username: \"$web_username\"/" config/config.yaml
+
+        # Update password_hash to use environment variable
+        sed -i.bak 's/password_hash: ""/password_hash: ${WEB_UI_PASSWORD_HASH}/' config/config.yaml
+    fi
+
     # Add password hash to .env file
     echo -e "${YELLOW}Saving password hash to .env file...${NC}"
     if grep -q "^WEB_UI_PASSWORD_HASH=" .env 2>/dev/null; then
@@ -188,11 +209,11 @@ print(hashed.decode('utf-8'))
         echo "# Web UI Authentication (set by installer)" >> .env
         echo "WEB_UI_PASSWORD_HASH=$web_password_hash" >> .env
     fi
-    
+
     # Ensure .env has secure permissions after modification
     chmod 600 .env
     echo -e "${GREEN}✓ Ensured secure permissions on .env file${NC}"
-    
+
     echo -e "${GREEN}✓ Web UI authentication configured${NC}"
     echo -e "${GREEN}  Username: $web_username${NC}"
     echo -e "${GREEN}  Access at: https://<your-ip>:8443${NC}"
