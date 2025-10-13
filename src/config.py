@@ -376,6 +376,21 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
         else:  # auto
             actual_model = openai_config.model  # Default to new, will fallback if needed
 
+        # Warn about deprecated preview models
+        deprecated_models = ["gpt-4o-mini-realtime-preview", "gpt-4o-realtime-preview-2024-10-01"]
+        if actual_model in deprecated_models:
+            print(f"\n{'='*70}")
+            print(f"WARNING: Using deprecated preview model '{actual_model}'")
+            print(f"")
+            print(f"The preview models are outdated and will be removed.")
+            print(f"Please update your config to use the production model:")
+            print(f"  openai:")
+            print(f"    model: 'gpt-realtime'  # Production model")
+            print(f"    model_selection: 'auto'  # or 'new'")
+            print(f"")
+            print(f"See docs/OPENAI_MIGRATION.md for details.")
+            print(f"{'='*70}\n")
+
         # Validate voice availability for selected model
         available_voices = openai_config.VOICES.get(actual_model, [])
         if openai_config.voice not in available_voices:
@@ -433,7 +448,12 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
             mcp_servers = {}
             for server_name, server_data in config_data["mcp_servers"].items():
                 try:
-                    mcp_servers[server_name] = MCPServerConfig(name=server_name, **server_data)
+                    # Create a copy to avoid modifying original dict
+                    server_data_copy = dict(server_data)
+                    # Remove 'name' if present to avoid duplicate parameter
+                    # (we pass name as server_name from the dict key)
+                    server_data_copy.pop('name', None)
+                    mcp_servers[server_name] = MCPServerConfig(name=server_name, **server_data_copy)
                 except Exception as e:
                     raise ValueError(f"Invalid configuration for MCP server '{server_name}': {e}")
 
