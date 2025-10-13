@@ -99,9 +99,9 @@ class MCPServerConfig:
 
 @dataclass
 class HomeAssistantConfig:
-    """Home Assistant API configuration"""
-    url: str
-    token: str
+    """Home Assistant API configuration (optional)"""
+    url: Optional[str] = None
+    token: Optional[str] = None
     language: str = "en"
     timeout: int = 10
     mcp: MCPConfig = field(default_factory=MCPConfig)
@@ -254,7 +254,7 @@ class AdvancedConfig:
 class AppConfig:
     """Main application configuration"""
     openai: OpenAIConfig
-    home_assistant: HomeAssistantConfig
+    home_assistant: Optional[HomeAssistantConfig] = None  # Optional - system can run as pure voice UI
     audio: AudioConfig = field(default_factory=AudioConfig)
     wake_word: WakeWordConfig = field(default_factory=WakeWordConfig)
     session: SessionConfig = field(default_factory=SessionConfig)
@@ -343,15 +343,31 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
     try:
         # Create configuration objects
         openai_config = OpenAIConfig(**config_data.get("openai", {}))
-        ha_config = HomeAssistantConfig(**config_data.get("home_assistant", {}))
-        
+
+        # Create Home Assistant config only if section exists (optional)
+        ha_config = None
+        if "home_assistant" in config_data:
+            ha_config = HomeAssistantConfig(**config_data["home_assistant"])
+
+            # Validate HA config if provided
+            if ha_config.url and ha_config.token:
+                # Validate URL format
+                _validate_url(ha_config.url, "Home Assistant")
+            elif ha_config.url or ha_config.token:
+                # If only one is provided, warn user
+                raise ValueError(
+                    "Home Assistant configuration is incomplete.\n"
+                    "Both 'url' and 'token' must be provided if using Home Assistant integration.\n"
+                    "Either provide both, or omit the home_assistant section entirely for pure voice UI mode."
+                )
+
         # Validate model selection
         if openai_config.model_selection not in ["auto", "new", "legacy"]:
             raise ValueError(
                 f"Invalid model_selection: '{openai_config.model_selection}'. "
                 "Must be 'auto', 'new', or 'legacy'"
             )
-        
+
         # Determine actual model to use based on selection
         if openai_config.model_selection == "legacy":
             actual_model = openai_config.legacy_model
@@ -359,7 +375,7 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
             actual_model = openai_config.model
         else:  # auto
             actual_model = openai_config.model  # Default to new, will fallback if needed
-        
+
         # Validate voice availability for selected model
         available_voices = openai_config.VOICES.get(actual_model, [])
         if openai_config.voice not in available_voices:
@@ -372,7 +388,7 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
                 else:
                     print(f"Using default voice: 'alloy'")
                     openai_config.voice = "alloy"
-        
+
         # Validate required fields with helpful error messages
         if not openai_config.api_key:
             raise ValueError(
@@ -382,37 +398,15 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
                 "    api_key: 'your-api-key-here'"
             )
         
-        if not ha_config.url:
-            raise ValueError(
-                "Home Assistant URL is required.\n"
-                "Please update config/config.yaml with your Home Assistant URL:\n"
-                "  home_assistant:\n"
-                "    url: 'http://your-homeassistant-ip:8123'"
-            )
-        
-        if not ha_config.token:
-            raise ValueError(
-                "Home Assistant access token is required.\n"
-                "Please set the HA_TOKEN environment variable or add it to config.yaml:\n"
-                "  home_assistant:\n"
-                "    token: 'your-long-lived-access-token'\n\n"
-                "To create a token:\n"
-                "1. Go to your Home Assistant profile (http://your-ha-ip:8123/profile)\n"
-                "2. Scroll down to 'Long-Lived Access Tokens'\n"
-                "3. Click 'Create Token' and copy the generated token"
-            )
-        
-        # Validate URL format
-        _validate_url(ha_config.url, "Home Assistant")
-        
         # Create optional configuration objects
         audio_config = AudioConfig(**config_data.get("audio", {}))
         wake_word_config = WakeWordConfig(**config_data.get("wake_word", {}))
-        
-        # Create MCP config from home_assistant section
-        mcp_data = config_data.get("home_assistant", {}).get("mcp", {})
-        mcp_config = MCPConfig(**mcp_data)
-        ha_config.mcp = mcp_config
+
+        # Create MCP config from home_assistant section if it exists
+        if ha_config:
+            mcp_data = config_data.get("home_assistant", {}).get("mcp", {})
+            mcp_config = MCPConfig(**mcp_data)
+            ha_config.mcp = mcp_config
         
         # Validate wake word gain settings
         if wake_word_config.audio_gain < 1.0 or wake_word_config.audio_gain > 5.0:

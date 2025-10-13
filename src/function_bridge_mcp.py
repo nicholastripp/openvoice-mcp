@@ -51,7 +51,12 @@ class MCPFunctionBridge:
             else:
                 fallback_reason = self.native_mcp.get_fallback_reason()
                 self.logger.warning(f"Native MCP not available: {fallback_reason}")
-                if self.native_mcp.config.home_assistant.mcp.enable_fallback:
+                # Check if fallback is enabled (requires HA config to be present)
+                enable_fallback = (
+                    self.native_mcp.config.home_assistant and
+                    self.native_mcp.config.home_assistant.mcp.enable_fallback
+                )
+                if enable_fallback:
                     self.logger.info("Falling back to bridge mode")
                     self.mode = "bridge"
                 else:

@@ -47,19 +47,30 @@ class NativeMCPManager:
     def __init__(self, config: AppConfig):
         """
         Initialize Native MCP Manager
-        
+
         Args:
             config: Application configuration
         """
         self.config = config
-        self.ha_url = config.home_assistant.url
-        self.ha_token = config.home_assistant.token
-        
-        # Native MCP configuration
-        self.enabled = getattr(config.home_assistant.mcp, 'native_mode', False)
-        self.approval_mode = getattr(config.home_assistant.mcp, 'approval_mode', 'never')
-        self.approval_timeout = getattr(config.home_assistant.mcp, 'approval_timeout', 5000)
-        self.mcp_endpoint = getattr(config.home_assistant.mcp, 'endpoint', '/mcp_server/sse')
+
+        # Check if Home Assistant is configured
+        if not config.home_assistant or not config.home_assistant.url:
+            # Home Assistant not configured - disable native MCP
+            self.ha_url = None
+            self.ha_token = None
+            self.enabled = False
+            self.approval_mode = 'never'
+            self.approval_timeout = 5000
+            self.mcp_endpoint = '/mcp_server/sse'
+        else:
+            self.ha_url = config.home_assistant.url
+            self.ha_token = config.home_assistant.token
+
+            # Native MCP configuration
+            self.enabled = getattr(config.home_assistant.mcp, 'native_mode', False)
+            self.approval_mode = getattr(config.home_assistant.mcp, 'approval_mode', 'never')
+            self.approval_timeout = getattr(config.home_assistant.mcp, 'approval_timeout', 5000)
+            self.mcp_endpoint = getattr(config.home_assistant.mcp, 'endpoint', '/mcp_server/sse')
         
         # Performance tracking
         self.metrics = MCPMetrics()

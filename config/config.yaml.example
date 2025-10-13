@@ -15,8 +15,15 @@ openai:
   auto_select_voice: true           # Auto-select compatible voice based on model
   temperature: 0.8                  # Response creativity (0.0-1.0)
   language: "en"                    # Language code (en, es, fr, de, etc.)
-  
-# Home Assistant Configuration  
+
+# Home Assistant Configuration (OPTIONAL)
+# This section is entirely optional. The system can run in three modes:
+#   1. Pure Voice UI - No HA section: OpenAI voice assistant only, no smart home control
+#   2. Universal MCP - With HA + MCP servers: Local/remote tools without HA integration
+#   3. Full Integration - With HA configured: Complete smart home control via MCP protocol
+#
+# To run as pure voice UI, you can omit this entire section or leave url/token empty.
+# If you provide this section, both url and token must be set.
 home_assistant:
   url: ${HA_URL}                          # Your HA instance URL (from .env)
   token: ${HA_TOKEN}                      # Long-lived access token (from .env)

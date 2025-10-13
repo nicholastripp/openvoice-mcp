@@ -183,7 +183,12 @@ class OpenAIRealtimeClient:
             if not mcp_valid:
                 fallback_reason = self.mcp_manager.get_fallback_reason()
                 self.logger.warning(f"Native MCP validation failed: {fallback_reason}")
-                if self.mcp_manager.config.home_assistant.mcp.enable_fallback:
+                # Check if fallback is enabled (requires HA config to be present)
+                enable_fallback = (
+                    self.mcp_manager.config.home_assistant and
+                    self.mcp_manager.config.home_assistant.mcp.enable_fallback
+                )
+                if enable_fallback:
                     self.logger.info("Falling back to bridge mode")
                     self.mcp_manager.enabled = False
                 else:

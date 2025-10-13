@@ -950,8 +950,15 @@ class VoiceAssistant:
             self.function_bridge = None
             self.openai_client = None
         else:
+            # Check if Home Assistant is configured
+            if not self.config.home_assistant or not self.config.home_assistant.url:
+                self.logger.info("Home Assistant not configured - running in pure voice UI mode")
+                print("INFO: Home Assistant not configured - pure voice UI mode")
+                print("OpenAI voice assistant will be available without Home Assistant integration")
+                self.mcp_client = None
+                self.function_bridge = None
             # Check skip_ha_check flag BEFORE attempting connection
-            if self.skip_ha_check:
+            elif self.skip_ha_check:
                 self.logger.info("--skip-ha-check flag set: Skipping Home Assistant connection")
                 print("INFO: Skipping Home Assistant connection (--skip-ha-check flag)")
                 print("Home Assistant functionality will not be available")
@@ -3220,7 +3227,10 @@ async def main():
         logger.info("Configuration loaded successfully")
         logger.info(f"OpenAI Model: {config.openai.model}")
         logger.info(f"OpenAI Voice: {config.openai.voice}")
-        logger.info(f"HA URL: {config.home_assistant.url}")
+        if config.home_assistant and config.home_assistant.url:
+            logger.info(f"HA URL: {config.home_assistant.url}")
+        else:
+            logger.info("HA URL: Not configured (pure voice UI mode)")
         logger.info(f"Assistant Name: {personality.backstory.name}")
         
         # Start web UI if requested via CLI or config
