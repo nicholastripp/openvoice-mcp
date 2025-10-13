@@ -476,14 +476,20 @@ def load_config(config_path: str = "config/config.yaml") -> AppConfig:
 def _expand_env_vars(obj: Any) -> Any:
     """
     Recursively expand environment variables in configuration.
-    
-    Supports ${VAR_NAME} syntax.
+
+    Supports ${VAR_NAME} syntax. Unexpanded variables (when env var not set)
+    are converted to None to support optional configuration sections.
     """
     if isinstance(obj, dict):
         return {key: _expand_env_vars(value) for key, value in obj.items()}
     elif isinstance(obj, list):
         return [_expand_env_vars(item) for item in obj]
     elif isinstance(obj, str):
-        return os.path.expandvars(obj)
+        expanded = os.path.expandvars(obj)
+        # If variable wasn't expanded (still contains ${...}), treat as None
+        # This allows optional config sections to work when env vars aren't set
+        if '${' in expanded and '}' in expanded:
+            return None
+        return expanded
     else:
         return obj
