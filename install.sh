@@ -66,10 +66,6 @@ pip install --upgrade pip
 echo -e "${YELLOW}Installing Python dependencies...${NC}"
 pip install -r requirements.txt
 
-# Ensure websockets is properly installed for Raspberry Pi
-echo -e "${YELLOW}Verifying websockets installation...${NC}"
-pip install --upgrade websockets>=12.0
-
 echo -e "${GREEN}✓ Dependencies installed${NC}"
 
 # Create configuration files
