@@ -26,24 +26,6 @@ except ImportError:
     pvporcupine = None
 
 
-def _supports_unicode():
-    """Check if terminal supports UTF-8 encoding"""
-    import sys
-    if hasattr(sys.stdout, 'encoding') and sys.stdout.encoding:
-        return 'utf' in sys.stdout.encoding.lower()
-    return False
-
-
-def _get_box_char():
-    """Get box drawing character with ASCII fallback"""
-    return "━" if _supports_unicode() else "-"
-
-
-def _get_warning_char():
-    """Get warning character with ASCII fallback"""
-    return "⚠️" if _supports_unicode() else "[!]"
-
-
 class PorcupineDetector:
     """
     Wake word detection using Picovoice Porcupine
@@ -336,13 +318,10 @@ class PorcupineDetector:
             error_str = str(e)
             error_type = type(e).__name__
 
-            box = _get_box_char()
-            warning = _get_warning_char()
-
             if "PorcupineActivationLimitError" in error_type or "00000136" in error_str:
-                self.logger.error(box * 70)
-                self.logger.error(f"{warning}  PICOVOICE DEVICE LIMIT REACHED")
-                self.logger.error(box * 70)
+                self.logger.error("━" * 70)
+                self.logger.error("⚠️  PICOVOICE DEVICE LIMIT REACHED")
+                self.logger.error("━" * 70)
                 self.logger.error("")
                 self.logger.error("Your Picovoice account has reached its device activation limit.")
                 self.logger.error("")
@@ -354,11 +333,11 @@ class PorcupineDetector:
                 self.logger.error("Alternatively, disable wake word detection:")
                 self.logger.error("  • Edit config/config.yaml")
                 self.logger.error("  • Set wake_word.enabled to false")
-                self.logger.error(box * 70)
+                self.logger.error("━" * 70)
             elif "AccessKey" in error_str or "PorcupineInvalidArgumentError" in error_type:
-                self.logger.error(box * 70)
-                self.logger.error(f"{warning}  INVALID PICOVOICE ACCESS KEY")
-                self.logger.error(box * 70)
+                self.logger.error("━" * 70)
+                self.logger.error("⚠️  INVALID PICOVOICE ACCESS KEY")
+                self.logger.error("━" * 70)
                 self.logger.error("")
                 self.logger.error("Your Picovoice access key is invalid or has expired.")
                 self.logger.error("")
@@ -367,7 +346,7 @@ class PorcupineDetector:
                 self.logger.error("  2. Sign in or create a free account")
                 self.logger.error("  3. Generate a new access key")
                 self.logger.error("  4. Update PICOVOICE_ACCESS_KEY in your .env file")
-                self.logger.error(box * 70)
+                self.logger.error("━" * 70)
             elif isinstance(e, TimeoutError):
                 self.logger.error("Check your internet connection and firewall settings")
             else:

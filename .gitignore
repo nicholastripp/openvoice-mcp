@@ -94,8 +94,6 @@ examples/stdio_test_server.py
 !tests/**/Dockerfile
 !tests/**/go.mod
 !tests/**/package.json
-!tests/**/*.patch
-!tests/test_*.py
 !pytest.ini
 !pytest-pi.ini
 
@@ -159,13 +157,13 @@ TaskAssignmentPrompts/
 CLAUDE.md
 
 # Ad-hoc test files in root
-/test_*.py
-/test_*.yaml
-/test_*.sh
-/test_*.txt
-/test_*.md
-/debug_*.py
-/verify_*.sh
+test_*.py
+test_*.yaml
+test_*.sh
+test_*.txt
+test_*.md
+debug_*.py
+verify_*.sh
 
 # Session tracking (development only)
 session_log.md
