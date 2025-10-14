@@ -382,6 +382,10 @@ class OpenAIRealtimeClient:
     
     async def disconnect(self) -> None:
         """Disconnect from OpenAI Realtime API and client-side MCP servers"""
+        # Initialize logger if needed (in case disconnect is called before connect)
+        if self.logger is None:
+            self.logger = get_logger("OpenAIRealtimeClient")
+
         if self.websocket and not self._is_websocket_closed():
             await self.websocket.close()
 

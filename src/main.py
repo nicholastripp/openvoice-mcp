@@ -310,9 +310,9 @@ class VoiceAssistant:
         # Start with base personality
         base_prompt = self.personality.generate_prompt()
         
-        # If Home Assistant is not connected, return base prompt
+        # If no integrations are configured, return base prompt
         if not self.mcp_client:
-            self.logger.warning("Home Assistant not connected - using base personality without device awareness")
+            self.logger.warning("No integrations configured - using base personality")
             return base_prompt
         
         try:
@@ -952,9 +952,9 @@ class VoiceAssistant:
         else:
             # Check if Home Assistant is configured
             if not self.config.home_assistant or not self.config.home_assistant.url:
-                self.logger.info("Home Assistant not configured - running in pure voice UI mode")
-                print("INFO: Home Assistant not configured - pure voice UI mode")
-                print("OpenAI voice assistant will be available without Home Assistant integration")
+                self.logger.info("No integrations configured - running in voice UI mode")
+                print("INFO: No integrations configured - running in voice UI mode")
+                print("OpenAI voice assistant will be available for natural conversation")
                 self.mcp_client = None
                 self.function_bridge = None
             # Check skip_ha_check flag BEFORE attempting connection
@@ -1076,7 +1076,7 @@ class VoiceAssistant:
             elif self.function_bridge and self.function_bridge.is_native_mode():
                 self.logger.info("Native MCP mode enabled - OpenAI will discover tools directly")
             else:
-                self.logger.info("No Home Assistant connection - OpenAI will operate without function calling")
+                self.logger.info("No integrations configured - running in voice-only mode")
             
             # Setup OpenAI event handlers (always needed for audio)
             self._setup_openai_handlers()
@@ -3230,8 +3230,8 @@ async def main():
         if config.home_assistant and config.home_assistant.url:
             logger.info(f"HA URL: {config.home_assistant.url}")
         else:
-            logger.info("HA URL: Not configured (pure voice UI mode)")
-        logger.info(f"Assistant Name: {personality.backstory.name}")
+            logger.info("Integrations: None configured")
+        logger.info(f"Voice Assistant: {personality.backstory.name}")
         
         # Start web UI if requested via CLI or config
         web_app = None
