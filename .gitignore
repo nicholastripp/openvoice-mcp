@@ -165,6 +165,9 @@ test_*.md
 debug_*.py
 verify_*.sh
 
+# Session tracking (development only)
+session_log.md
+
 # Temp and misc files
 *.tmp
 *.temp
