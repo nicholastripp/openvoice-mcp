@@ -313,12 +313,44 @@ class PorcupineDetector:
             
         except Exception as e:
             self.logger.error(f"Failed to start wake word detection: {e}")
-            if "AccessKey" in str(e):
-                self.logger.error("Invalid Picovoice access key!")
-                self.logger.error("Please check your PICOVOICE_ACCESS_KEY environment variable")
-                self.logger.error("Get your free access key at: https://console.picovoice.ai/")
+
+            # Handle specific Picovoice errors
+            error_str = str(e)
+            error_type = type(e).__name__
+
+            if "PorcupineActivationLimitError" in error_type or "00000136" in error_str:
+                self.logger.error("━" * 70)
+                self.logger.error("⚠️  PICOVOICE DEVICE LIMIT REACHED")
+                self.logger.error("━" * 70)
+                self.logger.error("")
+                self.logger.error("Your Picovoice account has reached its device activation limit.")
+                self.logger.error("")
+                self.logger.error("To fix this:")
+                self.logger.error("  1. Visit: https://console.picovoice.ai/")
+                self.logger.error("  2. Remove old/unused devices from your account")
+                self.logger.error("  3. Or generate a new access key")
+                self.logger.error("")
+                self.logger.error("Alternatively, disable wake word detection:")
+                self.logger.error("  • Edit config/config.yaml")
+                self.logger.error("  • Set wake_word.enabled to false")
+                self.logger.error("━" * 70)
+            elif "AccessKey" in error_str or "PorcupineInvalidArgumentError" in error_type:
+                self.logger.error("━" * 70)
+                self.logger.error("⚠️  INVALID PICOVOICE ACCESS KEY")
+                self.logger.error("━" * 70)
+                self.logger.error("")
+                self.logger.error("Your Picovoice access key is invalid or has expired.")
+                self.logger.error("")
+                self.logger.error("To fix this:")
+                self.logger.error("  1. Visit: https://console.picovoice.ai/")
+                self.logger.error("  2. Sign in or create a free account")
+                self.logger.error("  3. Generate a new access key")
+                self.logger.error("  4. Update PICOVOICE_ACCESS_KEY in your .env file")
+                self.logger.error("━" * 70)
             elif isinstance(e, TimeoutError):
                 self.logger.error("Check your internet connection and firewall settings")
+            else:
+                self.logger.error("Please check your Picovoice configuration")
             raise
     
     async def stop(self) -> None:
